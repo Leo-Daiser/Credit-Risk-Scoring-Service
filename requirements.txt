@@ -1,0 +1,14 @@
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.40
+psycopg2-binary==2.9.10
+pydantic==2.11.3
+pydantic-settings==2.8.1
+python-dotenv==1.0.1
+PyYAML==6.0.2
+pandas==2.2.3
+numpy==2.2.4
+scikit-learn==1.6.1
+catboost==1.2.8
+pytest==8.3.5
+httpx==0.28.1
