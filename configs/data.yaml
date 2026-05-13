@@ -1,0 +1,32 @@
+raw_data_dir: data/raw/home_credit
+
+tables:
+  application_train:
+    filename: application_train.csv
+    required_columns:
+      - SK_ID_CURR
+      - TARGET
+    unique_key:
+      - SK_ID_CURR
+
+  application_test:
+    filename: application_test.csv
+    required_columns:
+      - SK_ID_CURR
+    unique_key:
+      - SK_ID_CURR
+
+  bureau:
+    filename: bureau.csv
+    required_columns:
+      - SK_ID_CURR
+      - SK_ID_BUREAU
+    unique_key:
+      - SK_ID_BUREAU
+
+  bureau_balance:
+    filename: bureau_balance.csv
+    required_columns:
+      - SK_ID_BUREAU
+      - MONTHS_BALANCE
+      - STATUS
