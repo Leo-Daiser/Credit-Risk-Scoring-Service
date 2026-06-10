@@ -5,9 +5,12 @@ from src.data.validate_schema import validate_raw_tables
 from src.db.init_db import init_db
 from src.features.application_features import run_build_application_features
 from src.features.bureau_features import run_build_bureau_features
+from src.features.feature_dataset import run_build_full_feature_dataset
+from src.models.train_baseline import train_logistic_regression_baseline
 
 DATA_CONFIG_PATH = "configs/data.yaml"
 FEATURE_CONFIG_PATH = "configs/features.yaml"
+TRAIN_CONFIG_PATH = "configs/train.yaml"
 
 
 def main() -> None:
@@ -64,6 +67,35 @@ def main() -> None:
         print(f"Unique applicants: {summary['unique_applicants']}")
         print(f"Feature count: {summary['feature_count']}")
         print(f"Saved to: {summary['output_path']}")
+
+    elif command == "build-full-features":
+        summary = run_build_full_feature_dataset(
+            feature_config_path=FEATURE_CONFIG_PATH,
+        )
+
+        print("Full train/test feature datasets built.")
+        print(f"Train features: shape={summary['train_shape']}")
+        print(f"Test features:  shape={summary['test_shape']}")
+        print(f"Feature count: {summary['feature_count']}")
+        print(f"Train saved to: {summary['train_output_path']}")
+        print(f"Test saved to:  {summary['test_output_path']}")
+
+    elif command == "train-baseline":
+        summary = train_logistic_regression_baseline(
+            config_path=TRAIN_CONFIG_PATH,
+        )
+
+        print("Logistic Regression baseline trained.")
+        print(f"Train rows: {summary['train_rows']}")
+        print(f"Validation rows: {summary['valid_rows']}")
+        print(f"Feature count: {summary['feature_count']}")
+        print(f"Numeric feature count: {summary['numeric_feature_count']}")
+        print(f"Categorical feature count: {summary['categorical_feature_count']}")
+        print(f"ROC-AUC: {summary['roc_auc']:.6f}")
+        print(f"PR-AUC: {summary['pr_auc']:.6f}")
+        print(f"Model saved to: {summary['model_output_path']}")
+        print(f"Metrics saved to: {summary['metrics_output_path']}")
+        print(f"Feature schema saved to: {summary['feature_schema_output_path']}")
 
     else:
         raise SystemExit(f"Unknown command: {command}")
