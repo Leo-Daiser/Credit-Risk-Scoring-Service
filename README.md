@@ -427,13 +427,18 @@ pytest -q
   construction, classification metrics, feature schema, and an end-to-end
   Logistic Regression training run on synthetic data (Phase 3.1)
 
-Текущий статус: `pytest -q` → **69 passed**.
+Текущий статус: `pytest -q` → **77 passed**.
 
 > Примечание: команды, зависящие от данных (`validate-raw`, `build-*-features`,
 > `train-baseline`), требуют реальных файлов Home Credit / собранных датасетов
-> локально. В этом репозитории raw CSV и сгенерированные parquet/артефакты не
-> хранятся, поэтому такие команды запускаются пользователем локально. Метрики
+> локально. Такие команды запускаются пользователем локально. Метрики
 > модели не подделываются — они появляются только из реального обучения.
+>
+> Что НЕ коммитится в репозиторий (см. `.gitignore`):
+> - raw Kaggle CSV (`data/raw/`) — не коммитятся;
+> - сгенерированные parquet (`data/processed/`, processed features) — не коммитятся;
+> - артефакты обученной модели (`artifacts/models/`) — не коммитятся;
+> - артефакты метрик / отчётов (`artifacts/metrics/`, `artifacts/reports/`) — не коммитятся.
 
 ---
 
