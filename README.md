@@ -65,9 +65,33 @@ Production-like ML system for credit default risk scoring based on the **Home Cr
 - CLI-команда `build-bureau-features`
 - unit-тесты на bureau feature engineering
 
-### In progress
-- построение полного feature dataset для train/test
-- model training pipeline
+### Phase 2.3 — Full Feature Dataset Builder
+- модуль `src/features/feature_dataset.py`
+- сборка финальных train/test ML-датасетов из готовых feature parquet-файлов
+  (`application_train_features` + `application_test_features` + `bureau_features`)
+- left join application-фич с bureau-фичами по `SK_ID_CURR` (без row explosion,
+  заявители без кредитной истории получают `NaN`)
+- детерминированный порядок колонок (`SK_ID_CURR` первой, `TARGET` второй в
+  train, остальные по алфавиту), замена `inf`/`-inf` на `NaN`
+- сохранение в parquet (`data/processed/train_features.parquet`,
+  `data/processed/test_features.parquet`)
+- CLI-команда `build-full-features`
+- unit-тесты на сборку feature dataset
+
+### Phase 3.1 — Logistic Regression Baseline
+- модуль `src/models/train_baseline.py`
+- первый реальный ML-baseline: `LogisticRegression` внутри sklearn `Pipeline`
+- препроцессинг через `ColumnTransformer`: numeric —
+  `SimpleImputer(median)` + `StandardScaler`; categorical —
+  `SimpleImputer(most_frequent)` + `OneHotEncoder(handle_unknown="ignore")`
+- стратифицированный train/validation split (детерминированный seed)
+- метрики классификации (`roc_auc`, `pr_auc`, `f1`, `precision`, `recall`,
+  `brier_score`, `confusion_matrix`, `positive_rate`,
+  `predicted_positive_rate`, `threshold_metrics`)
+- сохранение артефактов: модель (`.joblib`), метрики (`.json`),
+  feature schema (`.json`)
+- CLI-команда `train-baseline`
+- unit-тесты на train pipeline (включая end-to-end на синтетике)
 
 ---
 
@@ -127,9 +151,13 @@ credit-risk-scoring/
 │   │   ├── session.py
 │   │   └── init_db.py
 │   ├── features/
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   ├── application_features.py
+│   │   ├── bureau_features.py
+│   │   └── feature_dataset.py
 │   ├── models/
-│   │   └── __init__.py
+│   │   ├── __init__.py
+│   │   └── train_baseline.py
 │   ├── services/
 │   │   └── health.py
 │   ├── utils/
@@ -138,8 +166,9 @@ credit-risk-scoring/
 ├── configs/
 │   ├── app.yaml
 │   ├── db.yaml
-│   ├── train.yaml
-│   └── data.yaml
+│   ├── data.yaml
+│   ├── features.yaml
+│   └── train.yaml
 ├── data/
 │   ├── raw/
 │   ├── interim/
@@ -152,7 +181,11 @@ credit-risk-scoring/
 │   ├── test_config.py
 │   ├── test_health.py
 │   ├── test_load_raw.py
-│   └── test_validate_schema.py
+│   ├── test_validate_schema.py
+│   ├── test_application_features.py
+│   ├── test_bureau_features.py
+│   ├── test_feature_dataset.py
+│   └── test_train_baseline.py
 ├── artifacts/
 │   ├── models/
 │   ├── metrics/
@@ -175,6 +208,9 @@ credit-risk-scoring/
 - SQLAlchemy
 - Pydantic
 - pandas
+- numpy
+- scikit-learn
+- joblib
 - PyYAML
 - pytest
 - Docker
@@ -200,6 +236,8 @@ credit-risk-scoring/
 - `python -m src.cli validate-raw`
 - `python -m src.cli build-application-features`
 - `python -m src.cli build-bureau-features`
+- `python -m src.cli build-full-features`
+- `python -m src.cli train-baseline`
 
 #### `build-application-features`
 Строит application-level признаки:
@@ -228,6 +266,43 @@ credit-risk-scoring/
 Результат мерджится в application-level фичи по `SK_ID_CURR`
 (left join: заявители без кредитной истории получают `NaN`).
 Требует реальных файлов Home Credit локально в `data/raw/home_credit/`.
+
+#### `build-full-features`
+Собирает финальные train/test ML-датасеты из готовых feature parquet-файлов:
+- читает `application_train_features`, `application_test_features` и
+  `bureau_features` из `data/processed/`;
+- делает left join application-фич с bureau-фичами по `SK_ID_CURR`
+  (количество строк application сохраняется, без row explosion);
+- держит детерминированный порядок колонок (`SK_ID_CURR`, затем `TARGET` в
+  train, остальные по алфавиту) и заменяет `inf`/`-inf` на `NaN`;
+- НЕ делает импутацию / кодирование / масштабирование (это задача train
+  pipeline);
+- сохраняет результат в parquet:
+  - `data/processed/train_features.parquet`
+  - `data/processed/test_features.parquet`
+- печатает размеры train/test и число фич.
+
+Требует, чтобы upstream feature-файлы уже были собраны локально
+(`build-application-features`, `build-bureau-features`). Конфигурация — секция
+`full_feature_dataset` в `configs/features.yaml`.
+
+#### `train-baseline`
+Тренирует Logistic Regression baseline:
+- читает `data/processed/train_features.parquet`;
+- разбивает на `X`/`y` (исключая `SK_ID_CURR` и `TARGET`);
+- определяет numeric / categorical фичи;
+- строит sklearn `Pipeline` (препроцессинг + `LogisticRegression`);
+- делает стратифицированный train/validation split;
+- считает метрики на валидации;
+- сохраняет артефакты:
+  - `artifacts/models/logistic_regression_baseline.joblib`
+  - `artifacts/metrics/logistic_regression_baseline_metrics.json`
+  - `artifacts/reports/logistic_regression_baseline_feature_schema.json`
+- печатает размеры выборок, число фич и ROC-AUC / PR-AUC.
+
+Требует собранный `train_features.parquet` локально. Конфигурация — секция
+`baseline` в `configs/train.yaml`. Метрики не фейкаются: JSON пишется только из
+реального обучения; артефакты модели/метрик/схемы в git не коммитятся.
 
 ### Raw data validation
 Проверяется:
@@ -346,6 +421,19 @@ pytest -q
 - derived application features
 - train/test feature alignment and TARGET handling
 - parquet feature output
+- full train/test feature dataset key contract, merge (no row explosion),
+  column order, TARGET handling and parquet output (Phase 2.3)
+- baseline X/y split & target validation, feature-type inference, pipeline
+  construction, classification metrics, feature schema, and an end-to-end
+  Logistic Regression training run on synthetic data (Phase 3.1)
+
+Текущий статус: `pytest -q` → **69 passed**.
+
+> Примечание: команды, зависящие от данных (`validate-raw`, `build-*-features`,
+> `train-baseline`), требуют реальных файлов Home Credit / собранных датасетов
+> локально. В этом репозитории raw CSV и сгенерированные parquet/артефакты не
+> хранятся, поэтому такие команды запускаются пользователем локально. Метрики
+> модели не подделываются — они появляются только из реального обучения.
 
 ---
 
@@ -383,6 +471,14 @@ Response example:
 - `output_paths` для train/test feature parquet-файлов
 - `bureau_features` — секция Phase 2.2 (`id_column`, `bureau_id_column`,
   `output_path` для bureau feature parquet-файла)
+- `full_feature_dataset` — секция Phase 2.3 (пути к входным feature parquet и
+  выходным `train_features` / `test_features`)
+
+### `configs/train.yaml`
+Описывает конфигурацию обучения моделей:
+- `baseline` — секция Phase 3.1 (`train_features_path`, `id_column`,
+  `target_column`, `validation_size`, `random_seed`, `max_iter`, пути к
+  артефактам модели / метрик / feature schema)
 
 ---
 
@@ -419,11 +515,17 @@ Response example:
 - bureau_balance aggregations ✅ (Phase 2.2)
 - merge historical features to applicant level ✅ (Phase 2.2)
 
-### Phase 4 — Modeling Layer
-- Logistic Regression baseline
-- CatBoost challenger
-- offline evaluation
-- artifact saving
+### Phase 2.3 — Full Feature Dataset Builder
+- merge application + bureau features to train/test datasets ✅ (Phase 2.3)
+- deterministic column order + inf/-inf → NaN ✅ (Phase 2.3)
+- save `train_features.parquet` / `test_features.parquet` ✅ (Phase 2.3)
+
+### Phase 3 — Modeling Layer
+- Logistic Regression baseline ✅ (Phase 3.1)
+- offline evaluation + metrics JSON ✅ (Phase 3.1)
+- model + feature schema artifact saving ✅ (Phase 3.1)
+- CatBoost challenger (next)
+- LightGBM (next)
 
 ### Phase 5 — Explainability and business layer
 - calibration
@@ -460,13 +562,15 @@ Response example:
 ## What is intentionally not done yet
 
 На текущем этапе **ещё не реализованы**:
-- feature engineering из historical tables
-- train/validation split
-- training pipeline
+- CatBoost / LightGBM challenger-модели
+- калибровка вероятностей
+- SHAP / reason codes / explainability output
 - model serving for `/score`
-- explainability output
+- логирование inference-результатов в PostgreSQL
+- batch scoring
 - drift monitoring
-- batch inference
+- feature engineering из таблиц `previous_application`, `POS_CASH_balance`,
+  `installments_payments`, `credit_card_balance`
 
 Это будет добавляться по фазам.
 

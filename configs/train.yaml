@@ -1,0 +1,12 @@
+# Model training configuration (Phase 3.1 — Logistic Regression baseline)
+
+baseline:
+  train_features_path: data/processed/train_features.parquet
+  id_column: SK_ID_CURR
+  target_column: TARGET
+  validation_size: 0.2
+  random_seed: 42
+  max_iter: 1000
+  model_output_path: artifacts/models/logistic_regression_baseline.joblib
+  metrics_output_path: artifacts/metrics/logistic_regression_baseline_metrics.json
+  feature_schema_output_path: artifacts/reports/logistic_regression_baseline_feature_schema.json
