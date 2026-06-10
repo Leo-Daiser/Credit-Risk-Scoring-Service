@@ -1,4 +1,6 @@
-# Model training configuration (Phase 3.1 — Logistic Regression baseline)
+# Model training configuration
+# Phase 3.1   — Logistic Regression baseline
+# Phase 3.1.1 — baseline hardening + evaluation report
 
 baseline:
   train_features_path: data/processed/train_features.parquet
@@ -6,7 +8,28 @@ baseline:
   target_column: TARGET
   validation_size: 0.2
   random_seed: 42
-  max_iter: 1000
+
   model_output_path: artifacts/models/logistic_regression_baseline.joblib
   metrics_output_path: artifacts/metrics/logistic_regression_baseline_metrics.json
   feature_schema_output_path: artifacts/reports/logistic_regression_baseline_feature_schema.json
+  evaluation_report_output_path: artifacts/reports/logistic_regression_baseline_evaluation_report.json
+
+  logistic_regression:
+    max_iter: 5000
+    solver: saga
+    class_weight: balanced
+    n_jobs: -1
+    C: 1.0
+
+  thresholds:
+    - 0.1
+    - 0.2
+    - 0.3
+    - 0.4
+    - 0.5
+    - 0.6
+    - 0.7
+    - 0.8
+    - 0.9
+
+  selected_threshold_metric: f1

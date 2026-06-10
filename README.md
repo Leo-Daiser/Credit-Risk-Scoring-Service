@@ -93,6 +93,39 @@ Production-like ML system for credit default risk scoring based on the **Home Cr
 - CLI-команда `train-baseline`
 - unit-тесты на train pipeline (включая end-to-end на синтетике)
 
+### Phase 3.1.1 — Baseline hardening + evaluation report
+- настраиваемые гиперпараметры `LogisticRegression` через
+  `baseline.logistic_regression.*` (`max_iter`, `solver`, `class_weight`,
+  `n_jobs`, `C`)
+- захват `ConvergenceWarning`: обучение не падает, флаг и сообщения
+  пишутся в отчёт (`convergence_warning`, `convergence_warning_messages`)
+- настраиваемая сетка порогов + полные confusion-счётчики (`tp/fp/tn/fn`)
+  для каждого порога
+- автоматический выбор лучшего порога (`select_best_threshold`) по
+  настраиваемой метрике (`selected_threshold_metric`, по умолчанию `f1`)
+- сводка по вероятностям (`summarize_probabilities`: min/max/mean/std и
+  перцентили p01…p99)
+- `classification_report` (sklearn, `output_dict=True`) для порога `0.5` и
+  для выбранного лучшего порога
+- отдельный artifact с подробным отчётом:
+  `artifacts/reports/logistic_regression_baseline_evaluation_report.json`
+
+#### Baseline evaluation
+- Logistic Regression — первая референсная (baseline) модель.
+- Использует sklearn `Pipeline` с numeric- и categorical-препроцессингом.
+- Первый локальный прогон дал примерно:
+  - ROC-AUC ≈ 0.757
+  - PR-AUC ≈ 0.243
+- Эти значения зависят от конкретного локального запуска и **не** должны
+  жёстко задаваться как гарантированные.
+- Если возникает `ConvergenceWarning`, пайплайн фиксирует его в evaluation
+  report (не прерывая обучение).
+- Артефакты оценки сохраняются в:
+  - `artifacts/metrics/logistic_regression_baseline_metrics.json`
+  - `artifacts/reports/logistic_regression_baseline_evaluation_report.json`
+  - `artifacts/reports/logistic_regression_baseline_feature_schema.json`
+- Все эти артефакты в `.gitignore` и не коммитятся в репозиторий.
+
 ---
 
 ## Project goal
