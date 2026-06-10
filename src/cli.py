@@ -5,7 +5,6 @@ from src.data.validate_schema import validate_raw_tables
 from src.db.init_db import init_db
 from src.features.application_features import run_build_application_features
 
-
 DATA_CONFIG_PATH = "configs/data.yaml"
 FEATURE_CONFIG_PATH = "configs/features.yaml"
 
@@ -46,8 +45,12 @@ def main() -> None:
         )
 
         print("Application-level features built.")
-        print(f"Train features: shape={summary['train_shape']} -> {summary['train_path']}")
-        print(f"Test features:  shape={summary['test_shape']} -> {summary['test_path']}")
+        print(
+            f"Train features: shape={summary['train_shape']} -> {summary['train_path']}"
+        )
+        print(
+            f"Test features:  shape={summary['test_shape']} -> {summary['test_path']}"
+        )
 
     else:
         raise SystemExit(f"Unknown command: {command}")

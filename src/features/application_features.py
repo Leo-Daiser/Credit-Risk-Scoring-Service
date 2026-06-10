@@ -92,11 +92,7 @@ def safe_divide(numerator: Any, denominator: Any) -> Any:
     Series, preserving the Series index when one is supplied.
     """
     if isinstance(numerator, pd.Series) or isinstance(denominator, pd.Series):
-        num = (
-            numerator
-            if isinstance(numerator, pd.Series)
-            else pd.Series(numerator)
-        )
+        num = numerator if isinstance(numerator, pd.Series) else pd.Series(numerator)
         den = (
             denominator
             if isinstance(denominator, pd.Series)
@@ -218,17 +214,11 @@ def build_application_features(
             column).
     """
     if id_column not in application_train.columns:
-        raise ValueError(
-            f"Train table is missing the ID column '{id_column}'."
-        )
+        raise ValueError(f"Train table is missing the ID column '{id_column}'.")
     if id_column not in application_test.columns:
-        raise ValueError(
-            f"Test table is missing the ID column '{id_column}'."
-        )
+        raise ValueError(f"Test table is missing the ID column '{id_column}'.")
     if target_column not in application_train.columns:
-        raise ValueError(
-            f"Train table is missing the target column '{target_column}'."
-        )
+        raise ValueError(f"Train table is missing the target column '{target_column}'.")
 
     train = clean_application_table(application_train, days_employed_anomaly_value)
     test = clean_application_table(application_test, days_employed_anomaly_value)
