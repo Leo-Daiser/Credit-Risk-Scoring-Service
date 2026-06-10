@@ -9,3 +9,9 @@ days_employed_anomaly_value: 365243
 output_paths:
   application_train_features: data/processed/application_train_features.parquet
   application_test_features: data/processed/application_test_features.parquet
+
+# Phase 2.2 — bureau / bureau_balance applicant-level features.
+bureau_features:
+  id_column: SK_ID_CURR
+  bureau_id_column: SK_ID_BUREAU
+  output_path: data/processed/bureau_features.parquet
