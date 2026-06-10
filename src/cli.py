@@ -64,7 +64,10 @@ def cmd_validate_raw() -> None:
 
 def cmd_build_application_features() -> None:
     """Build application-level features (train/test)."""
-    summary = run_build_application_features(DATA_CONFIG_PATH, FEATURE_CONFIG_PATH)
+    summary = run_build_application_features(
+        data_config_path=DATA_CONFIG_PATH,
+        feature_config_path=FEATURE_CONFIG_PATH,
+    )
 
     print("Application-level features built.")
     print(f"Train features: shape={summary['train_shape']}")
@@ -77,7 +80,10 @@ def cmd_build_application_features() -> None:
 
 def cmd_build_bureau_features() -> None:
     """Build applicant-level bureau / bureau_balance features."""
-    summary = run_build_bureau_features(DATA_CONFIG_PATH, FEATURE_CONFIG_PATH)
+    summary = run_build_bureau_features(
+        data_config_path=DATA_CONFIG_PATH,
+        feature_config_path=FEATURE_CONFIG_PATH,
+    )
 
     print("Bureau features built.")
     print(f"Bureau features: shape={summary['shape']}")
@@ -88,7 +94,9 @@ def cmd_build_bureau_features() -> None:
 
 def cmd_build_full_features() -> None:
     """Build the final train/test ML feature datasets."""
-    summary = run_build_full_feature_dataset(FEATURE_CONFIG_PATH)
+    summary = run_build_full_feature_dataset(
+        feature_config_path=FEATURE_CONFIG_PATH,
+    )
 
     print("Full train/test feature datasets built.")
     print(f"Train features: shape={summary['train_shape']}")
@@ -100,7 +108,9 @@ def cmd_build_full_features() -> None:
 
 def cmd_train_baseline() -> None:
     """Train and persist the Logistic Regression baseline."""
-    summary = train_logistic_regression_baseline(TRAIN_CONFIG_PATH)
+    summary = train_logistic_regression_baseline(
+        config_path=TRAIN_CONFIG_PATH,
+    )
 
     print("Logistic Regression baseline trained.")
     print(f"Model type: {summary['model_type']}")
