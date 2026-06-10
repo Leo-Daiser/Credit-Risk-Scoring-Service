@@ -5,7 +5,6 @@ from src.data.validate_schema import validate_raw_tables
 from src.db.init_db import init_db
 from src.features.application_features import run_build_application_features
 from src.features.bureau_features import run_build_bureau_features
-from src.features.bureau_features import run_build_bureau_features
 
 DATA_CONFIG_PATH = "configs/data.yaml"
 FEATURE_CONFIG_PATH = "configs/features.yaml"
@@ -65,22 +64,6 @@ def main() -> None:
         print(f"Unique applicants: {summary['unique_applicants']}")
         print(f"Feature count: {summary['feature_count']}")
         print(f"Saved to: {summary['output_path']}")
-
-    elif command == "build-bureau-features":
-        summary = run_build_bureau_features(
-            data_config_path=DATA_CONFIG_PATH,
-            feature_config_path=FEATURE_CONFIG_PATH,
-        )
-
-        print("Bureau-level features built.")
-        print(
-            f"Bureau features: shape={summary['bureau_features_shape']} "
-            f"-> {summary['bureau_features_path']}"
-        )
-        print(
-            f"Applicants: {summary['n_applicants']} | "
-            f"feature columns: {summary['n_feature_columns']}"
-        )
 
     else:
         raise SystemExit(f"Unknown command: {command}")

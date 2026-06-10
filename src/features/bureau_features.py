@@ -1,29 +1,22 @@
-"""Bureau / bureau balance historical aggregation layer (Phase 2.2).
+"""Bureau & bureau_balance historical aggregation layer (Phase 2.2).
 
-This module builds applicant-level historical credit-bureau features from the
-Home Credit Default Risk ``bureau`` and ``bureau_balance`` tables. The output
-is keyed by ``SK_ID_CURR`` so it can be merged directly into the
-application-level feature table produced in Phase 2.1.
+This module builds applicant-level (``SK_ID_CURR``) features from the Home
+Credit ``bureau`` and ``bureau_balance`` tables. The resulting table is
+designed to be merged into the application-level feature set by ``SK_ID_CURR``.
 
-Pipeline overview:
+Pipeline:
 
-1. ``aggregate_bureau_balance`` collapses ``bureau_balance`` (one row per
-   ``SK_ID_BUREAU`` / month) into one row per ``SK_ID_BUREAU`` with monthly
-   status counts, DPD (days-past-due) signals and tenure information.
-2. ``merge_bureau_with_balance`` left-joins those per-credit balance features
-   onto ``bureau`` (preserving every bureau row); credits without any balance
-   history get balance counts filled with ``0``.
-3. ``aggregate_bureau_to_applicant`` collapses the enriched ``bureau`` table
-   into one row per ``SK_ID_CURR`` with numeric aggregations, categorical
-   counts (``CREDIT_ACTIVE`` / ``CREDIT_TYPE``) and a handful of safe ratios.
+1. :func:`aggregate_bureau_balance` rolls ``bureau_balance`` up to one row per
+   ``SK_ID_BUREAU`` (status counts / ratios, DPD and bad-debt features).
+2. :func:`merge_bureau_with_balance_features` left-joins those loan-level
+   features onto ``bureau`` without changing the bureau row count.
+3. :func:`aggregate_bureau_to_applicant` aggregates the enriched ``bureau``
+   table up to one row per ``SK_ID_CURR`` (counts, ratios, numeric
+   aggregations, derived debt features and bureau-balance roll-ups).
 
-No model training, encoding, scaling or imputation happens here — this is a
-pure, deterministic feature-engineering layer. The contract is:
-
-- exactly one row per applicant that appears in ``bureau``;
-- ``SK_ID_CURR`` is the first column, followed by deterministically sorted
-  feature columns;
-- ``SK_ID_BUREAU`` never leaks into the applicant-level output.
+No model training happens here, and no notebook logic is required — all the
+reusable logic lives inside ``src/``. Real Kaggle CSVs and the generated
+parquet output are never committed (see ``.gitignore``).
 """
 
 from __future__ import annotations
@@ -41,46 +34,67 @@ from src.features.application_features import safe_divide
 DEFAULT_ID_COLUMN = "SK_ID_CURR"
 DEFAULT_BUREAU_ID_COLUMN = "SK_ID_BUREAU"
 
-# bureau_balance.STATUS values that represent a number of days past due.
-# ``C`` = closed, ``X`` = unknown/no information; the digits are DPD buckets.
-DPD_STATUS_VALUES = ["1", "2", "3", "4", "5"]
-NON_DPD_STATUS_VALUES = ["0", "C", "X"]
-ALL_STATUS_VALUES = ["0", "1", "2", "3", "4", "5", "C", "X"]
+# All bureau_balance STATUS categories used by the Home Credit dataset.
+BUREAU_BALANCE_STATUSES = ["0", "1", "2", "3", "4", "5", "C", "X"]
+# Statuses representing some level of days-past-due (delinquency).
+BUREAU_BALANCE_DPD_STATUSES = ["1", "2", "3", "4", "5"]
+# Status representing a written-off / bad-debt month.
+BUREAU_BALANCE_BAD_DEBT_STATUS = "5"
 
-# Numeric bureau columns and the aggregations applied per applicant. Only
-# columns that are actually present in the input are used, so the layer never
-# fails on a partial schema.
-BUREAU_NUMERIC_AGGREGATIONS: dict[str, list[str]] = {
-    "DAYS_CREDIT": ["min", "max", "mean"],
-    "CREDIT_DAY_OVERDUE": ["max", "mean"],
-    "DAYS_CREDIT_ENDDATE": ["min", "max", "mean"],
-    "DAYS_ENDDATE_FACT": ["min", "max", "mean"],
-    "AMT_CREDIT_MAX_OVERDUE": ["max", "mean"],
-    "CNT_CREDIT_PROLONG": ["sum", "max"],
-    "AMT_CREDIT_SUM": ["sum", "mean", "max"],
-    "AMT_CREDIT_SUM_DEBT": ["sum", "mean", "max"],
-    "AMT_CREDIT_SUM_LIMIT": ["sum", "mean"],
-    "AMT_CREDIT_SUM_OVERDUE": ["sum", "max", "mean"],
-    "DAYS_CREDIT_UPDATE": ["min", "max", "mean"],
-    "AMT_ANNUITY": ["sum", "mean", "max"],
+# Numeric bureau columns aggregated at applicant level (only when present).
+BUREAU_NUMERIC_COLUMNS = [
+    "DAYS_CREDIT",
+    "CREDIT_DAY_OVERDUE",
+    "DAYS_CREDIT_ENDDATE",
+    "DAYS_ENDDATE_FACT",
+    "AMT_CREDIT_MAX_OVERDUE",
+    "CNT_CREDIT_PROLONG",
+    "AMT_CREDIT_SUM",
+    "AMT_CREDIT_SUM_DEBT",
+    "AMT_CREDIT_SUM_LIMIT",
+    "AMT_CREDIT_SUM_OVERDUE",
+    "DAYS_CREDIT_UPDATE",
+    "AMT_ANNUITY",
+]
+BUREAU_NUMERIC_AGGS = ["mean", "max", "min", "sum", "std"]
+
+# CREDIT_ACTIVE category -> applicant-level loan count column.
+BUREAU_CREDIT_ACTIVE_FEATURES = {
+    "Active": "BUREAU_ACTIVE_LOAN_COUNT",
+    "Closed": "BUREAU_CLOSED_LOAN_COUNT",
+    "Bad debt": "BUREAU_BAD_DEBT_LOAN_COUNT",
+    "Sold": "BUREAU_SOLD_LOAN_COUNT",
 }
 
-# Per-credit balance features (output of ``aggregate_bureau_balance``) and how
-# they roll up to the applicant level.
-BUREAU_BALANCE_ROLLUP_AGGREGATIONS: dict[str, list[str]] = {
-    "BB_MONTHS_COUNT": ["sum", "mean", "max"],
-    "BB_DPD_MONTHS_COUNT": ["sum", "mean", "max"],
-    "BB_DPD_RATIO": ["mean", "max"],
-    "BB_MAX_DPD_STATUS": ["max", "mean"],
+# CREDIT_ACTIVE count column -> applicant-level ratio column.
+BUREAU_CREDIT_ACTIVE_RATIOS = {
+    "BUREAU_ACTIVE_LOAN_COUNT": "BUREAU_ACTIVE_LOAN_RATIO",
+    "BUREAU_CLOSED_LOAN_COUNT": "BUREAU_CLOSED_LOAN_RATIO",
+    "BUREAU_BAD_DEBT_LOAN_COUNT": "BUREAU_BAD_DEBT_LOAN_RATIO",
+    "BUREAU_SOLD_LOAN_COUNT": "BUREAU_SOLD_LOAN_RATIO",
 }
+
+# CREDIT_TYPE category -> applicant-level count column (safe, deterministic).
+BUREAU_CREDIT_TYPE_FEATURES = {
+    "Consumer credit": "BUREAU_CREDIT_TYPE_CONSUMER_CREDIT_COUNT",
+    "Credit card": "BUREAU_CREDIT_TYPE_CREDIT_CARD_COUNT",
+    "Car loan": "BUREAU_CREDIT_TYPE_CAR_LOAN_COUNT",
+    "Mortgage": "BUREAU_CREDIT_TYPE_MORTGAGE_COUNT",
+}
+
+# Aggregations used to roll bureau_balance loan-level features up to applicant.
+BUREAU_BALANCE_ROLLUP_AGGS = ["mean", "max", "sum"]
 
 
 def load_bureau_feature_config(config_path: str | Path) -> dict[str, Any]:
-    """Load and validate the bureau feature-engineering configuration.
+    """Load and validate the feature config, ensuring a ``bureau_features`` section.
 
-    Reads the ``bureau_features`` section from ``configs/features.yaml`` and
-    returns it with defaults applied. Raises a clear error if the section or
-    its required output path is missing.
+    Args:
+        config_path: Path to ``configs/features.yaml``.
+
+    Returns:
+        The full parsed configuration dictionary (the caller reads the
+        ``bureau_features`` section from it).
     """
     config_path = Path(config_path)
     if not config_path.exists():
@@ -92,128 +106,114 @@ def load_bureau_feature_config(config_path: str | Path) -> dict[str, Any]:
     if not isinstance(config, dict):
         raise ValueError("Feature config must be a dictionary.")
 
-    bureau_config = config.get("bureau_features")
+    if "bureau_features" not in config:
+        raise ValueError("Feature config must contain a 'bureau_features' section.")
+
+    bureau_config = config["bureau_features"]
     if not isinstance(bureau_config, dict):
-        raise ValueError("Feature config must contain a 'bureau_features' dictionary.")
+        raise ValueError("Feature config 'bureau_features' must be a dictionary.")
 
-    if "output_path" not in bureau_config:
-        raise ValueError("Feature config 'bureau_features' must contain 'output_path'.")
+    for required_key in ("id_column", "bureau_id_column", "output_path"):
+        if required_key not in bureau_config:
+            raise ValueError(
+                f"Feature config 'bureau_features' must contain '{required_key}'."
+            )
 
-    bureau_config.setdefault("id_column", DEFAULT_ID_COLUMN)
-    bureau_config.setdefault("bureau_id_column", DEFAULT_BUREAU_ID_COLUMN)
-
-    return bureau_config
+    return config
 
 
 def aggregate_bureau_balance(
     bureau_balance: pd.DataFrame,
     bureau_id_column: str = DEFAULT_BUREAU_ID_COLUMN,
 ) -> pd.DataFrame:
-    """Collapse ``bureau_balance`` into one row per ``SK_ID_BUREAU``.
+    """Aggregate ``bureau_balance`` to one row per ``SK_ID_BUREAU``.
 
-    Produces, per bureau credit:
-
-    - ``BB_MONTHS_COUNT``: number of monthly records;
-    - ``BB_MONTHS_BALANCE_MIN`` / ``BB_MONTHS_BALANCE_MAX``: tenure span
-      (months are negative offsets from the application date);
-    - ``BB_STATUS_<S>_COUNT`` for every possible status value;
-    - ``BB_DPD_MONTHS_COUNT``: months in any days-past-due bucket (1..5);
-    - ``BB_DPD_RATIO``: share of months in a DPD bucket;
-    - ``BB_MAX_DPD_STATUS``: worst DPD bucket reached (0 if none).
-
-    The output column order is deterministic: the id column first, then
-    sorted feature columns. An empty input yields an empty, correctly-typed
-    frame.
+    Produces deterministic status counts/ratios as well as DPD and bad-debt
+    features. Missing statuses always yield zero counts/ratios (never missing
+    columns), and all ratios use safe division.
     """
     if bureau_id_column not in bureau_balance.columns:
         raise ValueError(
             f"bureau_balance is missing the id column '{bureau_id_column}'."
         )
-    if "STATUS" not in bureau_balance.columns:
-        raise ValueError("bureau_balance is missing the 'STATUS' column.")
-
-    feature_columns = (
-        ["BB_MONTHS_COUNT", "BB_MONTHS_BALANCE_MIN", "BB_MONTHS_BALANCE_MAX"]
-        + [f"BB_STATUS_{status}_COUNT" for status in ALL_STATUS_VALUES]
-        + ["BB_DPD_MONTHS_COUNT", "BB_DPD_RATIO", "BB_MAX_DPD_STATUS"]
-    )
-
-    if bureau_balance.empty:
-        empty = pd.DataFrame(columns=[bureau_id_column, *feature_columns])
-        return empty
 
     df = bureau_balance.copy()
-    df["STATUS"] = df["STATUS"].astype("string").str.strip()
+    df["STATUS"] = df["STATUS"].astype(str).str.strip()
 
     grouped = df.groupby(bureau_id_column, sort=True)
+    months_count = grouped.size().rename("BUREAU_BALANCE_MONTHS_COUNT")
 
-    result = pd.DataFrame(index=grouped.size().index)
-    result["BB_MONTHS_COUNT"] = grouped.size()
+    result = pd.DataFrame(index=months_count.index)
+    result["BUREAU_BALANCE_MONTHS_COUNT"] = months_count.astype("int64")
 
     if "MONTHS_BALANCE" in df.columns:
-        result["BB_MONTHS_BALANCE_MIN"] = grouped["MONTHS_BALANCE"].min()
-        result["BB_MONTHS_BALANCE_MAX"] = grouped["MONTHS_BALANCE"].max()
+        result["BUREAU_BALANCE_MONTHS_MIN"] = grouped["MONTHS_BALANCE"].min()
+        result["BUREAU_BALANCE_MONTHS_MAX"] = grouped["MONTHS_BALANCE"].max()
     else:
-        result["BB_MONTHS_BALANCE_MIN"] = np.nan
-        result["BB_MONTHS_BALANCE_MAX"] = np.nan
+        result["BUREAU_BALANCE_MONTHS_MIN"] = np.nan
+        result["BUREAU_BALANCE_MONTHS_MAX"] = np.nan
 
-    # Per-status month counts. crosstab guarantees one column per observed
-    # status; we reindex to the full, fixed status vocabulary so the contract
-    # is stable regardless of which statuses appear in the data.
-    status_counts = pd.crosstab(df[bureau_id_column], df["STATUS"])
-    status_counts = status_counts.reindex(columns=ALL_STATUS_VALUES, fill_value=0)
-    for status in ALL_STATUS_VALUES:
-        result[f"BB_STATUS_{status}_COUNT"] = status_counts[status]
-
-    dpd_columns = [f"BB_STATUS_{status}_COUNT" for status in DPD_STATUS_VALUES]
-    result["BB_DPD_MONTHS_COUNT"] = result[dpd_columns].sum(axis=1)
-    result["BB_DPD_RATIO"] = safe_divide(
-        result["BB_DPD_MONTHS_COUNT"], result["BB_MONTHS_COUNT"]
+    status_counts = (
+        df.groupby([bureau_id_column, "STATUS"]).size().unstack(fill_value=0)
     )
 
-    # Worst DPD bucket reached (0 when the credit was never past due).
-    dpd_numeric = df[df["STATUS"].isin(DPD_STATUS_VALUES)].copy()
-    if not dpd_numeric.empty:
-        dpd_numeric["STATUS_NUM"] = dpd_numeric["STATUS"].astype("int64")
-        max_dpd = dpd_numeric.groupby(bureau_id_column)["STATUS_NUM"].max()
-    else:
-        max_dpd = pd.Series(dtype="int64")
-    result["BB_MAX_DPD_STATUS"] = (
-        max_dpd.reindex(result.index).fillna(0).astype("int64")
+    months = result["BUREAU_BALANCE_MONTHS_COUNT"]
+    for status in BUREAU_BALANCE_STATUSES:
+        count_col = f"BUREAU_BALANCE_STATUS_{status}_COUNT"
+        if status in status_counts.columns:
+            counts = status_counts[status].reindex(result.index).fillna(0)
+        else:
+            counts = pd.Series(0, index=result.index)
+        result[count_col] = counts.astype("int64")
+        result[f"BUREAU_BALANCE_STATUS_{status}_RATIO"] = safe_divide(
+            result[count_col], months
+        )
+
+    dpd_count = sum(
+        result[f"BUREAU_BALANCE_STATUS_{s}_COUNT"] for s in BUREAU_BALANCE_DPD_STATUSES
+    )
+    result["BUREAU_BALANCE_DPD_COUNT"] = dpd_count.astype("int64")
+    result["BUREAU_BALANCE_DPD_RATIO"] = safe_divide(
+        result["BUREAU_BALANCE_DPD_COUNT"], months
     )
 
-    result = result.reset_index().rename(columns={"index": bureau_id_column})
-    if bureau_id_column not in result.columns:
-        result = result.rename(columns={result.columns[0]: bureau_id_column})
+    bad_debt_col = f"BUREAU_BALANCE_STATUS_{BUREAU_BALANCE_BAD_DEBT_STATUS}_COUNT"
+    result["BUREAU_BALANCE_BAD_DEBT_COUNT"] = result[bad_debt_col].astype("int64")
+    result["BUREAU_BALANCE_BAD_DEBT_RATIO"] = safe_divide(
+        result["BUREAU_BALANCE_BAD_DEBT_COUNT"], months
+    )
 
-    ordered = [bureau_id_column, *sorted(feature_columns)]
-    return result[ordered]
+    result = result.replace([np.inf, -np.inf], np.nan)
+    result = result.reset_index()
+    return result
 
 
-def merge_bureau_with_balance(
+def merge_bureau_with_balance_features(
     bureau: pd.DataFrame,
     bureau_balance_features: pd.DataFrame,
     bureau_id_column: str = DEFAULT_BUREAU_ID_COLUMN,
 ) -> pd.DataFrame:
-    """Left-join per-credit balance features onto the ``bureau`` table.
+    """Left-join loan-level bureau_balance features onto ``bureau``.
 
-    Every ``bureau`` row is preserved. Credits without any balance history
-    get count-style balance columns filled with ``0``; ratio/level columns
-    are left as ``NaN`` (there is genuinely no DPD ratio without history).
+    The bureau row count is preserved (no row explosion). Loans without any
+    bureau_balance history get ``0`` for count/ratio columns.
     """
     if bureau_id_column not in bureau.columns:
         raise ValueError(f"bureau is missing the id column '{bureau_id_column}'.")
 
+    n_before = len(bureau)
     merged = bureau.merge(bureau_balance_features, on=bureau_id_column, how="left")
 
-    count_columns = [
-        col
-        for col in bureau_balance_features.columns
-        if col != bureau_id_column and col.endswith("_COUNT")
-    ]
-    for col in count_columns:
-        if col in merged.columns:
+    balance_cols = [c for c in bureau_balance_features.columns if c != bureau_id_column]
+    for col in balance_cols:
+        if col in merged.columns and ("COUNT" in col or "RATIO" in col):
             merged[col] = merged[col].fillna(0)
+
+    if len(merged) != n_before:
+        raise ValueError(
+            "merge_bureau_with_balance_features changed the bureau row count "
+            f"({n_before} -> {len(merged)}); check for duplicate SK_ID_BUREAU."
+        )
 
     return merged
 
@@ -221,119 +221,110 @@ def merge_bureau_with_balance(
 def _categorical_counts(
     df: pd.DataFrame,
     id_column: str,
-    category_column: str,
-    prefix: str,
+    source_column: str,
+    mapping: dict[str, str],
+    index: pd.Index,
 ) -> pd.DataFrame:
-    """One row per id with a ``<prefix>_<VALUE>_COUNT`` column per category.
-
-    Category values are slugified (uppercased, non-alphanumeric replaced with
-    underscores) and the resulting columns are sorted deterministically.
-    """
-    values = df[category_column].astype("string").str.strip()
-    slugs = (
-        values.str.upper().str.replace(r"[^0-9A-Z]+", "_", regex=True).str.strip("_")
-    )
-    work = pd.DataFrame({id_column: df[id_column], "_slug": slugs})
-    counts = pd.crosstab(work[id_column], work["_slug"])
-    counts.columns = [f"{prefix}_{slug}_COUNT" for slug in counts.columns]
-    counts = counts.reindex(sorted(counts.columns), axis=1)
-    return counts
+    """Count rows per applicant for selected categories of ``source_column``."""
+    counts = pd.DataFrame(index=index)
+    if source_column in df.columns:
+        values = df[source_column].astype(str).str.strip()
+        for category, out_col in mapping.items():
+            flag = (values == category).astype("int64")
+            counts[out_col] = flag.groupby(df[id_column]).sum()
+    else:
+        for out_col in mapping.values():
+            counts[out_col] = 0
+    return counts.fillna(0).astype("int64")
 
 
 def aggregate_bureau_to_applicant(
-    bureau: pd.DataFrame,
+    bureau_enriched: pd.DataFrame,
     id_column: str = DEFAULT_ID_COLUMN,
     bureau_id_column: str = DEFAULT_BUREAU_ID_COLUMN,
 ) -> pd.DataFrame:
-    """Collapse the (balance-enriched) ``bureau`` table to one row per applicant.
+    """Aggregate the enriched ``bureau`` table to one row per ``SK_ID_CURR``.
 
-    Builds:
-
-    - ``BUREAU_COUNT``: number of bureau credits for the applicant;
-    - ``BUREAU_<COL>_<AGG>`` numeric aggregations for known bureau columns;
-    - ``BUREAU_BB_<COL>_<AGG>`` rollups of the per-credit balance features;
-    - ``BUREAU_CREDIT_ACTIVE_<VALUE>_COUNT`` and
-      ``BUREAU_CREDIT_TYPE_NUNIQUE`` categorical signals;
-    - safe ratios (``BUREAU_ACTIVE_CREDIT_RATIO``,
-      ``BUREAU_DEBT_CREDIT_RATIO``, ``BUREAU_OVERDUE_DEBT_RATIO``).
+    The output has ``SK_ID_CURR`` as the first column, no duplicate applicants,
+    deterministic (sorted) feature column order, and no infinities.
     """
-    if id_column not in bureau.columns:
+    if id_column not in bureau_enriched.columns:
         raise ValueError(f"bureau is missing the id column '{id_column}'.")
 
-    grouped = bureau.groupby(id_column, sort=True)
+    df = bureau_enriched.replace([np.inf, -np.inf], np.nan).copy()
 
-    result = pd.DataFrame(index=grouped.size().index)
-    result["BUREAU_COUNT"] = grouped.size()
+    grouped = df.groupby(id_column, sort=True)
+    features = pd.DataFrame(index=grouped.size().index)
 
-    if bureau_id_column in bureau.columns:
-        result["BUREAU_CREDIT_NUNIQUE"] = grouped[bureau_id_column].nunique()
+    # --- Basic loan counts -------------------------------------------------
+    features["BUREAU_LOAN_COUNT"] = grouped.size().astype("int64")
+    active_counts = _categorical_counts(
+        df, id_column, "CREDIT_ACTIVE", BUREAU_CREDIT_ACTIVE_FEATURES, features.index
+    )
+    features = features.join(active_counts)
 
-    # Numeric aggregations for whichever known columns are present.
-    for column, aggregations in BUREAU_NUMERIC_AGGREGATIONS.items():
-        if column not in bureau.columns:
-            continue
-        agg_result = grouped[column].agg(aggregations)
-        for aggregation in aggregations:
-            result[f"BUREAU_{column}_{aggregation.upper()}"] = agg_result[aggregation]
+    loan_count = features["BUREAU_LOAN_COUNT"]
+    for count_col, ratio_col in BUREAU_CREDIT_ACTIVE_RATIOS.items():
+        features[ratio_col] = safe_divide(features[count_col], loan_count)
 
-    # Rollups of the per-credit bureau_balance features.
-    for column, aggregations in BUREAU_BALANCE_ROLLUP_AGGREGATIONS.items():
-        if column not in bureau.columns:
-            continue
-        agg_result = grouped[column].agg(aggregations)
-        for aggregation in aggregations:
-            result[f"BUREAU_{column}_{aggregation.upper()}"] = agg_result[aggregation]
+    # --- Credit type counts ------------------------------------------------
+    credit_type_counts = _categorical_counts(
+        df, id_column, "CREDIT_TYPE", BUREAU_CREDIT_TYPE_FEATURES, features.index
+    )
+    features = features.join(credit_type_counts)
 
-    # Status-count rollups (sum of monthly status counts across all credits).
-    status_count_columns = [f"BB_STATUS_{status}_COUNT" for status in ALL_STATUS_VALUES]
-    for column in status_count_columns:
-        if column in bureau.columns:
-            result[f"BUREAU_{column}_SUM"] = grouped[column].sum()
+    # --- Numeric aggregations ---------------------------------------------
+    numeric_cols = [c for c in BUREAU_NUMERIC_COLUMNS if c in df.columns]
+    if numeric_cols:
+        numeric_agg = grouped[numeric_cols].agg(BUREAU_NUMERIC_AGGS)
+        numeric_agg.columns = [
+            f"BUREAU_{col}_{stat.upper()}" for col, stat in numeric_agg.columns
+        ]
+        features = features.join(numeric_agg)
 
-    # Categorical: CREDIT_ACTIVE counts + CREDIT_TYPE diversity.
-    if "CREDIT_ACTIVE" in bureau.columns:
-        active_counts = _categorical_counts(
-            bureau, id_column, "CREDIT_ACTIVE", "BUREAU_CREDIT_ACTIVE"
-        )
-        result = result.join(active_counts, how="left")
-        active_count_cols = list(active_counts.columns)
-        result[active_count_cols] = result[active_count_cols].fillna(0)
+    # --- Derived debt features --------------------------------------------
+    def _group_sum(col: str) -> pd.Series:
+        if col in df.columns:
+            return grouped[col].sum()
+        return pd.Series(0.0, index=features.index)
 
-    if "CREDIT_TYPE" in bureau.columns:
-        result["BUREAU_CREDIT_TYPE_NUNIQUE"] = grouped["CREDIT_TYPE"].nunique()
+    total_credit = _group_sum("AMT_CREDIT_SUM")
+    total_debt = _group_sum("AMT_CREDIT_SUM_DEBT")
+    total_overdue = _group_sum("AMT_CREDIT_SUM_OVERDUE")
+    features["BUREAU_TOTAL_CREDIT_SUM"] = total_credit
+    features["BUREAU_TOTAL_DEBT"] = total_debt
+    features["BUREAU_TOTAL_OVERDUE"] = total_overdue
+    features["BUREAU_DEBT_CREDIT_RATIO"] = safe_divide(total_debt, total_credit)
+    features["BUREAU_OVERDUE_DEBT_RATIO"] = safe_divide(total_overdue, total_debt)
 
-    # Safe ratios derived from the aggregates above.
-    active_col = "BUREAU_CREDIT_ACTIVE_ACTIVE_COUNT"
-    if active_col in result.columns:
-        result["BUREAU_ACTIVE_CREDIT_RATIO"] = safe_divide(
-            result[active_col], result["BUREAU_COUNT"]
-        )
+    # A loan is "overdue" if it has positive overdue days or a positive
+    # overdue amount.
+    overdue_flag = pd.Series(False, index=df.index)
+    if "CREDIT_DAY_OVERDUE" in df.columns:
+        overdue_flag = overdue_flag | (df["CREDIT_DAY_OVERDUE"].fillna(0) > 0)
+    if "AMT_CREDIT_SUM_OVERDUE" in df.columns:
+        overdue_flag = overdue_flag | (df["AMT_CREDIT_SUM_OVERDUE"].fillna(0) > 0)
+    overdue_count = overdue_flag.astype("int64").groupby(df[id_column]).sum()
+    overdue_count = overdue_count.reindex(features.index).fillna(0).astype("int64")
+    features["BUREAU_OVERDUE_LOAN_COUNT"] = overdue_count
+    features["BUREAU_OVERDUE_LOAN_RATIO"] = safe_divide(overdue_count, loan_count)
+    features["BUREAU_HAS_OVERDUE_FLAG"] = (overdue_count > 0).astype("int64")
 
-    if {"BUREAU_AMT_CREDIT_SUM_DEBT_SUM", "BUREAU_AMT_CREDIT_SUM_SUM"} <= set(
-        result.columns
-    ):
-        result["BUREAU_DEBT_CREDIT_RATIO"] = safe_divide(
-            result["BUREAU_AMT_CREDIT_SUM_DEBT_SUM"],
-            result["BUREAU_AMT_CREDIT_SUM_SUM"],
-        )
+    # --- Bureau balance roll-up (loan level -> applicant level) ------------
+    balance_cols = sorted(c for c in df.columns if c.startswith("BUREAU_BALANCE_"))
+    if balance_cols:
+        rollup = grouped[balance_cols].agg(BUREAU_BALANCE_ROLLUP_AGGS)
+        rollup.columns = [f"{col}_{stat.upper()}" for col, stat in rollup.columns]
+        features = features.join(rollup)
 
-    if {
-        "BUREAU_AMT_CREDIT_SUM_OVERDUE_SUM",
-        "BUREAU_AMT_CREDIT_SUM_DEBT_SUM",
-    } <= set(result.columns):
-        result["BUREAU_OVERDUE_DEBT_RATIO"] = safe_divide(
-            result["BUREAU_AMT_CREDIT_SUM_OVERDUE_SUM"],
-            result["BUREAU_AMT_CREDIT_SUM_DEBT_SUM"],
-        )
+    # --- Finalize ----------------------------------------------------------
+    features = features.replace([np.inf, -np.inf], np.nan)
 
-    result = result.replace([np.inf, -np.inf], np.nan)
+    features = features.reset_index()
+    feature_columns = sorted(c for c in features.columns if c != id_column)
+    features = features[[id_column, *feature_columns]].reset_index(drop=True)
 
-    result = result.reset_index().rename(columns={"index": id_column})
-    if id_column not in result.columns:
-        result = result.rename(columns={result.columns[0]: id_column})
-
-    feature_columns = sorted(col for col in result.columns if col != id_column)
-    return result[[id_column, *feature_columns]]
+    return features
 
 
 def build_bureau_features(
@@ -342,54 +333,35 @@ def build_bureau_features(
     id_column: str = DEFAULT_ID_COLUMN,
     bureau_id_column: str = DEFAULT_BUREAU_ID_COLUMN,
 ) -> pd.DataFrame:
-    """Build the applicant-level bureau feature table.
+    """Orchestrate the full bureau feature pipeline.
 
-    The output has exactly one row per ``SK_ID_CURR`` present in ``bureau``,
-    with ``SK_ID_CURR`` as the first column followed by deterministically
-    sorted feature columns. It is designed to be left-merged into the
-    application-level features by ``SK_ID_CURR``.
-
-    Raises:
-        ValueError: if ``bureau`` is missing ``id_column`` or
-            ``bureau_id_column``, or if ``bureau_balance`` is missing
-            ``bureau_id_column``.
+    Runs :func:`aggregate_bureau_balance`,
+    :func:`merge_bureau_with_balance_features` and
+    :func:`aggregate_bureau_to_applicant` in order, returning one row per
+    ``SK_ID_CURR``.
     """
-    if id_column not in bureau.columns:
-        raise ValueError(f"bureau is missing the applicant id column '{id_column}'.")
-    if bureau_id_column not in bureau.columns:
-        raise ValueError(
-            f"bureau is missing the bureau id column '{bureau_id_column}'."
-        )
-    if bureau_id_column not in bureau_balance.columns:
-        raise ValueError(
-            f"bureau_balance is missing the bureau id column " f"'{bureau_id_column}'."
-        )
-
-    balance_features = aggregate_bureau_balance(
-        bureau_balance, bureau_id_column=bureau_id_column
+    balance_features = aggregate_bureau_balance(bureau_balance, bureau_id_column)
+    bureau_enriched = merge_bureau_with_balance_features(
+        bureau, balance_features, bureau_id_column
     )
-    enriched = merge_bureau_with_balance(
-        bureau, balance_features, bureau_id_column=bureau_id_column
+    return aggregate_bureau_to_applicant(
+        bureau_enriched,
+        id_column=id_column,
+        bureau_id_column=bureau_id_column,
     )
-    applicant_features = aggregate_bureau_to_applicant(
-        enriched, id_column=id_column, bureau_id_column=bureau_id_column
-    )
-
-    return applicant_features
 
 
 def save_bureau_features(
     bureau_features: pd.DataFrame,
     output_path: str | Path,
-) -> Path:
-    """Persist the applicant-level bureau feature table as a parquet file.
+) -> None:
+    """Persist the applicant-level bureau features as a parquet file.
 
     Parent directories are created if they do not exist.
     """
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     bureau_features.to_parquet(output_path, index=False)
-    return output_path
 
 
 def run_build_bureau_features(
@@ -399,10 +371,14 @@ def run_build_bureau_features(
     """End-to-end entrypoint used by the CLI.
 
     Loads only the ``bureau`` and ``bureau_balance`` tables, builds the
-    applicant-level bureau features, saves the parquet output and returns a
-    small summary dictionary.
+    applicant-level features, saves the parquet output and returns a small
+    summary dictionary.
     """
-    bureau_config = load_bureau_feature_config(feature_config_path)
+    config = load_bureau_feature_config(feature_config_path)
+    bureau_config = config["bureau_features"]
+    id_column = bureau_config["id_column"]
+    bureau_id_column = bureau_config["bureau_id_column"]
+    output_path = bureau_config["output_path"]
 
     tables = load_raw_tables(
         data_config_path,
@@ -414,15 +390,15 @@ def run_build_bureau_features(
     bureau_features = build_bureau_features(
         bureau,
         bureau_balance,
-        id_column=bureau_config["id_column"],
-        bureau_id_column=bureau_config["bureau_id_column"],
+        id_column=id_column,
+        bureau_id_column=bureau_id_column,
     )
 
-    output_path = save_bureau_features(bureau_features, bureau_config["output_path"])
+    save_bureau_features(bureau_features, output_path)
 
     return {
-        "bureau_features_shape": bureau_features.shape,
-        "bureau_features_path": str(output_path),
-        "n_applicants": int(bureau_features.shape[0]),
-        "n_feature_columns": int(bureau_features.shape[1] - 1),
+        "shape": bureau_features.shape,
+        "output_path": str(output_path),
+        "unique_applicants": int(bureau_features[id_column].nunique()),
+        "feature_count": int(bureau_features.shape[1] - 1),
     }
