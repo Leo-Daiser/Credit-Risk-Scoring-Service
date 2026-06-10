@@ -49,8 +49,21 @@ Production-like ML system for credit default risk scoring based on the **Home Cr
 - CLI-команда `build-application-features`
 - unit-тесты на feature engineering
 
+### Phase 2.2 — Bureau / Bureau Balance Historical Aggregation Layer
+- модуль `src/features/bureau_features.py`
+- агрегация `bureau_balance` до уровня кредита (`SK_ID_BUREAU`): месячные
+  статус-счётчики, DPD-сигналы (`BB_DPD_MONTHS_COUNT`, `BB_DPD_RATIO`,
+  `BB_MAX_DPD_STATUS`), длина истории
+- left-join балансовых фич в `bureau` с сохранением всех строк (кредиты без
+  истории получают `0` в count-колонках)
+- агрегация `bureau` до уровня заявителя (`SK_ID_CURR`): числовые агрегаты,
+  счётчики `CREDIT_ACTIVE`, разнообразие `CREDIT_TYPE`, безопасные ratio-фичи
+- результат мерджится в application-level фичи по `SK_ID_CURR`
+- сохранение в parquet (`data/processed/bureau_features.parquet`)
+- CLI-команда `build-bureau-features`
+- unit-тесты на bureau feature engineering
+
 ### In progress
-- историческая агрегация (bureau / bureau_balance)
 - построение полного feature dataset для train/test
 - model training pipeline
 
@@ -184,6 +197,7 @@ credit-risk-scoring/
 - `python -m src.cli init-db`
 - `python -m src.cli validate-raw`
 - `python -m src.cli build-application-features`
+- `python -m src.cli build-bureau-features`
 
 #### `build-application-features`
 Строит application-level признаки:
@@ -198,6 +212,20 @@ credit-risk-scoring/
 Требует наличия реальных файлов Home Credit локально в
 `data/raw/home_credit/` (raw-данные и `data/processed/` в git не коммитятся).
 Конфигурация признаков задаётся в `configs/features.yaml`.
+
+#### `build-bureau-features`
+Строит applicant-level признаки кредитной истории:
+- загружает только `bureau` и `bureau_balance`;
+- агрегирует `bureau_balance` до уровня кредита (`SK_ID_BUREAU`);
+- мерджит балансовые фичи в `bureau` (все строки сохраняются);
+- агрегирует до уровня заявителя (одна строка на `SK_ID_CURR`);
+- сохраняет результат в parquet:
+  - `data/processed/bureau_features.parquet`
+- печатает размер dataset, число заявителей и фич.
+
+Результат мерджится в application-level фичи по `SK_ID_CURR`
+(left join: заявители без кредитной истории получают `NaN`).
+Требует реальных файлов Home Credit локально в `data/raw/home_credit/`.
 
 ### Raw data validation
 Проверяется:
@@ -351,6 +379,8 @@ Response example:
 - `target_column` (`TARGET`)
 - `days_employed_anomaly_value` (`365243`)
 - `output_paths` для train/test feature parquet-файлов
+- `bureau_features` — секция Phase 2.2 (`id_column`, `bureau_id_column`,
+  `output_path` для bureau feature parquet-файла)
 
 ---
 
@@ -382,10 +412,10 @@ Response example:
 - train/test feature alignment ✅ (Phase 2.1)
 - save processed datasets ✅ (Phase 2.1)
 
-### Phase 3 — Historical Aggregation Layer
-- bureau aggregations
-- bureau_balance aggregations
-- merge historical features to applicant level
+### Phase 2.2 — Historical Aggregation Layer
+- bureau aggregations ✅ (Phase 2.2)
+- bureau_balance aggregations ✅ (Phase 2.2)
+- merge historical features to applicant level ✅ (Phase 2.2)
 
 ### Phase 4 — Modeling Layer
 - Logistic Regression baseline
