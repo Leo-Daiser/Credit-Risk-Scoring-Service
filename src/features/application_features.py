@@ -203,11 +203,28 @@ def build_application_features(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build aligned application-level features for train and test.
 
+    The output column order is explicit and stable:
+
+    - train: ``id_column | target_column | feature_1 | feature_2 | ...``
+    - test:  ``id_column | feature_1 | feature_2 | ...``
+
+    Feature columns (everything except the id and target columns) are sorted
+    deterministically so that the contract never depends on input column order.
+
     Raises:
-        ValueError: if the target column is missing from the train table, or
-            if the train and test feature columns do not match (ignoring the
-            target column).
+        ValueError: if the id column is missing from the train or test table,
+            if the target column is missing from the train table, or if the
+            train and test feature columns do not match (ignoring the target
+            column).
     """
+    if id_column not in application_train.columns:
+        raise ValueError(
+            f"Train table is missing the ID column '{id_column}'."
+        )
+    if id_column not in application_test.columns:
+        raise ValueError(
+            f"Test table is missing the ID column '{id_column}'."
+        )
     if target_column not in application_train.columns:
         raise ValueError(
             f"Train table is missing the target column '{target_column}'."
@@ -236,12 +253,19 @@ def build_application_features(
             f"Only in train: {only_train}. Only in test: {only_test}."
         )
 
-    # Keep a deterministic, aligned column order across train and test.
-    ordered_columns = list(train_features_only.columns)
-    test_features = test[ordered_columns].copy()
+    # Deterministically order the feature columns (everything except the id
+    # column), so the contract is stable regardless of input column order.
+    feature_columns = sorted(
+        col for col in train_features_only.columns if col != id_column
+    )
 
-    train_features = train_features_only[ordered_columns].copy()
-    train_features[target_column] = target.to_numpy()
+    # Explicit, stable contracts:
+    #   train: id | target | features...
+    #   test:  id | features...
+    train_features = train_features_only[[id_column, *feature_columns]].copy()
+    train_features.insert(1, target_column, target.to_numpy())
+
+    test_features = test[[id_column, *feature_columns]].copy()
 
     return train_features, test_features
 

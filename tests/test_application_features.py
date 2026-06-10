@@ -193,6 +193,58 @@ def test_missing_target_in_train_raises() -> None:
         build_application_features(train, test)
 
 
+def test_missing_id_in_train_raises() -> None:
+    train = _build_application_train().drop(columns=["SK_ID_CURR"])
+    test = _build_application_test()
+
+    with pytest.raises(ValueError, match=r"Train table is missing the ID column 'SK_ID_CURR'"):
+        build_application_features(train, test)
+
+
+def test_missing_id_in_test_raises() -> None:
+    train = _build_application_train()
+    test = _build_application_test().drop(columns=["SK_ID_CURR"])
+
+    with pytest.raises(ValueError, match=r"Test table is missing the ID column 'SK_ID_CURR'"):
+        build_application_features(train, test)
+
+
+def test_train_output_column_order_starts_with_id_then_target() -> None:
+    train = _build_application_train()
+    test = _build_application_test()
+
+    train_features, _ = build_application_features(train, test)
+
+    assert list(train_features.columns[:2]) == ["SK_ID_CURR", "TARGET"]
+    # Remaining feature columns are deterministically sorted.
+    feature_cols = list(train_features.columns[2:])
+    assert feature_cols == sorted(feature_cols)
+
+
+def test_test_output_column_order_starts_with_id() -> None:
+    train = _build_application_train()
+    test = _build_application_test()
+
+    _, test_features = build_application_features(train, test)
+
+    assert test_features.columns[0] == "SK_ID_CURR"
+    assert "TARGET" not in test_features.columns
+    # Remaining feature columns are deterministically sorted.
+    feature_cols = list(test_features.columns[1:])
+    assert feature_cols == sorted(feature_cols)
+
+
+def test_train_test_feature_order_matches_except_target() -> None:
+    train = _build_application_train()
+    test = _build_application_test()
+
+    train_features, test_features = build_application_features(train, test)
+
+    # Drop TARGET from train; the remaining ordered columns must be identical.
+    train_cols = [c for c in train_features.columns if c != "TARGET"]
+    assert train_cols == list(test_features.columns)
+
+
 def test_train_test_feature_mismatch_raises() -> None:
     train = _build_application_train()
     test = _build_application_test()
