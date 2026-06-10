@@ -51,9 +51,11 @@ Production-like ML system for credit default risk scoring based on the **Home Cr
 
 ### Phase 2.2 — Bureau / Bureau Balance Historical Aggregation Layer
 - модуль `src/features/bureau_features.py`
-- агрегация `bureau_balance` до уровня кредита (`SK_ID_BUREAU`): месячные
-  статус-счётчики, DPD-сигналы (`BB_DPD_MONTHS_COUNT`, `BB_DPD_RATIO`,
-  `BB_MAX_DPD_STATUS`), длина истории
+- агрегация `bureau_balance` до уровня кредита (`SK_ID_BUREAU`): длина истории
+  (`BUREAU_BALANCE_MONTHS_COUNT/MIN/MAX`), статус-счётчики и ratio
+  (`BUREAU_BALANCE_STATUS_<0..5,C,X>_COUNT/RATIO`), DPD-сигналы
+  (`BUREAU_BALANCE_DPD_COUNT/RATIO`) и bad-debt
+  (`BUREAU_BALANCE_BAD_DEBT_COUNT/RATIO`)
 - left-join балансовых фич в `bureau` с сохранением всех строк (кредиты без
   истории получают `0` в count-колонках)
 - агрегация `bureau` до уровня заявителя (`SK_ID_CURR`): числовые агрегаты,
