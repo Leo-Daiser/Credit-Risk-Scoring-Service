@@ -161,11 +161,19 @@ def test_cli_train_baseline_command_calls_runner(monkeypatch, capsys):
             "feature_count": 28,
             "numeric_feature_count": 20,
             "categorical_feature_count": 8,
+            "encoded_feature_count": 35,
             "roc_auc": 0.751234,
             "pr_auc": 0.234567,
+            "best_threshold": 0.4,
+            "best_threshold_metric": "f1",
+            "best_threshold_metric_value": 0.512345,
+            "convergence_warning": True,
             "model_output_path": "artifacts/models/logistic_regression_baseline.joblib",
             "metrics_output_path": "artifacts/metrics/baseline_metrics.json",
             "feature_schema_output_path": "artifacts/reports/feature_schema.json",
+            "evaluation_report_output_path": (
+                "artifacts/reports/evaluation_report.json"
+            ),
         }
 
     monkeypatch.setattr(cli, "train_logistic_regression_baseline", fake_runner)
@@ -177,3 +185,7 @@ def test_cli_train_baseline_command_calls_runner(monkeypatch, capsys):
     assert "Logistic Regression baseline trained." in out
     assert "Model type: logistic_regression_baseline" in out
     assert "ROC-AUC: 0.751234" in out
+    assert "Encoded feature count: 35" in out
+    assert "Best threshold: 0.4" in out
+    assert "Convergence warning: True" in out
+    assert "Evaluation report saved to:" in out

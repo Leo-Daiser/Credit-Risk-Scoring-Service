@@ -1,4 +1,4 @@
-"""Logistic Regression baseline trainer (Phase 3.1).
+"""Logistic Regression baseline trainer (Phase 3.1 + 3.1.1 hardening).
 
 This module trains the first *real* ML baseline for the credit-risk scoring
 service on top of the final feature dataset produced in Phase 2.3
@@ -12,14 +12,26 @@ Design goals:
   pickled and reused for inference later.
 * Training is deterministic (fixed ``random_seed``) and uses a stratified
   train/validation split.
-* The trainer persists three artifacts: the fitted model, a metrics JSON and a
-  feature-schema JSON.
+* The trainer persists four artifacts: the fitted model, a metrics JSON, a
+  feature-schema JSON and a richer evaluation-report JSON.
 
-We never fabricate metrics: the metrics JSON is only written from a genuine fit
-on whatever data the user provides. Real Kaggle data is not required to be
-present in this repo — the data-dependent CLI command (``train-baseline``) is
-meant to be run locally by the user, while the unit tests exercise the full
-pipeline on small synthetic data.
+Phase 3.1.1 hardening adds:
+
+* fully configurable Logistic Regression hyper-parameters
+  (``baseline.logistic_regression.*``);
+* convergence-warning capture (training never crashes on a sklearn
+  ``ConvergenceWarning`` — the flag and messages are recorded instead);
+* configurable evaluation thresholds with full confusion counts per threshold;
+* automatic best-threshold selection by a configurable metric;
+* a probability summary (quantiles) and sklearn classification reports at both
+  the default and the selected thresholds;
+* a standalone evaluation-report JSON artifact.
+
+We never fabricate metrics: every JSON is only written from a genuine fit on
+whatever data the user provides. Real Kaggle data is not required to be present
+in this repo — the data-dependent CLI command (``train-baseline``) is meant to
+be run locally by the user, while the unit tests exercise the full pipeline on
+small synthetic data.
 
 NOT implemented here (by design, until later phases): CatBoost / LightGBM
 challengers, calibration, SHAP / reason codes, the API ``/score`` endpoint,
@@ -29,6 +41,7 @@ PostgreSQL inference logging, batch scoring and drift monitoring.
 from __future__ import annotations
 
 import json
+import warnings
 from pathlib import Path
 from typing import Any
 
@@ -37,11 +50,13 @@ import numpy as np
 import pandas as pd
 import yaml
 from sklearn.compose import ColumnTransformer
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import (
     average_precision_score,
     brier_score_loss,
+    classification_report,
     confusion_matrix,
     f1_score,
     precision_score,
@@ -55,16 +70,34 @@ from sklearn.preprocessing import OneHotEncoder, StandardScaler
 DEFAULT_ID_COLUMN = "SK_ID_CURR"
 DEFAULT_TARGET_COLUMN = "TARGET"
 
-# Thresholds reported in the metrics JSON for operating-point analysis.
-THRESHOLD_GRID = [0.2, 0.3, 0.5, 0.7]
+# Default decision thresholds reported in the metrics / evaluation JSON for
+# operating-point analysis. The config can override these.
+DEFAULT_THRESHOLD_GRID = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
+# Default Logistic Regression hyper-parameters; each can be overridden via
+# ``baseline.logistic_regression.*`` in the config.
+DEFAULT_LOGISTIC_REGRESSION_PARAMS: dict[str, Any] = {
+    "max_iter": 1000,
+    "solver": "saga",
+    "class_weight": "balanced",
+    "n_jobs": -1,
+    "C": 1.0,
+}
+
+DEFAULT_SELECTED_THRESHOLD_METRIC = "f1"
+
+# Maximum number of encoded one-hot feature names to sample into the metrics /
+# evaluation report (we never dump thousands of names).
+ENCODED_FEATURE_NAME_SAMPLE_SIZE = 30
+
+# Only the truly essential config keys are required; everything else has a
+# sensible default so older configs and synthetic-test configs keep working.
 _REQUIRED_CONFIG_KEYS = (
     "train_features_path",
     "id_column",
     "target_column",
     "validation_size",
     "random_seed",
-    "max_iter",
     "model_output_path",
     "metrics_output_path",
     "feature_schema_output_path",
@@ -107,6 +140,32 @@ def load_train_config(config_path: str | Path) -> dict[str, Any]:
             raise ValueError(f"Train config 'baseline' must contain '{required_key}'.")
 
     return config
+
+
+def resolve_logistic_regression_params(
+    baseline_config: dict[str, Any],
+) -> dict[str, Any]:
+    """Resolve Logistic Regression hyper-parameters from the baseline config.
+
+    Reads the nested ``baseline.logistic_regression`` block, falling back to a
+    legacy top-level ``max_iter`` (for backward compatibility) and finally to
+    :data:`DEFAULT_LOGISTIC_REGRESSION_PARAMS`. Missing fields keep their
+    defaults.
+    """
+    lr_config = baseline_config.get("logistic_regression") or {}
+    if not isinstance(lr_config, dict):
+        raise ValueError(
+            "Train config 'baseline.logistic_regression' must be a dictionary."
+        )
+
+    params = dict(DEFAULT_LOGISTIC_REGRESSION_PARAMS)
+    # Backward compatibility: honour a legacy top-level max_iter if present.
+    if "max_iter" in baseline_config:
+        params["max_iter"] = baseline_config["max_iter"]
+    for key in DEFAULT_LOGISTIC_REGRESSION_PARAMS:
+        if key in lr_config:
+            params[key] = lr_config[key]
+    return params
 
 
 def load_training_data(path: str | Path) -> pd.DataFrame:
@@ -214,6 +273,10 @@ def build_logistic_regression_pipeline(
     categorical_features: list[str],
     max_iter: int = 1000,
     random_seed: int = 42,
+    solver: str = "saga",
+    class_weight: Any = "balanced",
+    n_jobs: int | None = -1,
+    C: float = 1.0,
 ) -> Pipeline:
     """Build the preprocessing + Logistic Regression pipeline.
 
@@ -221,8 +284,11 @@ def build_logistic_regression_pipeline(
     * Categorical branch: most-frequent imputation followed by one-hot
       encoding (``handle_unknown="ignore"`` so unseen categories at inference
       time are encoded as all-zeros).
-    * Estimator: a class-balanced :class:`LogisticRegression` using the
-      ``saga`` solver.
+    * Estimator: a (by default class-balanced) :class:`LogisticRegression`.
+
+    All Logistic Regression hyper-parameters (``max_iter``, ``solver``,
+    ``class_weight``, ``n_jobs``, ``C``) are configurable; defaults match the
+    Phase 3.1 baseline.
 
     Returns:
         An unfitted :class:`~sklearn.pipeline.Pipeline`.
@@ -253,10 +319,11 @@ def build_logistic_regression_pipeline(
 
     classifier = LogisticRegression(
         max_iter=max_iter,
-        class_weight="balanced",
+        class_weight=class_weight,
         random_state=random_seed,
-        solver="saga",
-        n_jobs=-1,
+        solver=solver,
+        n_jobs=n_jobs,
+        C=C,
     )
 
     return Pipeline(
@@ -267,10 +334,16 @@ def build_logistic_regression_pipeline(
     )
 
 
+def _threshold_key(threshold: float) -> str:
+    """Stable string key for a threshold (e.g. ``0.3`` -> ``"0.30"``)."""
+    return f"{float(threshold):.2f}"
+
+
 def evaluate_binary_classifier(
     y_true: Any,
     y_proba: Any,
     threshold: float = 0.5,
+    thresholds: list[float] | None = None,
 ) -> dict[str, Any]:
     """Compute binary-classification metrics from probabilities.
 
@@ -278,15 +351,21 @@ def evaluate_binary_classifier(
         y_true: Ground-truth binary labels.
         y_proba: Predicted probabilities for the positive class.
         threshold: Decision threshold for the headline (point) metrics.
+        thresholds: Optional grid of thresholds for the per-threshold block.
+            Defaults to :data:`DEFAULT_THRESHOLD_GRID`.
 
     Returns:
         A dictionary with probability-based metrics (``roc_auc``, ``pr_auc``,
         ``brier_score``), threshold-based metrics at ``threshold`` (``f1``,
-        ``precision``, ``recall``, ``confusion_matrix``, ``predicted_positive_rate``),
-        the empirical ``positive_rate`` and a ``threshold_metrics`` block with
-        precision/recall/f1/predicted_positive_rate across a small grid of
-        thresholds.
+        ``precision``, ``recall``, ``confusion_matrix``,
+        ``predicted_positive_rate``), the empirical ``positive_rate`` and a
+        ``threshold_metrics`` block. Each entry of ``threshold_metrics``
+        contains ``precision``, ``recall``, ``f1``, ``predicted_positive_rate``
+        and the raw confusion counts ``tp`` / ``fp`` / ``tn`` / ``fn``.
     """
+    if thresholds is None:
+        thresholds = DEFAULT_THRESHOLD_GRID
+
     y_true = np.asarray(y_true).astype(int)
     y_proba = np.asarray(y_proba, dtype="float64")
 
@@ -317,17 +396,115 @@ def evaluate_binary_classifier(
     }
 
     threshold_metrics: dict[str, dict[str, float]] = {}
-    for thr in THRESHOLD_GRID:
+    for thr in thresholds:
         pred = (y_proba >= thr).astype(int)
-        threshold_metrics[f"{thr:.2f}"] = {
+        t_tn, t_fp, t_fn, t_tp = confusion_matrix(y_true, pred, labels=[0, 1]).ravel()
+        threshold_metrics[_threshold_key(thr)] = {
             "precision": float(precision_score(y_true, pred, zero_division=0)),
             "recall": float(recall_score(y_true, pred, zero_division=0)),
             "f1": float(f1_score(y_true, pred, zero_division=0)),
             "predicted_positive_rate": float(np.mean(pred)),
+            "tp": int(t_tp),
+            "fp": int(t_fp),
+            "tn": int(t_tn),
+            "fn": int(t_fn),
         }
     metrics["threshold_metrics"] = threshold_metrics
 
     return metrics
+
+
+def select_best_threshold(
+    threshold_metrics: dict[str, dict[str, float]],
+    metric_name: str = "f1",
+) -> dict[str, Any]:
+    """Pick the threshold that maximises ``metric_name``.
+
+    Args:
+        threshold_metrics: Mapping of threshold key -> per-threshold metrics
+            (as produced by :func:`evaluate_binary_classifier`).
+        metric_name: Metric to maximise (e.g. ``"f1"``, ``"precision"``).
+
+    Returns:
+        A dictionary with ``metric_name``, ``best_threshold`` (float),
+        ``best_metric_value`` and ``metrics_at_best_threshold``.
+
+    Raises:
+        ValueError: If ``threshold_metrics`` is empty or no entry contains the
+            requested metric.
+    """
+    if not threshold_metrics:
+        raise ValueError("threshold_metrics is empty; cannot select a threshold.")
+
+    best_key: str | None = None
+    best_value = -np.inf
+    for key, entry in threshold_metrics.items():
+        if metric_name not in entry:
+            continue
+        value = float(entry[metric_name])
+        if value > best_value:
+            best_value = value
+            best_key = key
+
+    if best_key is None:
+        raise ValueError(f"No threshold entry contained the metric '{metric_name}'.")
+
+    return {
+        "metric_name": metric_name,
+        "best_threshold": float(best_key),
+        "best_metric_value": float(best_value),
+        "metrics_at_best_threshold": dict(threshold_metrics[best_key]),
+    }
+
+
+def summarize_probabilities(y_proba: Any) -> dict[str, float]:
+    """Summarise a vector of predicted probabilities.
+
+    Returns:
+        A dictionary with ``min``, ``max``, ``mean``, ``std`` and the
+        percentiles ``p01``, ``p05``, ``p25``, ``p50``, ``p75``, ``p95``,
+        ``p99``.
+    """
+    arr = np.asarray(y_proba, dtype="float64")
+    percentiles = {
+        "p01": 1,
+        "p05": 5,
+        "p25": 25,
+        "p50": 50,
+        "p75": 75,
+        "p95": 95,
+        "p99": 99,
+    }
+    summary: dict[str, float] = {
+        "min": float(np.min(arr)),
+        "max": float(np.max(arr)),
+        "mean": float(np.mean(arr)),
+        "std": float(np.std(arr)),
+    }
+    for name, q in percentiles.items():
+        summary[name] = float(np.percentile(arr, q))
+    return summary
+
+
+def compute_encoded_feature_info(pipeline: Pipeline) -> dict[str, Any]:
+    """Best-effort extraction of the encoded (transformed) feature space.
+
+    Uses ``preprocessor.get_feature_names_out()``. Returns the encoded feature
+    count and a small sample of names (never the full list for wide OHE spaces).
+    Failures are swallowed and reported as ``encoded_feature_count = None``.
+    """
+    info: dict[str, Any] = {
+        "encoded_feature_count": None,
+        "encoded_feature_names_sample": [],
+    }
+    try:
+        preprocessor = pipeline.named_steps["preprocessor"]
+        names = list(preprocessor.get_feature_names_out())
+        info["encoded_feature_count"] = len(names)
+        info["encoded_feature_names_sample"] = names[:ENCODED_FEATURE_NAME_SAMPLE_SIZE]
+    except Exception:  # pragma: no cover - defensive, never crash training
+        pass
+    return info
 
 
 def save_json(data: dict[str, Any], output_path: str | Path) -> None:
@@ -369,19 +546,56 @@ def build_feature_schema(
     }
 
 
+def _fit_with_convergence_capture(
+    pipeline: Pipeline,
+    X_train: pd.DataFrame,
+    y_train: pd.Series,
+) -> dict[str, Any]:
+    """Fit ``pipeline`` while capturing sklearn ConvergenceWarnings.
+
+    Training is never aborted because of a :class:`ConvergenceWarning`; instead
+    the flag and the unique warning messages are recorded and returned.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always", ConvergenceWarning)
+        pipeline.fit(X_train, y_train)
+
+    messages: list[str] = []
+    saw_convergence_warning = False
+    for warning in caught:
+        if issubclass(warning.category, ConvergenceWarning):
+            saw_convergence_warning = True
+            message = str(warning.message)
+            if message not in messages:
+                messages.append(message)
+
+    classifier = pipeline.named_steps["classifier"]
+    n_iter = getattr(classifier, "n_iter_", None)
+    if n_iter is not None:
+        n_iter = [int(v) for v in np.asarray(n_iter).ravel().tolist()]
+
+    return {
+        "convergence_warning": saw_convergence_warning,
+        "convergence_warning_messages": messages,
+        "n_iter": n_iter,
+    }
+
+
 def train_logistic_regression_baseline(
     config_path: str | Path = "configs/train.yaml",
 ) -> dict[str, Any]:
     """Train and persist the Logistic Regression baseline end-to-end.
 
     Pipeline: load config -> load training data -> split X/y -> infer feature
-    types -> stratified train/validation split -> build pipeline -> fit ->
-    predict validation probabilities -> evaluate -> save model, metrics JSON and
-    feature-schema JSON.
+    types -> stratified train/validation split -> build pipeline -> fit (with
+    convergence capture) -> predict validation probabilities -> evaluate ->
+    select best threshold -> save model, metrics JSON, feature-schema JSON and
+    evaluation-report JSON.
 
     Returns:
-        A summary dictionary with row counts, feature-type counts, headline
-        validation metrics (``roc_auc`` / ``pr_auc``) and the artifact paths.
+        A summary dictionary with row counts, feature-type counts, encoded
+        feature count, headline validation metrics, the selected best threshold,
+        the convergence flag and all artifact paths.
     """
     config = load_train_config(config_path)
     baseline_config = config["baseline"]
@@ -390,10 +604,26 @@ def train_logistic_regression_baseline(
     target_column = baseline_config["target_column"]
     validation_size = baseline_config["validation_size"]
     random_seed = baseline_config["random_seed"]
-    max_iter = baseline_config["max_iter"]
     model_output_path = baseline_config["model_output_path"]
     metrics_output_path = baseline_config["metrics_output_path"]
     feature_schema_output_path = baseline_config["feature_schema_output_path"]
+
+    # Optional with default: evaluation report lives next to the feature schema.
+    evaluation_report_output_path = baseline_config.get("evaluation_report_output_path")
+    if not evaluation_report_output_path:
+        evaluation_report_output_path = str(
+            Path(feature_schema_output_path).with_name(
+                "logistic_regression_baseline_evaluation_report.json"
+            )
+        )
+
+    thresholds = baseline_config.get("thresholds") or DEFAULT_THRESHOLD_GRID
+    thresholds = [float(t) for t in thresholds]
+    selected_threshold_metric = baseline_config.get(
+        "selected_threshold_metric", DEFAULT_SELECTED_THRESHOLD_METRIC
+    )
+
+    lr_params = resolve_logistic_regression_params(baseline_config)
 
     df = load_training_data(baseline_config["train_features_path"])
 
@@ -413,13 +643,52 @@ def train_logistic_regression_baseline(
     pipeline = build_logistic_regression_pipeline(
         numeric_features=numeric_features,
         categorical_features=categorical_features,
-        max_iter=max_iter,
+        max_iter=lr_params["max_iter"],
         random_seed=random_seed,
+        solver=lr_params["solver"],
+        class_weight=lr_params["class_weight"],
+        n_jobs=lr_params["n_jobs"],
+        C=lr_params["C"],
     )
-    pipeline.fit(X_train, y_train)
+
+    convergence_info = _fit_with_convergence_capture(pipeline, X_train, y_train)
 
     valid_proba = pipeline.predict_proba(X_valid)[:, 1]
-    metrics = evaluate_binary_classifier(y_valid, valid_proba)
+    metrics = evaluate_binary_classifier(
+        y_valid, valid_proba, threshold=0.5, thresholds=thresholds
+    )
+
+    threshold_selection = select_best_threshold(
+        metrics["threshold_metrics"], metric_name=selected_threshold_metric
+    )
+    best_threshold = threshold_selection["best_threshold"]
+
+    probability_summary = summarize_probabilities(valid_proba)
+    encoded_info = compute_encoded_feature_info(pipeline)
+
+    y_pred_default = (valid_proba >= 0.5).astype(int)
+    y_pred_best = (valid_proba >= best_threshold).astype(int)
+    classification_report_default = classification_report(
+        np.asarray(y_valid).astype(int),
+        y_pred_default,
+        output_dict=True,
+        zero_division=0,
+    )
+    classification_report_best = classification_report(
+        np.asarray(y_valid).astype(int),
+        y_pred_best,
+        output_dict=True,
+        zero_division=0,
+    )
+
+    lr_hyperparameters = {
+        "max_iter": lr_params["max_iter"],
+        "solver": lr_params["solver"],
+        "C": lr_params["C"],
+        "class_weight": lr_params["class_weight"],
+        "n_jobs": lr_params["n_jobs"],
+        "n_iter": convergence_info["n_iter"],
+    }
 
     feature_schema = build_feature_schema(
         feature_names=feature_names,
@@ -436,14 +705,44 @@ def train_logistic_regression_baseline(
         "feature_count": len(feature_names),
         "numeric_feature_count": len(numeric_features),
         "categorical_feature_count": len(categorical_features),
+        "encoded_feature_count": encoded_info["encoded_feature_count"],
+        "encoded_feature_names_sample": encoded_info["encoded_feature_names_sample"],
         "random_seed": random_seed,
         "validation_size": validation_size,
+        "logistic_regression": lr_hyperparameters,
+        "convergence_warning": convergence_info["convergence_warning"],
+        "convergence_warning_messages": convergence_info[
+            "convergence_warning_messages"
+        ],
         "metrics": metrics,
+        "threshold_selection": threshold_selection,
+        "probability_summary": probability_summary,
+    }
+
+    evaluation_report = {
+        "model_type": "logistic_regression_baseline",
+        "train_rows": int(len(X_train)),
+        "valid_rows": int(len(X_valid)),
+        "feature_count": len(feature_names),
+        "numeric_feature_count": len(numeric_features),
+        "categorical_feature_count": len(categorical_features),
+        "encoded_feature_count": encoded_info["encoded_feature_count"],
+        "convergence_warning": convergence_info["convergence_warning"],
+        "convergence_warning_messages": convergence_info[
+            "convergence_warning_messages"
+        ],
+        "logistic_regression": lr_hyperparameters,
+        "metrics": metrics,
+        "threshold_selection": threshold_selection,
+        "probability_summary": probability_summary,
+        "classification_report_default_threshold": classification_report_default,
+        "classification_report_best_threshold": classification_report_best,
     }
 
     save_model(pipeline, model_output_path)
     save_json(metrics_payload, metrics_output_path)
     save_json(feature_schema, feature_schema_output_path)
+    save_json(evaluation_report, evaluation_report_output_path)
 
     return {
         "model_type": "logistic_regression_baseline",
@@ -452,9 +751,15 @@ def train_logistic_regression_baseline(
         "feature_count": len(feature_names),
         "numeric_feature_count": len(numeric_features),
         "categorical_feature_count": len(categorical_features),
+        "encoded_feature_count": encoded_info["encoded_feature_count"],
         "roc_auc": metrics["roc_auc"],
         "pr_auc": metrics["pr_auc"],
+        "best_threshold": best_threshold,
+        "best_threshold_metric": threshold_selection["metric_name"],
+        "best_threshold_metric_value": threshold_selection["best_metric_value"],
+        "convergence_warning": convergence_info["convergence_warning"],
         "model_output_path": str(model_output_path),
         "metrics_output_path": str(metrics_output_path),
         "feature_schema_output_path": str(feature_schema_output_path),
+        "evaluation_report_output_path": str(evaluation_report_output_path),
     }

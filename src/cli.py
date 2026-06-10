@@ -116,13 +116,21 @@ def cmd_train_baseline() -> None:
     print(f"Model type: {summary['model_type']}")
     print(f"Train rows: {summary['train_rows']}")
     print(f"Validation rows: {summary['valid_rows']}")
-    print(f"Feature count: {summary['feature_count']}")
+    print(f"Original feature count: {summary['feature_count']}")
+    print(f"Encoded feature count: {summary['encoded_feature_count']}")
     print(f"Numeric feature count: {summary['numeric_feature_count']}")
     print(f"Categorical feature count: {summary['categorical_feature_count']}")
     print(f"ROC-AUC: {summary['roc_auc']:.6f}")
     print(f"PR-AUC: {summary['pr_auc']:.6f}")
+    print(f"Best threshold: {summary['best_threshold']}")
+    print(
+        f"Best threshold metric ({summary['best_threshold_metric']}): "
+        f"{summary['best_threshold_metric_value']:.6f}"
+    )
+    print(f"Convergence warning: {summary['convergence_warning']}")
     print(f"Model saved to: {summary['model_output_path']}")
     print(f"Metrics saved to: {summary['metrics_output_path']}")
+    print(f"Evaluation report saved to: {summary['evaluation_report_output_path']}")
     print(f"Feature schema saved to: {summary['feature_schema_output_path']}")
 
 
