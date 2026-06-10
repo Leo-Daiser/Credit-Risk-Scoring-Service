@@ -66,7 +66,9 @@ def test_safe_divide_handles_zero_denominator_series() -> None:
 def test_clean_application_table_replaces_days_employed_anomaly() -> None:
     df = _build_application_train()
 
-    cleaned = clean_application_table(df, days_employed_anomaly_value=DAYS_EMPLOYED_ANOMALY)
+    cleaned = clean_application_table(
+        df, days_employed_anomaly_value=DAYS_EMPLOYED_ANOMALY
+    )
 
     assert cleaned["DAYS_EMPLOYED"].isna().sum() == 1
     assert not (cleaned["DAYS_EMPLOYED"] == DAYS_EMPLOYED_ANOMALY).any()
@@ -197,7 +199,9 @@ def test_missing_id_in_train_raises() -> None:
     train = _build_application_train().drop(columns=["SK_ID_CURR"])
     test = _build_application_test()
 
-    with pytest.raises(ValueError, match=r"Train table is missing the ID column 'SK_ID_CURR'"):
+    with pytest.raises(
+        ValueError, match=r"Train table is missing the ID column 'SK_ID_CURR'"
+    ):
         build_application_features(train, test)
 
 
@@ -205,7 +209,9 @@ def test_missing_id_in_test_raises() -> None:
     train = _build_application_train()
     test = _build_application_test().drop(columns=["SK_ID_CURR"])
 
-    with pytest.raises(ValueError, match=r"Test table is missing the ID column 'SK_ID_CURR'"):
+    with pytest.raises(
+        ValueError, match=r"Test table is missing the ID column 'SK_ID_CURR'"
+    ):
         build_application_features(train, test)
 
 
