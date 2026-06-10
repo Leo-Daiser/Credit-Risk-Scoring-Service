@@ -3,9 +3,11 @@ import sys
 from src.data.load_raw import load_data_config, load_raw_tables
 from src.data.validate_schema import validate_raw_tables
 from src.db.init_db import init_db
+from src.features.application_features import run_build_application_features
 
 
 DATA_CONFIG_PATH = "configs/data.yaml"
+FEATURE_CONFIG_PATH = "configs/features.yaml"
 
 
 def main() -> None:
@@ -36,6 +38,16 @@ def main() -> None:
 
         if fk_report["orphan_count"] > 0:
             print("Sample orphan keys:", fk_report["sample_orphans"])
+
+    elif command == "build-application-features":
+        summary = run_build_application_features(
+            data_config_path=DATA_CONFIG_PATH,
+            feature_config_path=FEATURE_CONFIG_PATH,
+        )
+
+        print("Application-level features built.")
+        print(f"Train features: shape={summary['train_shape']} -> {summary['train_path']}")
+        print(f"Test features:  shape={summary['test_shape']} -> {summary['test_path']}")
 
     else:
         raise SystemExit(f"Unknown command: {command}")

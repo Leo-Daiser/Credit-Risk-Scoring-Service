@@ -1,0 +1,11 @@
+# Feature engineering configuration (Phase 2.1 — application-level features)
+
+id_column: SK_ID_CURR
+target_column: TARGET
+
+# Sentinel value used by Home Credit for "no employment" anomaly in DAYS_EMPLOYED.
+days_employed_anomaly_value: 365243
+
+output_paths:
+  application_train_features: data/processed/application_train_features.parquet
+  application_test_features: data/processed/application_test_features.parquet

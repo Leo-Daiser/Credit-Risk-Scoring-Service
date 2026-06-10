@@ -39,10 +39,19 @@ Production-like ML system for credit default risk scoring based on the **Home Cr
 - data quality diagnostics для реального датасета
 - unit-тесты на raw data contracts
 
+### Phase 2.1 — Application-level Feature Engineering Layer
+- конфиг признаков через `configs/features.yaml`
+- модуль `src/features/application_features.py`
+- очистка application-таблиц (аномалия `DAYS_EMPLOYED == 365243`, замена `inf`/`-inf` на `NaN`)
+- производные признаки уровня заявки (ratio-фичи через safe division, `AGE_YEARS`, `EMPLOYMENT_YEARS`, агрегаты `EXT_SOURCE_*`)
+- выравнивание колонок train/test (одинаковый набор фич, `TARGET` только в train)
+- сохранение feature dataset в parquet (`data/processed/`)
+- CLI-команда `build-application-features`
+- unit-тесты на feature engineering
+
 ### In progress
-- Base Feature Layer
-- application-level feature engineering
-- построение feature dataset для train/test
+- историческая агрегация (bureau / bureau_balance)
+- построение полного feature dataset для train/test
 - model training pipeline
 
 ---
@@ -174,6 +183,21 @@ credit-risk-scoring/
 Поддерживаются команды:
 - `python -m src.cli init-db`
 - `python -m src.cli validate-raw`
+- `python -m src.cli build-application-features`
+
+#### `build-application-features`
+Строит application-level признаки:
+- загружает только `application_train` и `application_test`;
+- очищает данные и добавляет производные признаки;
+- выравнивает колонки train/test (`TARGET` остаётся только в train);
+- сохраняет результаты в parquet:
+  - `data/processed/application_train_features.parquet`
+  - `data/processed/application_test_features.parquet`
+- печатает размеры train/test feature dataset.
+
+Требует наличия реальных файлов Home Credit локально в
+`data/raw/home_credit/` (raw-данные и `data/processed/` в git не коммитятся).
+Конфигурация признаков задаётся в `configs/features.yaml`.
 
 ### Raw data validation
 Проверяется:
@@ -287,6 +311,11 @@ pytest -q
 - unique key validation
 - foreign key validation
 - end-to-end raw schema validation on synthetic mini-tables
+- safe division (zero denominator handling)
+- application table cleaning (DAYS_EMPLOYED anomaly, inf/-inf)
+- derived application features
+- train/test feature alignment and TARGET handling
+- parquet feature output
 
 ---
 
@@ -316,6 +345,13 @@ Response example:
 - обязательные колонки
 - unique keys
 
+### `configs/features.yaml`
+Описывает конфигурацию feature engineering:
+- `id_column` (`SK_ID_CURR`)
+- `target_column` (`TARGET`)
+- `days_employed_anomaly_value` (`365243`)
+- `output_paths` для train/test feature parquet-файлов
+
 ---
 
 ## Database schema
@@ -341,10 +377,10 @@ Response example:
 ## Development roadmap
 
 ### Phase 2 — Base Feature Layer
-- application-level cleaning
-- derived features from application tables
-- train/test feature alignment
-- save processed datasets
+- application-level cleaning ✅ (Phase 2.1)
+- derived features from application tables ✅ (Phase 2.1)
+- train/test feature alignment ✅ (Phase 2.1)
+- save processed datasets ✅ (Phase 2.1)
 
 ### Phase 3 — Historical Aggregation Layer
 - bureau aggregations

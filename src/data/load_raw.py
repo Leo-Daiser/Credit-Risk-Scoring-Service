@@ -38,9 +38,34 @@ def resolve_table_paths(config: dict[str, Any]) -> dict[str, Path]:
     return table_paths
 
 
-def load_raw_tables(config_path: str | Path) -> dict[str, pd.DataFrame]:
+def load_raw_tables(
+    config_path: str | Path,
+    table_names: list[str] | None = None,
+) -> dict[str, pd.DataFrame]:
+    """Load raw CSV tables described in the data config.
+
+    Args:
+        config_path: Path to the data config (e.g. ``configs/data.yaml``).
+        table_names: Optional list of table names to load. When ``None``
+            (the default) all tables in the config are loaded, preserving the
+            previous behavior. When provided, only the requested tables are
+            loaded — useful for stages that need a subset, e.g.
+            ``["application_train", "application_test"]``.
+
+    Returns:
+        Mapping of table name to its loaded ``DataFrame``.
+    """
     config = load_data_config(config_path)
     table_paths = resolve_table_paths(config)
+
+    if table_names is not None:
+        missing_tables = [name for name in table_names if name not in table_paths]
+        if missing_tables:
+            raise ValueError(
+                f"Unknown table(s) requested: {missing_tables}. "
+                f"Available tables: {sorted(table_paths)}."
+            )
+        table_paths = {name: table_paths[name] for name in table_names}
 
     tables: dict[str, pd.DataFrame] = {}
 
