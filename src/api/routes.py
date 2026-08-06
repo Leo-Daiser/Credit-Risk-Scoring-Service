@@ -61,7 +61,10 @@ def score(
     try:
         result = service.score(payload.features, request_id=payload.request_id)
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(exc),
+        ) from exc
 
     if not settings.inference_logging_enabled:
         result["logging_status"] = "disabled"

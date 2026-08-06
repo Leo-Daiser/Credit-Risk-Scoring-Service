@@ -172,6 +172,27 @@ def test_score_rejects_nested_feature_values(api_client):
     assert response.status_code == 422
 
 
+def test_score_rejects_invalid_numeric_feature(api_client):
+    client, _ = api_client
+    response = client.post("/score", json={"features": {"INCOME": "not-a-number"}})
+    assert response.status_code == 422
+    assert "finite numbers" in response.json()["detail"]
+
+
+def test_score_bounds_identifiers_and_categorical_values(api_client):
+    client, _ = api_client
+    blank_id = client.post(
+        "/score",
+        json={"request_id": "   ", "features": {"INCOME": 100_000}},
+    )
+    long_category = client.post(
+        "/score",
+        json={"features": {"CONTRACT": "x" * 257}},
+    )
+    assert blank_id.status_code == 422
+    assert long_category.status_code == 422
+
+
 def test_score_returns_conflict_for_reused_request_id(api_client):
     client, _ = api_client
     payload = {"request_id": "same-id", "features": {"INCOME": 100_000}}

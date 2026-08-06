@@ -1,6 +1,13 @@
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+RequestId = Annotated[
+    str,
+    StringConstraints(strip_whitespace=True, min_length=1, max_length=128),
+]
+FeatureString = Annotated[str, StringConstraints(max_length=256)]
+FeatureValue = int | float | FeatureString | bool | None
 
 
 class HealthResponse(BaseModel):
@@ -9,10 +16,10 @@ class HealthResponse(BaseModel):
 
 
 class ScoreRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
-    request_id: str | None = Field(default=None, min_length=1, max_length=128)
-    features: dict[str, int | float | str | bool | None] = Field(min_length=1)
+    request_id: RequestId | None = None
+    features: dict[str, FeatureValue] = Field(min_length=1, max_length=512)
 
 
 class ReasonCode(BaseModel):

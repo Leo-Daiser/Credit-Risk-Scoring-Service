@@ -36,9 +36,20 @@ class ModelBundle:
 
         frame = pd.DataFrame(records).reindex(columns=self.feature_names)
 
+        invalid_numeric: list[str] = []
         for column in self.feature_schema.get("numeric_features", []):
-            frame[column] = pd.to_numeric(frame[column], errors="coerce").replace(
-                [np.inf, -np.inf], np.nan
+            original = frame[column]
+            converted = pd.to_numeric(original, errors="coerce")
+            invalid = original.notna() & (converted.isna() | ~np.isfinite(converted))
+            if invalid.any():
+                invalid_numeric.append(column)
+            frame[column] = converted
+        if invalid_numeric:
+            sample = invalid_numeric[:10]
+            suffix = "" if len(invalid_numeric) <= 10 else f" (+{len(invalid_numeric) - 10} more)"
+            raise ValueError(
+                "Numeric model features must contain finite numbers or null: "
+                f"{sample}{suffix}."
             )
         for column in self.feature_schema.get("categorical_features", []):
             frame[column] = frame[column].astype("object")

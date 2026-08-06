@@ -11,6 +11,7 @@ from src.models.model_bundle import ModelBundle
 from src.models.prepare_production_model import (
     expected_calibration_error,
     prepare_production_model,
+    validate_source_training_contract,
 )
 from src.models.train_baseline import (
     build_feature_schema,
@@ -65,6 +66,33 @@ def test_model_bundle_aligns_features_and_rejects_unknowns():
     assert bundle.risk_band(0.5) == "high"
     with pytest.raises(ValueError, match="Unknown model features"):
         bundle.prepare_frame([{"OTHER": 1}])
+    with pytest.raises(ValueError, match="finite numbers"):
+        bundle.prepare_frame([{"NUM": "not-a-number"}])
+    with pytest.raises(ValueError, match="finite numbers"):
+        bundle.prepare_frame([{"NUM": np.inf}])
+
+
+def test_source_training_contract_rejects_split_mismatch():
+    schema = {"feature_names": ["NUM", "CAT"]}
+    metrics = {
+        "model_type": "catboost_challenger",
+        "random_seed": 42,
+        "validation_size": 0.2,
+        "feature_count": 2,
+    }
+    contract = validate_source_training_contract(
+        {"random_seed": 42, "holdout_size": 0.2}, metrics, schema
+    )
+    assert contract["validation_size"] == pytest.approx(0.2)
+
+    with pytest.raises(ValueError, match="random_seed"):
+        validate_source_training_contract(
+            {"random_seed": 7, "holdout_size": 0.2}, metrics, schema
+        )
+    with pytest.raises(ValueError, match="validation_size"):
+        validate_source_training_contract(
+            {"random_seed": 42, "holdout_size": 0.25}, metrics, schema
+        )
 
 
 def test_prepare_production_model_end_to_end(tmp_path):
@@ -89,6 +117,7 @@ def test_prepare_production_model_end_to_end(tmp_path):
     source_model.fit(X_train, y_train)
 
     source_path = tmp_path / "source.joblib"
+    source_metrics_path = tmp_path / "source_metrics.json"
     schema_path = tmp_path / "schema.json"
     bundle_path = tmp_path / "bundle.joblib"
     metadata_path = tmp_path / "metadata.json"
@@ -97,10 +126,22 @@ def test_prepare_production_model_end_to_end(tmp_path):
         features, numeric, categorical, "SK_ID_CURR", "TARGET"
     )
     schema_path.write_text(json.dumps(schema), encoding="utf-8")
+    source_metrics_path.write_text(
+        json.dumps(
+            {
+                "model_type": "logistic_regression_baseline",
+                "random_seed": 42,
+                "validation_size": 0.2,
+                "feature_count": len(features),
+            }
+        ),
+        encoding="utf-8",
+    )
 
     config = {
         "production_model": {
             "source_model_path": str(source_path),
+            "source_metrics_path": str(source_metrics_path),
             "feature_schema_path": str(schema_path),
             "train_features_path": str(train_path),
             "bundle_output_path": str(bundle_path),
@@ -119,6 +160,7 @@ def test_prepare_production_model_end_to_end(tmp_path):
 
     assert bundle_path.exists()
     assert metadata_path.exists()
+    assert summary["training_rows"] == 192
     assert summary["calibration_rows"] + summary["evaluation_rows"] == 48
     bundle = joblib.load(bundle_path)
     assert isinstance(bundle, ModelBundle)
@@ -126,4 +168,6 @@ def test_prepare_production_model_end_to_end(tmp_path):
     probability = bundle.predict_default_probability(aligned)[0]
     assert 0.0 <= probability <= 1.0
     assert bundle.metadata["decision_threshold"] in [0.05, 0.1, 0.2, 0.3]
+    assert bundle.metadata["source_training"]["random_seed"] == 42
+    assert len(bundle.metadata["source_model_sha256"]) == 64
     assert set(bundle.reference_stats) == {"numeric", "categorical"}

@@ -44,6 +44,7 @@ def load_production_config(config_path: str | Path) -> dict[str, Any]:
 
     required = (
         "source_model_path",
+        "source_metrics_path",
         "feature_schema_path",
         "train_features_path",
         "bundle_output_path",
@@ -53,6 +54,49 @@ def load_production_config(config_path: str | Path) -> dict[str, Any]:
     if missing:
         raise ValueError(f"Production model config is missing keys: {missing}.")
     return section
+
+
+def validate_source_training_contract(
+    config: dict[str, Any],
+    source_metrics: dict[str, Any],
+    feature_schema: dict[str, Any],
+) -> dict[str, Any]:
+    """Prove that the frozen source model used the holdout excluded below."""
+    required = {"model_type", "random_seed", "validation_size", "feature_count"}
+    missing = sorted(required - set(source_metrics))
+    if missing:
+        raise ValueError(f"Source model metrics are missing split contract keys: {missing}.")
+
+    expected_seed = int(config.get("random_seed", 42))
+    source_seed = int(source_metrics["random_seed"])
+    if source_seed != expected_seed:
+        raise ValueError(
+            "Source model random_seed does not match production_model.random_seed: "
+            f"{source_seed} != {expected_seed}."
+        )
+
+    expected_holdout = float(config.get("holdout_size", 0.2))
+    source_holdout = float(source_metrics["validation_size"])
+    if not np.isclose(source_holdout, expected_holdout, rtol=0.0, atol=1e-12):
+        raise ValueError(
+            "Source model validation_size does not match production_model.holdout_size: "
+            f"{source_holdout} != {expected_holdout}."
+        )
+
+    expected_features = len(feature_schema["feature_names"])
+    source_features = int(source_metrics["feature_count"])
+    if source_features != expected_features:
+        raise ValueError(
+            "Source model feature_count does not match the feature schema: "
+            f"{source_features} != {expected_features}."
+        )
+
+    return {
+        "model_type": str(source_metrics["model_type"]),
+        "random_seed": source_seed,
+        "validation_size": source_holdout,
+        "feature_count": source_features,
+    }
 
 
 def expected_calibration_error(
@@ -180,14 +224,21 @@ def prepare_production_model(
     """Calibrate the baseline on one split and evaluate on an untouched split."""
     config = load_production_config(config_path)
     source_model_path = Path(config["source_model_path"])
+    source_metrics_path = Path(config["source_metrics_path"])
     schema_path = Path(config["feature_schema_path"])
     if not source_model_path.exists():
         raise FileNotFoundError(f"Source model not found: {source_model_path}")
+    if not source_metrics_path.exists():
+        raise FileNotFoundError(f"Source model metrics not found: {source_metrics_path}")
     if not schema_path.exists():
         raise FileNotFoundError(f"Feature schema not found: {schema_path}")
 
     with schema_path.open("r", encoding="utf-8") as file:
         feature_schema = json.load(file)
+    with source_metrics_path.open("r", encoding="utf-8") as file:
+        source_metrics = json.load(file)
+    if not isinstance(source_metrics, dict):
+        raise ValueError("Source model metrics must be a JSON object.")
     source_model = joblib.load(source_model_path)
     frame = load_training_data(config["train_features_path"])
     X, y, feature_names = split_features_target(
@@ -198,13 +249,19 @@ def prepare_production_model(
     if feature_names != feature_schema["feature_names"]:
         raise ValueError("Training data columns do not match the feature schema.")
 
+    source_training = validate_source_training_contract(
+        config,
+        source_metrics,
+        feature_schema,
+    )
+
     random_seed = int(config.get("random_seed", 42))
     holdout_size = float(config.get("holdout_size", 0.2))
     calibration_fraction = float(config.get("calibration_fraction", 0.5))
     if not 0.0 < holdout_size < 1.0 or not 0.0 < calibration_fraction < 1.0:
         raise ValueError("holdout_size and calibration_fraction must be in (0, 1).")
 
-    _, X_holdout, _, y_holdout = train_test_split(
+    X_source_train, X_holdout, _, y_holdout = train_test_split(
         X,
         y,
         test_size=holdout_size,
@@ -278,7 +335,7 @@ def prepare_production_model(
         or _artifact_version(source_model_path, model_type, config, feature_schema)
     )
     reference_stats = build_reference_stats(
-        X,
+        X_source_train,
         feature_schema["numeric_features"],
         feature_schema["categorical_features"],
     )
@@ -291,8 +348,11 @@ def prepare_production_model(
         "threshold_metric": selection["metric_name"],
         "risk_bands": risk_bands,
         "feature_count": len(feature_names),
+        "training_rows": int(len(X_source_train)),
         "calibration_rows": int(len(X_calibration)),
         "evaluation_rows": int(len(X_evaluation)),
+        "source_model_sha256": hashlib.sha256(source_model_path.read_bytes()).hexdigest(),
+        "source_training": source_training,
         "metrics": {
             "raw": raw_metrics,
             "calibrated": calibrated_metrics,
@@ -314,6 +374,7 @@ def prepare_production_model(
         "model_version": model_version,
         "model_type": model_type,
         "decision_threshold": threshold,
+        "training_rows": int(len(X_source_train)),
         "calibration_rows": int(len(X_calibration)),
         "evaluation_rows": int(len(X_evaluation)),
         "raw_brier_score": raw_metrics["brier_score"],

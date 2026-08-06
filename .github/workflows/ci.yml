@@ -30,7 +30,9 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements-dev.txt
+      - run: pip-audit -r requirements.txt
       - run: alembic upgrade head
       - run: ruff check src tests migrations
       - run: pytest -q
       - run: cp .env.example .env && docker compose config --quiet
+      - run: docker build --tag credit-risk-scoring:ci .

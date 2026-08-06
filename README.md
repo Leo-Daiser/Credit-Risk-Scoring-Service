@@ -66,7 +66,7 @@ FastAPI /score
   -> atomic PostgreSQL request/prediction log
 ```
 
-Train/calibration/evaluation разделены. Source model обучается на train-части. Половина исходного holdout используется только для calibration и выбора threshold, вторая половина — только для итоговой оценки.
+Train/calibration/evaluation разделены. Source model обучается на train-части. Половина исходного holdout используется только для calibration и выбора threshold, вторая половина — только для итоговой оценки. Перед сборкой bundle split contract сверяется с metrics-манифестом source model: `random_seed`, holdout fraction и feature count обязаны совпадать. Drift reference statistics строятся только по train-части.
 
 ## Структура репозитория
 
@@ -137,11 +137,12 @@ Copy-Item .env.example .env
 ```powershell
 python --version
 python -m pip check
+pip-audit -r requirements.txt
 ruff check src tests migrations
 pytest -q
 ```
 
-Ожидаемый статус текущей версии: `105 passed`.
+Ожидаемый статус текущей версии: `108 passed`.
 
 ## Данные
 
@@ -289,7 +290,7 @@ Request:
 }
 ```
 
-Все 281 признаков передавать не обязательно: отсутствующие значения проходят через обученную обработку missing values, а ответ содержит `missing_feature_count`. Неизвестные имена признаков отклоняются с `422`; это защищает от тихого нарушения feature contract.
+Все 281 признаков передавать не обязательно: отсутствующие значения проходят через обученную обработку missing values, а ответ содержит `missing_feature_count`. Неизвестные имена признаков, нечисловые/бесконечные значения numeric features, пустые request IDs и чрезмерно длинные categorical values отклоняются с `422`; это защищает от тихого нарушения feature contract.
 
 Response:
 
@@ -384,6 +385,7 @@ python -m src.cli monitor-drift
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\pip-audit.exe -r requirements.txt
 .\.venv\Scripts\ruff.exe check src tests migrations
 .\.venv\Scripts\python.exe -m pytest -q
 docker compose config --quiet
@@ -394,10 +396,12 @@ docker compose config --quiet
 GitHub Actions:
 
 - устанавливает зафиксированные зависимости на Python 3.11;
+- проверяет production dependencies по OSV advisory database через `pip-audit`;
 - поднимает PostgreSQL 16;
 - применяет Alembic migration;
 - запускает весь test suite;
 - валидирует Compose config.
+- собирает production Docker image.
 
 ## Что намеренно не входит в MVP
 

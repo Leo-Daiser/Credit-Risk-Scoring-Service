@@ -57,6 +57,7 @@ catboost_challenger:
 # The source model must be trained with exactly the same split parameters.
 production_model:
   source_model_path: artifacts/models/catboost_challenger.joblib
+  source_metrics_path: artifacts/metrics/catboost_challenger_metrics.json
   feature_schema_path: artifacts/reports/catboost_challenger_feature_schema.json
   train_features_path: data/processed/train_features.parquet
   bundle_output_path: artifacts/models/production_model_bundle.joblib
