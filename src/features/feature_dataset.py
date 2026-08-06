@@ -379,4 +379,3 @@ def run_build_full_feature_dataset(
         "id_column": id_column,
         "target_column": target_column,
     }
-

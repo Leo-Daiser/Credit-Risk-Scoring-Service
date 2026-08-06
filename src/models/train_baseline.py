@@ -819,4 +819,3 @@ def train_logistic_regression_baseline(
         "feature_schema_output_path": str(feature_schema_output_path),
         "evaluation_report_output_path": str(evaluation_report_output_path),
     }
-
