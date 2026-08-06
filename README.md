@@ -395,6 +395,7 @@ docker compose config --quiet
 
 GitHub Actions:
 
+- запускает один PR workflow для feature-веток и повторную проверку после merge в `main`;
 - устанавливает зафиксированные зависимости на Python 3.11;
 - проверяет production dependencies по OSV advisory database через `pip-audit`;
 - поднимает PostgreSQL 16;
