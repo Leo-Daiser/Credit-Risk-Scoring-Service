@@ -1,0 +1,18 @@
+model:
+  bundle_path: artifacts/models/production_model_bundle.joblib
+  top_reason_codes: 5
+
+batch_scoring:
+  input_path: data/processed/test_features.parquet
+  output_path: artifacts/predictions/test_batch_scores.parquet
+  summary_output_path: artifacts/reports/batch_scoring_summary.json
+  id_column: SK_ID_CURR
+  max_rows: 100000
+
+monitoring:
+  input_path: data/processed/test_features.parquet
+  output_path: artifacts/reports/drift_report.json
+  id_column: SK_ID_CURR
+  psi_warning: 0.10
+  psi_critical: 0.20
+  missing_rate_warning: 0.10

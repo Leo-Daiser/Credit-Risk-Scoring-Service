@@ -189,3 +189,83 @@ def test_cli_train_baseline_command_calls_runner(monkeypatch, capsys):
     assert "Best threshold: 0.4" in out
     assert "Convergence warning: True" in out
     assert "Evaluation report saved to:" in out
+
+
+def test_cli_prepare_production_model_command_calls_runner(monkeypatch, capsys):
+    calls = {}
+
+    def fake_runner(config_path):
+        calls["config_path"] = config_path
+        return {
+            "model_version": "logistic_regression_calibrated-abc123",
+            "decision_threshold": 0.12,
+            "calibration_rows": 100,
+            "evaluation_rows": 100,
+            "raw_brier_score": 0.2,
+            "calibrated_brier_score": 0.08,
+            "bundle_output_path": "artifacts/models/production_model_bundle.joblib",
+            "metadata_output_path": "artifacts/reports/production_model_metadata.json",
+        }
+
+    monkeypatch.setattr(cli, "prepare_production_model", fake_runner)
+    cli.main(["prepare-production-model"])
+
+    assert calls["config_path"] == cli.TRAIN_CONFIG_PATH
+    output = capsys.readouterr().out
+    assert "Production model prepared." in output
+    assert "Decision threshold: 0.12" in output
+
+
+def test_cli_train_catboost_command_calls_runner(monkeypatch, capsys):
+    calls = {}
+
+    def fake_runner(config_path):
+        calls["config_path"] = config_path
+        return {
+            "train_rows": 80,
+            "valid_rows": 20,
+            "feature_count": 25,
+            "roc_auc": 0.81,
+            "pr_auc": 0.31,
+            "brier_score": 0.12,
+            "best_threshold": 0.2,
+            "model_output_path": "artifacts/models/catboost.joblib",
+        }
+
+    monkeypatch.setattr(cli, "train_catboost_challenger", fake_runner)
+    cli.main(["train-catboost"])
+
+    assert calls["config_path"] == cli.TRAIN_CONFIG_PATH
+    assert "CatBoost challenger trained." in capsys.readouterr().out
+
+
+def test_cli_batch_score_command_calls_runner(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli,
+        "run_batch_scoring",
+        lambda config_path: {
+            "rows_scored": 10,
+            "model_version": "v1",
+            "mean_default_probability": 0.1,
+            "decline_rate": 0.2,
+            "output_path": "scores.parquet",
+        },
+    )
+    cli.main(["batch-score"])
+    assert "Rows scored: 10" in capsys.readouterr().out
+
+
+def test_cli_monitor_drift_command_calls_runner(monkeypatch, capsys):
+    monkeypatch.setattr(
+        cli,
+        "run_drift_monitoring",
+        lambda config_path: {
+            "status": "warning",
+            "rows_analyzed": 10,
+            "critical_feature_count": 0,
+            "warning_feature_count": 2,
+            "output_path": "drift.json",
+        },
+    )
+    cli.main(["monitor-drift"])
+    assert "Status: warning" in capsys.readouterr().out

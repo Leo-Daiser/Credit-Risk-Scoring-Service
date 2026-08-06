@@ -1,7 +1,13 @@
-from sqlalchemy import String, Text, TIMESTAMP, func, Float
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
+
 from src.db.base import Base
+
+JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 
 class ModelRegistry(Base):
     __tablename__ = "model_registry"
@@ -10,8 +16,8 @@ class ModelRegistry(Base):
     model_version: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     model_type: Mapped[str] = mapped_column(String(64), nullable=False)
     artifact_path: Mapped[str] = mapped_column(Text, nullable=False)
-    metrics_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[str] = mapped_column(TIMESTAMP, server_default=func.now(), nullable=False)
+    metrics_json: Mapped[dict[str, Any] | None] = mapped_column(JSON_TYPE, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
 class ScoringRequest(Base):
@@ -19,20 +25,22 @@ class ScoringRequest(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
-    payload_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    payload_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE, nullable=False)
     model_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
-    received_at: Mapped[str] = mapped_column(TIMESTAMP, server_default=func.now(), nullable=False)
+    received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
 class ScoringPrediction(Base):
     __tablename__ = "scoring_predictions"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    request_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    request_id: Mapped[str] = mapped_column(
+        String(128), ForeignKey("scoring_requests.request_id"), unique=True, nullable=False
+    )
     default_probability: Mapped[float | None] = mapped_column(Float, nullable=True)
     risk_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    top_reason_codes: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[str] = mapped_column(TIMESTAMP, server_default=func.now(), nullable=False)
+    top_reason_codes: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON_TYPE, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
 class FeatureStat(Base):
@@ -44,4 +52,4 @@ class FeatureStat(Base):
     train_mean: Mapped[float | None] = mapped_column(Float, nullable=True)
     train_std: Mapped[float | None] = mapped_column(Float, nullable=True)
     missing_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[str] = mapped_column(TIMESTAMP, server_default=func.now(), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)

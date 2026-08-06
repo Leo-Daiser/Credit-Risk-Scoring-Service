@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS scoring_requests (
 
 CREATE TABLE IF NOT EXISTS scoring_predictions (
     id SERIAL PRIMARY KEY,
-    request_id VARCHAR(128) NOT NULL,
+    request_id VARCHAR(128) NOT NULL UNIQUE REFERENCES scoring_requests(request_id),
     default_probability DOUBLE PRECISION,
     risk_band VARCHAR(32),
     top_reason_codes JSONB,

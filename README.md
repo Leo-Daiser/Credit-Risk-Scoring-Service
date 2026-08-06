@@ -1,485 +1,253 @@
 # Credit Risk Scoring Service
 
-Production-like ML system for credit default risk scoring based on the **Home Credit Default Risk** dataset.
+Production-like ML-сервис оценки вероятности дефолта на датасете Home Credit Default Risk.
 
-Проект строится не как один ноутбук с моделью, а как инженерная ML-система с:
-- модульным `src/`
-- конфигами
-- PostgreSQL
-- FastAPI
-- Docker Compose
-- CLI-командами
-- тестами
-- воспроизводимой загрузкой и валидацией сырых данных
+Это не ноутбук с моделью, а воспроизводимый сервисный контур:
 
----
+- загрузка и проверка raw data;
+- feature engineering для application, bureau и bureau_balance;
+- Logistic Regression baseline и CatBoost challenger;
+- калибровка вероятностей и выбор operating threshold без утечки в evaluation split;
+- online API и batch scoring через один immutable model bundle;
+- локальные SHAP reason codes;
+- PostgreSQL audit log и model registry;
+- offline drift monitoring;
+- Docker Compose, Alembic migrations, CI и тесты.
 
-## Current status
+## Статус проекта
 
-Сейчас реализованы:
+Полноценный MVP сервиса реализован.
 
-### Phase 0 — Foundation Layer
-- базовая структура репозитория
-- FastAPI сервис
-- health endpoint
-- PostgreSQL
-- SQLAlchemy ORM models
-- Docker / Docker Compose
-- CLI для инициализации БД
-- базовые тесты
+| Фаза | Результат | Статус |
+|---|---|---|
+| 0 | Структура, конфигурация, FastAPI, PostgreSQL, Docker | ✅ |
+| 1 | Загрузка и data contracts для raw Home Credit tables | ✅ |
+| 2.1 | Application-level features | ✅ |
+| 2.2 | Bureau и bureau_balance aggregations | ✅ |
+| 2.3 | Финальный train/test feature dataset | ✅ |
+| 3.1 | Logistic Regression baseline | ✅ |
+| 3.2 | CatBoost challenger и сравнение на общем holdout | ✅ |
+| 5 | Калибровка, threshold, risk bands, local SHAP reason codes | ✅ |
+| 6 | `/score`, `/model_info`, readiness, DB logging, model registry | ✅ |
+| 7 | Batch scoring, PSI drift report, Alembic, CI | ✅ |
 
-### Phase 1 — Raw Data Layer
-- конфиг данных через `configs/data.yaml`
-- загрузка сырых CSV
-- валидация схемы таблиц
-- проверка обязательных колонок
-- проверка пустых таблиц
-- проверка уникальных ключей
-- проверка foreign key relationships
-- data quality diagnostics для реального датасета
-- unit-тесты на raw data contracts
+Финальный локальный production bundle:
 
-### Phase 2.1 — Application-level Feature Engineering Layer
-- конфиг признаков через `configs/features.yaml`
-- модуль `src/features/application_features.py`
-- очистка application-таблиц (аномалия `DAYS_EMPLOYED == 365243`, замена `inf`/`-inf` на `NaN`)
-- производные признаки уровня заявки (ratio-фичи через safe division, `AGE_YEARS`, `EMPLOYMENT_YEARS`, агрегаты `EXT_SOURCE_*`)
-- выравнивание колонок train/test (одинаковый набор фич, `TARGET` только в train)
-- сохранение feature dataset в parquet (`data/processed/`)
-- CLI-команда `build-application-features`
-- unit-тесты на feature engineering
+- model: calibrated CatBoost;
+- version: `catboost_calibrated-2bfd7416f976`;
+- evaluation ROC-AUC: `0.77495`;
+- evaluation PR-AUC: `0.26831`;
+- Brier score после калибровки: `0.06684`;
+- expected calibration error: `0.00279`;
+- operating threshold: `0.15`;
+- F1 на независимой evaluation-части: `0.32508`.
 
-### Phase 2.2 — Bureau / Bureau Balance Historical Aggregation Layer
-- модуль `src/features/bureau_features.py`
-- агрегация `bureau_balance` до уровня кредита (`SK_ID_BUREAU`): длина истории
-  (`BUREAU_BALANCE_MONTHS_COUNT/MIN/MAX`), статус-счётчики и ratio
-  (`BUREAU_BALANCE_STATUS_<0..5,C,X>_COUNT/RATIO`), DPD-сигналы
-  (`BUREAU_BALANCE_DPD_COUNT/RATIO`) и bad-debt
-  (`BUREAU_BALANCE_BAD_DEBT_COUNT/RATIO`)
-- left-join балансовых фич в `bureau` с сохранением всех строк (кредиты без
-  истории получают `0` в count-колонках)
-- агрегация `bureau` до уровня заявителя (`SK_ID_CURR`): числовые агрегаты,
-  счётчики `CREDIT_ACTIVE`, разнообразие `CREDIT_TYPE`, безопасные ratio-фичи
-- результат мерджится в application-level фичи по `SK_ID_CURR`
-- сохранение в parquet (`data/processed/bureau_features.parquet`)
-- CLI-команда `build-bureau-features`
-- unit-тесты на bureau feature engineering
+Версия строится из SHA-256 source artifact. Значения выше относятся к конкретному локальному прогону на полном датасете и не зашиты в код как гарантии.
 
-### Phase 2.3 — Full Feature Dataset Builder
-- модуль `src/features/feature_dataset.py`
-- сборка финальных train/test ML-датасетов из готовых feature parquet-файлов
-  (`application_train_features` + `application_test_features` + `bureau_features`)
-- left join application-фич с bureau-фичами по `SK_ID_CURR` (без row explosion,
-  заявители без кредитной истории получают `NaN`)
-- детерминированный порядок колонок (`SK_ID_CURR` первой, `TARGET` второй в
-  train, остальные по алфавиту), замена `inf`/`-inf` на `NaN`
-- сохранение в parquet (`data/processed/train_features.parquet`,
-  `data/processed/test_features.parquet`)
-- CLI-команда `build-full-features`
-- unit-тесты на сборку feature dataset
-
-### Phase 3.1 — Logistic Regression Baseline
-- модуль `src/models/train_baseline.py`
-- первый реальный ML-baseline: `LogisticRegression` внутри sklearn `Pipeline`
-- препроцессинг через `ColumnTransformer`: numeric —
-  `SimpleImputer(median)` + `StandardScaler`; categorical —
-  `SimpleImputer(most_frequent)` + `OneHotEncoder(handle_unknown="ignore")`
-- стратифицированный train/validation split (детерминированный seed)
-- метрики классификации (`roc_auc`, `pr_auc`, `f1`, `precision`, `recall`,
-  `brier_score`, `confusion_matrix`, `positive_rate`,
-  `predicted_positive_rate`, `threshold_metrics`)
-- сохранение артефактов: модель (`.joblib`), метрики (`.json`),
-  feature schema (`.json`)
-- CLI-команда `train-baseline`
-- unit-тесты на train pipeline (включая end-to-end на синтетике)
-
-### Phase 3.1.1 — Baseline hardening + evaluation report
-- настраиваемые гиперпараметры `LogisticRegression` через
-  `baseline.logistic_regression.*` (`max_iter`, `solver`, `class_weight`,
-  `n_jobs`, `C`)
-- захват `ConvergenceWarning`: обучение не падает, флаг и сообщения
-  пишутся в отчёт (`convergence_warning`, `convergence_warning_messages`)
-- настраиваемая сетка порогов + полные confusion-счётчики (`tp/fp/tn/fn`)
-  для каждого порога
-- автоматический выбор лучшего порога (`select_best_threshold`) по
-  настраиваемой метрике (`selected_threshold_metric`, по умолчанию `f1`)
-- сводка по вероятностям (`summarize_probabilities`: min/max/mean/std и
-  перцентили p01…p99)
-- `classification_report` (sklearn, `output_dict=True`) для порога `0.5` и
-  для выбранного лучшего порога
-- отдельный artifact с подробным отчётом:
-  `artifacts/reports/logistic_regression_baseline_evaluation_report.json`
-
-#### Baseline evaluation
-- Logistic Regression — первая референсная (baseline) модель.
-- Использует sklearn `Pipeline` с numeric- и categorical-препроцессингом.
-- Первый локальный прогон дал примерно:
-  - ROC-AUC ≈ 0.757
-  - PR-AUC ≈ 0.243
-- Эти значения зависят от конкретного локального запуска и **не** должны
-  жёстко задаваться как гарантированные.
-- Если возникает `ConvergenceWarning`, пайплайн фиксирует его в evaluation
-  report (не прерывая обучение).
-- Артефакты оценки сохраняются в:
-  - `artifacts/metrics/logistic_regression_baseline_metrics.json`
-  - `artifacts/reports/logistic_regression_baseline_evaluation_report.json`
-  - `artifacts/reports/logistic_regression_baseline_feature_schema.json`
-- Все эти артефакты в `.gitignore` и не коммитятся в репозиторий.
-
----
-
-## Project goal
-
-Построить сервис скоринга кредитного риска, который на вход принимает данные клиента, а на выходе возвращает:
-- вероятность дефолта
-- risk band
-- reason codes / explainability fields
-- версию модели
-- логирование результатов в БД
-
----
-
-## Dataset
-
-Используется датасет **Home Credit Default Risk**.
-
-На текущем этапе задействованы:
-- `application_train.csv`
-- `application_test.csv`
-- `bureau.csv`
-- `bureau_balance.csv`
-
-Ожидаемая структура данных:
+## Архитектура
 
 ```text
-/data/
-└── raw/
-    └── home_credit/
-        ├── application_train.csv
-        ├── application_test.csv
-        ├── bureau.csv
-        ├── bureau_balance.csv
+raw CSV
+  -> schema validation
+  -> application + bureau feature builders
+  -> train_features.parquet / test_features.parquet
+  -> baseline + CatBoost challenger
+  -> calibration + threshold selection
+  -> production_model_bundle.joblib
+       |-> FastAPI /score
+       |-> batch scoring
+       |-> reference stats -> drift monitoring
+       `-> model metadata / reason codes
+
+FastAPI /score
+  -> schema alignment
+  -> calibrated probability
+  -> decision + risk band + local SHAP reasons
+  -> atomic PostgreSQL request/prediction log
 ```
 
----
+Train/calibration/evaluation разделены. Source model обучается на train-части. Половина исходного holdout используется только для calibration и выбора threshold, вторая половина — только для итоговой оценки.
 
-## Project structure
+## Структура репозитория
 
 ```text
 credit-risk-scoring/
+├── .github/workflows/ci.yml
+├── migrations/
+│   ├── env.py
+│   └── versions/20260806_01_initial_schema.py
+├── configs/
+│   ├── data.yaml
+│   ├── features.yaml
+│   ├── service.yaml
+│   └── train.yaml
 ├── src/
 │   ├── api/
+│   │   ├── dependencies.py
 │   │   ├── main.py
 │   │   ├── routes.py
 │   │   └── schemas.py
-│   ├── core/
-│   │   ├── config.py
-│   │   └── logger.py
+│   ├── core/config.py
 │   ├── data/
-│   │   ├── load_raw.py
-│   │   └── validate_schema.py
 │   ├── db/
-│   │   ├── base.py
-│   │   ├── models.py
-│   │   ├── session.py
-│   │   └── init_db.py
 │   ├── features/
-│   │   ├── __init__.py
-│   │   ├── application_features.py
-│   │   ├── bureau_features.py
-│   │   └── feature_dataset.py
 │   ├── models/
-│   │   ├── __init__.py
-│   │   └── train_baseline.py
+│   │   ├── model_bundle.py
+│   │   ├── prepare_production_model.py
+│   │   ├── train_baseline.py
+│   │   └── train_catboost.py
 │   ├── services/
-│   │   └── health.py
-│   ├── utils/
-│   │   └── paths.py
+│   │   ├── batch.py
+│   │   ├── monitoring.py
+│   │   └── scoring.py
 │   └── cli.py
-├── configs/
-│   ├── app.yaml
-│   ├── db.yaml
-│   ├── data.yaml
-│   ├── features.yaml
-│   └── train.yaml
-├── data/
-│   ├── raw/
-│   ├── interim/
-│   └── processed/
-├── notebooks/
-├── sql/
-│   └── init.sql
 ├── tests/
-│   ├── conftest.py
-│   ├── test_config.py
-│   ├── test_health.py
-│   ├── test_load_raw.py
-│   ├── test_validate_schema.py
-│   ├── test_application_features.py
-│   ├── test_bureau_features.py
-│   ├── test_feature_dataset.py
-│   └── test_train_baseline.py
-├── artifacts/
-│   ├── models/
-│   ├── metrics/
-│   └── reports/
+├── alembic.ini
 ├── Dockerfile
 ├── docker-compose.yml
 ├── Makefile
-├── requirements.txt
-└── README.md
+└── requirements.txt
 ```
 
----
+Raw data, processed parquet, trained models, reports and predictions не коммитятся.
 
-## Tech stack
+## Требования
 
-- Python 3.11
-- FastAPI
-- Uvicorn
-- PostgreSQL
-- SQLAlchemy
-- Pydantic
-- pandas
-- numpy
-- scikit-learn
-- joblib
-- PyYAML
-- pytest
-- Docker
-- Docker Compose
+- Python 3.11;
+- PostgreSQL 16 для production-like запуска;
+- Docker Desktop с Compose — опционально;
+- полный Home Credit Default Risk dataset для повторной сборки features и обучения.
 
----
+## Установка на Windows PowerShell
 
-## Implemented functionality
+В корне репозитория:
 
-### API
-- `GET /health` — healthcheck endpoint
-
-### Database
-Сейчас в PostgreSQL заложены таблицы:
-- `model_registry`
-- `scoring_requests`
-- `scoring_predictions`
-- `feature_stats`
-
-### CLI
-Поддерживаются команды:
-- `python -m src.cli init-db`
-- `python -m src.cli validate-raw`
-- `python -m src.cli build-application-features`
-- `python -m src.cli build-bureau-features`
-- `python -m src.cli build-full-features`
-- `python -m src.cli train-baseline`
-
-#### `build-application-features`
-Строит application-level признаки:
-- загружает только `application_train` и `application_test`;
-- очищает данные и добавляет производные признаки;
-- выравнивает колонки train/test (`TARGET` остаётся только в train);
-- сохраняет результаты в parquet:
-  - `data/processed/application_train_features.parquet`
-  - `data/processed/application_test_features.parquet`
-- печатает размеры train/test feature dataset.
-
-Требует наличия реальных файлов Home Credit локально в
-`data/raw/home_credit/` (raw-данные и `data/processed/` в git не коммитятся).
-Конфигурация признаков задаётся в `configs/features.yaml`.
-
-#### `build-bureau-features`
-Строит applicant-level признаки кредитной истории:
-- загружает только `bureau` и `bureau_balance`;
-- агрегирует `bureau_balance` до уровня кредита (`SK_ID_BUREAU`);
-- мерджит балансовые фичи в `bureau` (все строки сохраняются);
-- агрегирует до уровня заявителя (одна строка на `SK_ID_CURR`);
-- сохраняет результат в parquet:
-  - `data/processed/bureau_features.parquet`
-- печатает размер dataset, число заявителей и фич.
-
-Результат мерджится в application-level фичи по `SK_ID_CURR`
-(left join: заявители без кредитной истории получают `NaN`).
-Требует реальных файлов Home Credit локально в `data/raw/home_credit/`.
-
-#### `build-full-features`
-Собирает финальные train/test ML-датасеты из готовых feature parquet-файлов:
-- читает `application_train_features`, `application_test_features` и
-  `bureau_features` из `data/processed/`;
-- делает left join application-фич с bureau-фичами по `SK_ID_CURR`
-  (количество строк application сохраняется, без row explosion);
-- держит детерминированный порядок колонок (`SK_ID_CURR`, затем `TARGET` в
-  train, остальные по алфавиту) и заменяет `inf`/`-inf` на `NaN`;
-- НЕ делает импутацию / кодирование / масштабирование (это задача train
-  pipeline);
-- сохраняет результат в parquet:
-  - `data/processed/train_features.parquet`
-  - `data/processed/test_features.parquet`
-- печатает размеры train/test и число фич.
-
-Требует, чтобы upstream feature-файлы уже были собраны локально
-(`build-application-features`, `build-bureau-features`). Конфигурация — секция
-`full_feature_dataset` в `configs/features.yaml`.
-
-#### `train-baseline`
-Тренирует Logistic Regression baseline:
-- читает `data/processed/train_features.parquet`;
-- разбивает на `X`/`y` (исключая `SK_ID_CURR` и `TARGET`);
-- определяет numeric / categorical фичи;
-- строит sklearn `Pipeline` (препроцессинг + `LogisticRegression`);
-- делает стратифицированный train/validation split;
-- считает метрики на валидации;
-- сохраняет артефакты:
-  - `artifacts/models/logistic_regression_baseline.joblib`
-  - `artifacts/metrics/logistic_regression_baseline_metrics.json`
-  - `artifacts/reports/logistic_regression_baseline_feature_schema.json`
-- печатает размеры выборок, число фич и ROC-AUC / PR-AUC.
-
-Требует собранный `train_features.parquet` локально. Конфигурация — секция
-`baseline` в `configs/train.yaml`. Метрики не фейкаются: JSON пишется только из
-реального обучения; артефакты модели/метрик/схемы в git не коммитятся.
-
-### Raw data validation
-Проверяется:
-- наличие файлов
-- наличие обязательных колонок
-- пустые таблицы
-- уникальность ключей
-- связь `bureau_balance.SK_ID_BUREAU -> bureau.SK_ID_BUREAU`
-
----
-
-## Important note about raw data validation
-
-На реальном датасете Home Credit обнаруживается data quality anomaly:
-
-- в `bureau_balance` есть значения `SK_ID_BUREAU`, которых нет в `bureau`
-
-Поэтому raw validation работает в двух режимах:
-
-- **strict mode** — для unit-тестов, нарушение FK считается ошибкой
-- **report mode** — для CLI на реальных данных, нарушение логируется в отчёт, но не валит весь пайплайн
-
-Это сделано намеренно: проверка остаётся, но проект не ломается из-за особенностей исходного датасета.
-
----
-
-## Installation
-
-### 1. Clone repository
-
-```bash
-git clone https://github.com/Leo-Daiser/Credit-Risk-Scoring-Service.git
-cd Credit-Risk-Scoring-Service
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+pip install -r requirements-dev.txt
+Copy-Item .env.example .env
 ```
 
-### 2. Create `.env`
+Замените `POSTGRES_PASSWORD=change-me` в `.env`.
 
-Пример:
+Проверка среды:
 
-```env
-POSTGRES_USER=credit_user
-POSTGRES_PASSWORD=credit_pass
-POSTGRES_DB=credit_risk
-POSTGRES_HOST=db
-POSTGRES_PORT=5432
-
-APP_HOST=0.0.0.0
-APP_PORT=8000
-APP_NAME=Credit Risk Scoring Service
-APP_ENV=dev
-```
-
-### 3. Install dependencies locally
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## Run with Docker Compose
-
-```bash
-docker compose up --build
-```
-
-После запуска:
-- API: `http://localhost:8000`
-- Healthcheck: `http://localhost:8000/health`
-
----
-
-## Local development
-
-### Run API locally
-
-```bash
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
-```
-
-### Initialize database
-
-```bash
-python -m src.cli init-db
-```
-
-### Validate raw data
-
-```bash
-python -m src.cli validate-raw
-```
-
----
-
-## Tests
-
-Запуск всех тестов:
-
-```bash
+```powershell
+python --version
+python -m pip check
+ruff check src tests migrations
 pytest -q
 ```
 
-Тесты покрывают:
-- config loading
-- health endpoint
-- raw data config loading
-- table path resolution
-- raw CSV loading
-- required columns validation
-- empty table detection
-- unique key validation
-- foreign key validation
-- end-to-end raw schema validation on synthetic mini-tables
-- safe division (zero denominator handling)
-- application table cleaning (DAYS_EMPLOYED anomaly, inf/-inf)
-- derived application features
-- train/test feature alignment and TARGET handling
-- parquet feature output
-- full train/test feature dataset key contract, merge (no row explosion),
-  column order, TARGET handling and parquet output (Phase 2.3)
-- baseline X/y split & target validation, feature-type inference, pipeline
-  construction, classification metrics, feature schema, and an end-to-end
-  Logistic Regression training run on synthetic data (Phase 3.1)
+Ожидаемый статус текущей версии: `105 passed`.
 
-Текущий статус: `pytest -q` → **77 passed**.
+## Данные
 
-> Примечание: команды, зависящие от данных (`validate-raw`, `build-*-features`,
-> `train-baseline`), требуют реальных файлов Home Credit / собранных датасетов
-> локально. Такие команды запускаются пользователем локально. Метрики
-> модели не подделываются — они появляются только из реального обучения.
->
-> Что НЕ коммитится в репозиторий (см. `.gitignore`):
-> - raw Kaggle CSV (`data/raw/`) — не коммитятся;
-> - сгенерированные parquet (`data/processed/`, processed features) — не коммитятся;
-> - артефакты обученной модели (`artifacts/models/`) — не коммитятся;
-> - артефакты метрик / отчётов (`artifacts/metrics/`, `artifacts/reports/`) — не коммитятся.
+Минимально используемые файлы:
 
----
+```text
+data/raw/home_credit/
+├── application_train.csv
+├── application_test.csv
+├── bureau.csv
+└── bureau_balance.csv
+```
+
+Исходные таблицы проверяются на наличие файлов и обязательных колонок, пустые таблицы, уникальные ключи и foreign-key relationship.
+
+В реальном `bureau_balance` есть ключи, отсутствующие в `bureau`. Поэтому unit-тесты используют strict FK mode, а CLI — report mode: аномалия остаётся в отчёте, но не останавливает весь pipeline.
+
+## Полная сборка модели
+
+В активированной `.venv`, из корня репозитория:
+
+```powershell
+python -m src.cli validate-raw
+python -m src.cli build-application-features
+python -m src.cli build-bureau-features
+python -m src.cli build-full-features
+python -m src.cli train-baseline
+python -m src.cli train-catboost
+python -m src.cli prepare-production-model
+```
+
+Для production API обязателен файл:
+
+```text
+artifacts/models/production_model_bundle.joblib
+```
+
+Bundle содержит calibrated estimator, feature schema, model metadata, risk bands и reference distributions для мониторинга. Он создаётся только из реального обучения и намеренно не хранится в Git.
+
+## CLI
+
+```text
+python -m src.cli init-db
+python -m src.cli validate-raw
+python -m src.cli build-application-features
+python -m src.cli build-bureau-features
+python -m src.cli build-full-features
+python -m src.cli train-baseline
+python -m src.cli train-catboost
+python -m src.cli prepare-production-model
+python -m src.cli batch-score
+python -m src.cli monitor-drift
+```
+
+`init-db` — backward-compatible alias для того же migration runner. Прямой вариант:
+
+```powershell
+python -m src.db.migrate
+```
+
+## Локальный запуск API
+
+Сначала PostgreSQL должен быть доступен по настройкам `.env`, а migration — применена:
+
+```powershell
+python -m src.db.migrate
+uvicorn src.api.main:app --host 0.0.0.0 --port 8000
+```
+
+Адреса:
+
+- OpenAPI: `http://localhost:8000/docs`;
+- liveness: `http://localhost:8000/health`;
+- readiness: `http://localhost:8000/ready`;
+- model metadata: `http://localhost:8000/model_info`.
+
+`/health` показывает, что процесс жив. `/ready` возвращает `200` только если production bundle загружен и PostgreSQL отвечает.
+
+## Docker Compose
+
+До запуска должен существовать production model bundle. Затем:
+
+```powershell
+docker compose up --build -d
+docker compose ps
+docker compose logs -f api
+```
+
+Compose:
+
+- поднимает PostgreSQL 16;
+- ждёт его healthcheck;
+- выполняет безопасный migration bridge и `alembic upgrade head`;
+- запускает API без development `--reload`;
+- монтирует `./artifacts` в read-only режиме;
+- проверяет `/ready`.
+
+Остановка без удаления данных:
+
+```powershell
+docker compose down
+```
 
 ## API
 
 ### `GET /health`
-
-Response example:
 
 ```json
 {
@@ -488,139 +256,162 @@ Response example:
 }
 ```
 
----
+### `GET /ready`
 
-## Configuration
+```json
+{
+  "status": "ready",
+  "model_version": "catboost_calibrated-2bfd7416f976",
+  "database": "ok"
+}
+```
 
-Основные конфиги лежат в `configs/`.
+### `GET /model_info`
 
-### `configs/data.yaml`
-Описывает:
-- директорию с raw data
-- список используемых таблиц
-- обязательные колонки
-- unique keys
+Возвращает version/type модели, feature count, threshold, risk bands и основные offline metrics. Сам estimator и полный feature schema наружу не выдаются.
 
-### `configs/features.yaml`
-Описывает конфигурацию feature engineering:
-- `id_column` (`SK_ID_CURR`)
-- `target_column` (`TARGET`)
-- `days_employed_anomaly_value` (`365243`)
-- `output_paths` для train/test feature parquet-файлов
-- `bureau_features` — секция Phase 2.2 (`id_column`, `bureau_id_column`,
-  `output_path` для bureau feature parquet-файла)
-- `full_feature_dataset` — секция Phase 2.3 (пути к входным feature parquet и
-  выходным `train_features` / `test_features`)
+### `POST /score`
 
-### `configs/train.yaml`
-Описывает конфигурацию обучения моделей:
-- `baseline` — секция Phase 3.1 (`train_features_path`, `id_column`,
-  `target_column`, `validation_size`, `random_seed`, `max_iter`, пути к
-  артефактам модели / метрик / feature schema)
+Request:
 
----
+```json
+{
+  "request_id": "application-100001",
+  "features": {
+    "AMT_INCOME_TOTAL": 180000,
+    "AMT_CREDIT": 450000,
+    "AMT_ANNUITY": 24000,
+    "AGE_YEARS": 37,
+    "NAME_CONTRACT_TYPE": "Cash loans",
+    "EXT_SOURCE_2": 0.61,
+    "EXT_SOURCE_3": 0.48
+  }
+}
+```
 
-## Database schema
+Все 281 признаков передавать не обязательно: отсутствующие значения проходят через обученную обработку missing values, а ответ содержит `missing_feature_count`. Неизвестные имена признаков отклоняются с `422`; это защищает от тихого нарушения feature contract.
 
-### `model_registry`
-Хранение версий моделей:
-- model version
-- model type
-- artifact path
-- metrics
+Response:
 
-### `scoring_requests`
-Логирование входящих inference requests.
+```json
+{
+  "request_id": "application-100001",
+  "default_probability": 0.083,
+  "decision": "approve",
+  "decision_threshold": 0.15,
+  "risk_band": "medium",
+  "reason_codes": [
+    {
+      "code": "EXT_SOURCE_3",
+      "feature": "EXT_SOURCE_3",
+      "contribution": 0.18,
+      "direction": "increases_risk",
+      "description": "External credit score increased the estimated risk."
+    }
+  ],
+  "model_version": "catboost_calibrated-2bfd7416f976",
+  "missing_feature_count": 274,
+  "latency_ms": 35.2,
+  "logging_status": "persisted"
+}
+```
 
-### `scoring_predictions`
-Хранение результатов скоринга.
+`decision` — демонстрационный operating decision, а не юридическое решение. При `DATABASE_REQUIRED=true` сервис не возвращает успешный scoring response, если audit log не записан. Повторный `request_id` возвращает `409`.
 
-### `feature_stats`
-Статистики признаков для мониторинга и контроля качества.
+## Explainability
 
----
+- CatBoost: локальные SHAP values для конкретного запроса;
+- Logistic Regression fallback: локальные contributions в log-odds;
+- в ответ попадают только positive contributions, повышающие риск;
+- reason codes объясняют поведение модели, но не являются причинно-следственными выводами.
 
-## Development roadmap
+## PostgreSQL
 
-### Phase 2 — Base Feature Layer
-- application-level cleaning ✅ (Phase 2.1)
-- derived features from application tables ✅ (Phase 2.1)
-- train/test feature alignment ✅ (Phase 2.1)
-- save processed datasets ✅ (Phase 2.1)
+Alembic migration создаёт:
 
-### Phase 2.2 — Historical Aggregation Layer
-- bureau aggregations ✅ (Phase 2.2)
-- bureau_balance aggregations ✅ (Phase 2.2)
-- merge historical features to applicant level ✅ (Phase 2.2)
+- `model_registry` — version/type/path/metrics production model;
+- `scoring_requests` — request id, входной feature payload, model version;
+- `scoring_predictions` — probability, risk band, reason codes;
+- `feature_stats` — задел для периодической агрегации feature statistics.
 
-### Phase 2.3 — Full Feature Dataset Builder
-- merge application + bureau features to train/test datasets ✅ (Phase 2.3)
-- deterministic column order + inf/-inf → NaN ✅ (Phase 2.3)
-- save `train_features.parquet` / `test_features.parquet` ✅ (Phase 2.3)
+Запрос и prediction сохраняются одной транзакцией. При ошибке выполняется rollback.
 
-### Phase 3 — Modeling Layer
-- Logistic Regression baseline ✅ (Phase 3.1)
-- offline evaluation + metrics JSON ✅ (Phase 3.1)
-- model + feature schema artifact saving ✅ (Phase 3.1)
-- CatBoost challenger (next)
-- LightGBM (next)
+`sql/init.sql` оставлен как legacy/reference schema; Docker Compose использует Alembic как единственный authoritative migration mechanism.
 
-### Phase 5 — Explainability and business layer
-- calibration
-- threshold tuning
-- SHAP report
-- business metrics
+## Batch scoring
 
-### Phase 6 — Serving layer
-- `POST /score`
-- `GET /model_info`
-- inference logging
-- model versioning
+Пути и ограничения задаются в `configs/service.yaml`:
 
-### Phase 7+
-- batch scoring
-- drift monitoring
-- advanced feature pipelines
-- champion / challenger logic
+```powershell
+python -m src.cli batch-score
+```
 
----
+По умолчанию читается `data/processed/test_features.parquet`, а результат сохраняется в:
 
-## Engineering principles
+```text
+artifacts/predictions/test_batch_scores.parquet
+artifacts/reports/batch_scoring_summary.json
+```
 
-Этот проект строится с упором на:
-- reproducibility
-- modular code
-- explicit data contracts
-- separation between notebooks and production code
-- testable preprocessing logic
-- production-minded ML development
+Online и batch scoring используют один bundle, threshold и risk-band mapping.
 
----
+## Drift monitoring
 
-## What is intentionally not done yet
+```powershell
+python -m src.cli monitor-drift
+```
 
-На текущем этапе **ещё не реализованы**:
-- CatBoost / LightGBM challenger-модели
-- калибровка вероятностей
-- SHAP / reason codes / explainability output
-- model serving for `/score`
-- логирование inference-результатов в PostgreSQL
-- batch scoring
-- drift monitoring
-- feature engineering из таблиц `previous_application`, `POS_CASH_balance`,
-  `installments_payments`, `credit_card_balance`
+Отчёт `artifacts/reports/drift_report.json` содержит:
 
-Это будет добавляться по фазам.
+- numeric/categorical PSI;
+- текущий missing rate и delta к train reference;
+- severity по каждому признаку;
+- общий `ok`, `warning` или `critical`.
 
----
+На локальном `application_test` текущий отчёт даёт `critical`: 43 critical и 8 warning features. Крупнейший сигнал связан с bureau balance missingness (`70.0%` в train против `13.2%` в test для одного из агрегатов). Это сигнал для анализа population/data-pipeline shift, а не повод автоматически переобучать модель.
 
-## Author
+## Конфигурация
 
-**Leo Daiser**  
-GitHub: [Leo-Daiser](https://github.com/Leo-Daiser)
+- `configs/data.yaml` — raw paths и data contracts;
+- `configs/features.yaml` — feature builders и processed outputs;
+- `configs/train.yaml` — baseline, CatBoost, calibration, threshold и risk bands;
+- `configs/service.yaml` — model bundle, batch и monitoring paths;
+- `.env` — DB, runtime model path и logging policy.
 
----
+Основные env-параметры перечислены в `.env.example`. `DATABASE_URL` при наличии имеет приоритет над отдельными `POSTGRES_*`.
 
-## License
+## Тесты и CI
 
-Проект создаётся в учебно-прикладных целях.
+```powershell
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\ruff.exe check src tests migrations
+.\.venv\Scripts\python.exe -m pytest -q
+docker compose config --quiet
+```
+
+Тесты покрывают data contracts, feature engineering, baseline, CatBoost, calibration, model bundle, local explanations, API, duplicate requests, transactional persistence, batch scoring, PSI monitoring и CLI dispatch.
+
+GitHub Actions:
+
+- устанавливает зафиксированные зависимости на Python 3.11;
+- поднимает PostgreSQL 16;
+- применяет Alembic migration;
+- запускает весь test suite;
+- валидирует Compose config.
+
+## Что намеренно не входит в MVP
+
+- API authentication/authorization и rate limiting;
+- TLS termination и secrets manager;
+- Kubernetes и autoscaling;
+- online feature store;
+- streaming monitoring и автоматический retraining;
+- дополнительные Home Credit tables (`previous_application`, `POS_CASH_balance`, `installments_payments`, `credit_card_balance`);
+- LightGBM: после фактического превосходства CatBoost второй tree challenger не нужен для завершённости сервиса;
+- юридически значимые credit-decision правила и fairness approval.
+
+Для реального production эти пункты обязательны в зависимости от регуляторного и инфраструктурного контекста. Текущий проект является полноценным portfolio-grade service MVP, но не банковской системой принятия решений.
+
+## Лицензия
+
+MIT. Проект предназначен для учебно-прикладного использования.

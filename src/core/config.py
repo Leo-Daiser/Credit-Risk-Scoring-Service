@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     postgres_user: str = "credit_user"
     postgres_password: str = "credit_pass"
@@ -12,6 +13,23 @@ class Settings(BaseSettings):
     app_name: str = "Credit Risk Scoring Service"
     app_env: str = "dev"
 
+    database_url: str | None = None
+    model_bundle_path: str = "artifacts/models/production_model_bundle.joblib"
+    inference_logging_enabled: bool = True
+    database_required: bool = True
+    top_reason_codes: int = 5
+    max_batch_size: int = 1000
+    log_level: str = "INFO"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @property
+    def resolved_database_url(self) -> str:
+        if self.database_url:
+            return self.database_url
+        return (
+            f"postgresql+psycopg2://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+        )
 
 settings = Settings()

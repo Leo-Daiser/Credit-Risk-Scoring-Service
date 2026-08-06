@@ -1,0 +1,11 @@
+.git
+.vscode
+.pytest_cache
+**/__pycache__
+*.py[cod]
+.env
+.venv
+data
+artifacts
+notebooks
+tests
