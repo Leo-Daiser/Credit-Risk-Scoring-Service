@@ -33,3 +33,49 @@ baseline:
     - 0.9
 
   selected_threshold_metric: f1
+
+# Phase 3.2 — nonlinear challenger evaluated on the same holdout split.
+catboost_challenger:
+  train_features_path: data/processed/train_features.parquet
+  id_column: SK_ID_CURR
+  target_column: TARGET
+  validation_size: 0.2
+  random_seed: 42
+  model_output_path: artifacts/models/catboost_challenger.joblib
+  metrics_output_path: artifacts/metrics/catboost_challenger_metrics.json
+  feature_schema_output_path: artifacts/reports/catboost_challenger_feature_schema.json
+  selected_threshold_metric: f1
+  thresholds: [0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.40, 0.50]
+  catboost:
+    iterations: 500
+    depth: 7
+    learning_rate: 0.05
+    auto_class_weights: Balanced
+    l2_leaf_reg: 5.0
+
+# Phase 5 — calibration, operating threshold and production model bundle.
+# The source model must be trained with exactly the same split parameters.
+production_model:
+  source_model_path: artifacts/models/catboost_challenger.joblib
+  source_metrics_path: artifacts/metrics/catboost_challenger_metrics.json
+  feature_schema_path: artifacts/reports/catboost_challenger_feature_schema.json
+  train_features_path: data/processed/train_features.parquet
+  bundle_output_path: artifacts/models/production_model_bundle.joblib
+  metadata_output_path: artifacts/reports/production_model_metadata.json
+  model_type: catboost_calibrated
+  random_seed: 42
+  holdout_size: 0.2
+  calibration_fraction: 0.5
+  calibration_method: sigmoid
+  calibration_cv: 5
+  selected_threshold_metric: f1
+  thresholds: [0.03, 0.05, 0.07, 0.10, 0.12, 0.15, 0.20, 0.25, 0.30]
+  risk_bands:
+    - name: low
+      upper_bound: 0.05
+    - name: medium
+      upper_bound: 0.10
+    - name: high
+      upper_bound: 0.20
+    - name: very_high
+      upper_bound: null

@@ -10,6 +10,10 @@ Supported commands:
     build-bureau-features
     build-full-features
     train-baseline
+    train-catboost
+    prepare-production-model
+    batch-score
+    monitor-drift
 """
 
 import sys
@@ -20,11 +24,16 @@ from src.db.init_db import init_db
 from src.features.application_features import run_build_application_features
 from src.features.bureau_features import run_build_bureau_features
 from src.features.feature_dataset import run_build_full_feature_dataset
+from src.models.prepare_production_model import prepare_production_model
 from src.models.train_baseline import train_logistic_regression_baseline
+from src.models.train_catboost import train_catboost_challenger
+from src.services.batch import run_batch_scoring
+from src.services.monitoring import run_drift_monitoring
 
 DATA_CONFIG_PATH = "configs/data.yaml"
 FEATURE_CONFIG_PATH = "configs/features.yaml"
 TRAIN_CONFIG_PATH = "configs/train.yaml"
+SERVICE_CONFIG_PATH = "configs/service.yaml"
 
 AVAILABLE_COMMANDS = (
     "init-db",
@@ -33,6 +42,10 @@ AVAILABLE_COMMANDS = (
     "build-bureau-features",
     "build-full-features",
     "train-baseline",
+    "train-catboost",
+    "prepare-production-model",
+    "batch-score",
+    "monitor-drift",
 )
 
 
@@ -134,6 +147,56 @@ def cmd_train_baseline() -> None:
     print(f"Feature schema saved to: {summary['feature_schema_output_path']}")
 
 
+def cmd_prepare_production_model() -> None:
+    """Calibrate and package the trained baseline for inference."""
+    summary = prepare_production_model(config_path=TRAIN_CONFIG_PATH)
+    print("Production model prepared.")
+    print(f"Model version: {summary['model_version']}")
+    print(f"Decision threshold: {summary['decision_threshold']}")
+    print(f"Calibration rows: {summary['calibration_rows']}")
+    print(f"Evaluation rows: {summary['evaluation_rows']}")
+    print(f"Raw Brier score: {summary['raw_brier_score']:.6f}")
+    print(f"Calibrated Brier score: {summary['calibrated_brier_score']:.6f}")
+    print(f"Bundle saved to: {summary['bundle_output_path']}")
+    print(f"Metadata saved to: {summary['metadata_output_path']}")
+
+
+def cmd_train_catboost() -> None:
+    """Train and persist the CatBoost challenger."""
+    summary = train_catboost_challenger(config_path=TRAIN_CONFIG_PATH)
+    print("CatBoost challenger trained.")
+    print(f"Train rows: {summary['train_rows']}")
+    print(f"Validation rows: {summary['valid_rows']}")
+    print(f"Feature count: {summary['feature_count']}")
+    print(f"ROC-AUC: {summary['roc_auc']:.6f}")
+    print(f"PR-AUC: {summary['pr_auc']:.6f}")
+    print(f"Brier score: {summary['brier_score']:.6f}")
+    print(f"Best threshold: {summary['best_threshold']}")
+    print(f"Model saved to: {summary['model_output_path']}")
+
+
+def cmd_batch_score() -> None:
+    """Score the configured batch input file."""
+    summary = run_batch_scoring(config_path=SERVICE_CONFIG_PATH)
+    print("Batch scoring completed.")
+    print(f"Rows scored: {summary['rows_scored']}")
+    print(f"Model version: {summary['model_version']}")
+    print(f"Mean default probability: {summary['mean_default_probability']:.6f}")
+    print(f"Decline rate: {summary['decline_rate']:.6f}")
+    print(f"Saved to: {summary['output_path']}")
+
+
+def cmd_monitor_drift() -> None:
+    """Compare the configured dataset with production reference statistics."""
+    report = run_drift_monitoring(config_path=SERVICE_CONFIG_PATH)
+    print("Drift monitoring completed.")
+    print(f"Status: {report['status']}")
+    print(f"Rows analyzed: {report['rows_analyzed']}")
+    print(f"Critical features: {report['critical_feature_count']}")
+    print(f"Warning features: {report['warning_feature_count']}")
+    print(f"Report saved to: {report['output_path']}")
+
+
 COMMANDS = {
     "init-db": cmd_init_db,
     "validate-raw": cmd_validate_raw,
@@ -141,6 +204,10 @@ COMMANDS = {
     "build-bureau-features": cmd_build_bureau_features,
     "build-full-features": cmd_build_full_features,
     "train-baseline": cmd_train_baseline,
+    "train-catboost": cmd_train_catboost,
+    "prepare-production-model": cmd_prepare_production_model,
+    "batch-score": cmd_batch_score,
+    "monitor-drift": cmd_monitor_drift,
 }
 
 

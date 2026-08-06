@@ -8,6 +8,7 @@ __pycache__/
 artifacts/models/*
 artifacts/metrics/*
 artifacts/reports/*
+artifacts/predictions/*
 
 data/raw/*
 data/interim/*
@@ -19,3 +20,4 @@ data/processed/*
 !artifacts/models/.gitkeep
 !artifacts/metrics/.gitkeep
 !artifacts/reports/.gitkeep
+!artifacts/predictions/.gitkeep

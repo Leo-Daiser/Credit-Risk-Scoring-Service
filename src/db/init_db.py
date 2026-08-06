@@ -1,6 +1,6 @@
-from src.db.base import Base
-from src.db.session import engine
-from src.db import models  # noqa: F401
+from src.db.migrate import run_migrations
+
 
 def init_db() -> None:
-    Base.metadata.create_all(bind=engine)
+    """Apply all database migrations (kept as a backward-compatible CLI name)."""
+    run_migrations()
