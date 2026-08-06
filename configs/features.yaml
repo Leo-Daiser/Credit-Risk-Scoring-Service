@@ -16,6 +16,12 @@ bureau_features:
   bureau_id_column: SK_ID_BUREAU
   output_path: data/processed/bureau_features.parquet
 
+# Phase 2.4 — previous applications, POS, installments and credit-card history.
+advanced_history_features:
+  id_column: SK_ID_CURR
+  previous_id_column: SK_ID_PREV
+  output_path: data/processed/advanced_history_features.parquet
+
 # Phase 2.3 — final train/test ML feature datasets (application + bureau merge).
 full_feature_dataset:
   id_column: SK_ID_CURR
@@ -23,5 +29,8 @@ full_feature_dataset:
   application_train_features_path: data/processed/application_train_features.parquet
   application_test_features_path: data/processed/application_test_features.parquet
   bureau_features_path: data/processed/bureau_features.parquet
+  advanced_history_features_path: data/processed/advanced_history_features.parquet
+  max_missing_rate: 0.995
+  drop_constant_features: true
   output_train_path: data/processed/train_features.parquet
   output_test_path: data/processed/test_features.parquet
