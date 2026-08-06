@@ -20,6 +20,13 @@ try:
 except ImportError:  # scikit-learn < 1.6 compatibility
     FrozenEstimator = None
 
+from src.models.evaluation import (
+    bootstrap_metric_intervals,
+    bootstrap_roc_auc_difference,
+    build_subgroup_report,
+    evaluate_acceptance_gates,
+    select_cost_sensitive_threshold,
+)
 from src.models.model_bundle import ModelBundle
 from src.models.train_baseline import (
     DEFAULT_THRESHOLD_GRID,
@@ -45,6 +52,8 @@ def load_production_config(config_path: str | Path) -> dict[str, Any]:
     required = (
         "source_model_path",
         "source_metrics_path",
+        "baseline_model_path",
+        "baseline_metrics_path",
         "feature_schema_path",
         "train_features_path",
         "bundle_output_path",
@@ -119,9 +128,7 @@ def expected_calibration_error(
         mask = bin_ids == bin_id
         if not mask.any():
             continue
-        error += float(mask.mean()) * abs(
-            float(probabilities[mask].mean()) - float(y[mask].mean())
-        )
+        error += float(mask.mean()) * abs(float(probabilities[mask].mean()) - float(y[mask].mean()))
     return float(error)
 
 
@@ -144,6 +151,8 @@ def build_reference_stats(
             counts, _ = np.histogram(non_null.to_numpy(dtype="float64"), bins=histogram_edges)
             distribution_proportions = (counts / max(int(counts.sum()), 1)).tolist()
         numeric[column] = {
+            "min": None if not len(non_null) else float(non_null.min()),
+            "max": None if not len(non_null) else float(non_null.max()),
             "mean": None if not len(non_null) else float(non_null.mean()),
             "std": None if not len(non_null) else float(non_null.std(ddof=0)),
             "missing_rate": float(values.isna().mean()),
@@ -160,6 +169,7 @@ def build_reference_stats(
             "missing_rate": float(frame[column].isna().mean()),
             "top_frequencies": {str(key): float(value) for key, value in frequencies.items()},
             "other_rate": float(max(0.0, 1.0 - frequencies.sum())),
+            "allowed_values": sorted(str(value) for value in values.unique()),
         }
     return {"numeric": numeric, "categorical": categorical}
 
@@ -203,8 +213,11 @@ def _artifact_version(
             "holdout_size",
             "calibration_fraction",
             "random_seed",
-            "selected_threshold_metric",
             "thresholds",
+            "threshold_policy",
+            "acceptance_gates",
+            "bootstrap_samples",
+            "confidence_level",
             "risk_bands",
         )
     }
@@ -225,11 +238,17 @@ def prepare_production_model(
     config = load_production_config(config_path)
     source_model_path = Path(config["source_model_path"])
     source_metrics_path = Path(config["source_metrics_path"])
+    baseline_model_path = Path(config["baseline_model_path"])
+    baseline_metrics_path = Path(config["baseline_metrics_path"])
     schema_path = Path(config["feature_schema_path"])
     if not source_model_path.exists():
         raise FileNotFoundError(f"Source model not found: {source_model_path}")
     if not source_metrics_path.exists():
         raise FileNotFoundError(f"Source model metrics not found: {source_metrics_path}")
+    if not baseline_model_path.exists():
+        raise FileNotFoundError(f"Baseline model not found: {baseline_model_path}")
+    if not baseline_metrics_path.exists():
+        raise FileNotFoundError(f"Baseline metrics not found: {baseline_metrics_path}")
     if not schema_path.exists():
         raise FileNotFoundError(f"Feature schema not found: {schema_path}")
 
@@ -237,9 +256,14 @@ def prepare_production_model(
         feature_schema = json.load(file)
     with source_metrics_path.open("r", encoding="utf-8") as file:
         source_metrics = json.load(file)
+    with baseline_metrics_path.open("r", encoding="utf-8") as file:
+        baseline_metrics = json.load(file)
     if not isinstance(source_metrics, dict):
         raise ValueError("Source model metrics must be a JSON object.")
+    if not isinstance(baseline_metrics, dict):
+        raise ValueError("Baseline metrics must be a JSON object.")
     source_model = joblib.load(source_model_path)
+    baseline_model = joblib.load(baseline_model_path)
     frame = load_training_data(config["train_features_path"])
     X, y, feature_names = split_features_target(
         frame,
@@ -252,6 +276,11 @@ def prepare_production_model(
     source_training = validate_source_training_contract(
         config,
         source_metrics,
+        feature_schema,
+    )
+    baseline_training = validate_source_training_contract(
+        config,
+        baseline_metrics,
         feature_schema,
     )
 
@@ -290,17 +319,33 @@ def prepare_production_model(
     calibration_probability = calibrated_model.predict_proba(X_calibration)[:, 1]
     raw_probability = source_model.predict_proba(X_evaluation)[:, 1]
     calibrated_probability = calibrated_model.predict_proba(X_evaluation)[:, 1]
+    baseline_probability = baseline_model.predict_proba(X_evaluation)[:, 1]
 
-    thresholds = [
-        float(value) for value in config.get("thresholds", DEFAULT_THRESHOLD_GRID)
-    ]
+    thresholds = [float(value) for value in config.get("thresholds", DEFAULT_THRESHOLD_GRID)]
     calibration_metrics = evaluate_binary_classifier(
         y_calibration, calibration_probability, thresholds=thresholds
     )
-    selection = select_best_threshold(
-        calibration_metrics["threshold_metrics"],
-        metric_name=str(config.get("selected_threshold_metric", "f1")),
-    )
+    threshold_policy = config.get("threshold_policy") or {}
+    if not isinstance(threshold_policy, dict):
+        raise ValueError("production_model.threshold_policy must be a dictionary.")
+    strategy = str(threshold_policy.get("strategy", "expected_cost"))
+    if strategy == "expected_cost":
+        selection = select_cost_sensitive_threshold(
+            calibration_metrics["threshold_metrics"],
+            false_negative_cost=float(threshold_policy.get("false_negative_cost", 5.0)),
+            false_positive_cost=float(threshold_policy.get("false_positive_cost", 1.0)),
+            min_recall=float(threshold_policy.get("min_recall", 0.0)),
+            max_predicted_positive_rate=float(
+                threshold_policy.get("max_predicted_positive_rate", 1.0)
+            ),
+        )
+    elif strategy == "metric":
+        selection = select_best_threshold(
+            calibration_metrics["threshold_metrics"],
+            metric_name=str(threshold_policy.get("metric_name", "f1")),
+        )
+    else:
+        raise ValueError(f"Unsupported threshold policy strategy: {strategy}.")
     threshold = float(selection["best_threshold"])
     raw_metrics = evaluate_binary_classifier(
         y_evaluation, raw_probability, threshold=threshold, thresholds=thresholds
@@ -317,6 +362,49 @@ def prepare_production_model(
     calibrated_metrics["expected_calibration_error"] = expected_calibration_error(
         y_evaluation, calibrated_probability
     )
+    baseline_evaluation_metrics = evaluate_binary_classifier(
+        y_evaluation,
+        baseline_probability,
+        threshold=threshold,
+        thresholds=thresholds,
+    )
+    confidence_intervals = bootstrap_metric_intervals(
+        y_evaluation,
+        calibrated_probability,
+        n_bootstrap=int(config.get("bootstrap_samples", 200)),
+        confidence_level=float(config.get("confidence_level", 0.95)),
+        random_seed=random_seed,
+    )
+    baseline_comparison_interval = bootstrap_roc_auc_difference(
+        y_evaluation,
+        calibrated_probability,
+        baseline_probability,
+        n_bootstrap=int(config.get("bootstrap_samples", 200)),
+        confidence_level=float(config.get("confidence_level", 0.95)),
+        random_seed=random_seed,
+    )
+    subgroup_report = build_subgroup_report(
+        X_evaluation,
+        y_evaluation,
+        calibrated_probability,
+        threshold=threshold,
+        min_rows=int(config.get("subgroup_min_rows", 500)),
+    )
+    baseline_roc_auc = float(baseline_evaluation_metrics["roc_auc"])
+    acceptance_config = config.get("acceptance_gates") or {}
+    if not isinstance(acceptance_config, dict):
+        raise ValueError("production_model.acceptance_gates must be a dictionary.")
+    acceptance_report = evaluate_acceptance_gates(
+        calibrated_metrics,
+        raw_metrics,
+        confidence_intervals,
+        acceptance_config,
+        baseline_roc_auc=baseline_roc_auc,
+        baseline_comparison_interval=baseline_comparison_interval,
+    )
+    if acceptance_report["status"] != "passed":
+        failed = [check["name"] for check in acceptance_report["checks"] if not check["passed"]]
+        raise RuntimeError(f"Production model failed acceptance gates: {failed}.")
 
     risk_bands = _validate_risk_bands(
         config.get(
@@ -345,7 +433,7 @@ def prepare_production_model(
         "created_at": datetime.now(UTC).isoformat(),
         "calibration_method": method,
         "decision_threshold": threshold,
-        "threshold_metric": selection["metric_name"],
+        "threshold_policy": selection,
         "risk_bands": risk_bands,
         "feature_count": len(feature_names),
         "training_rows": int(len(X_source_train)),
@@ -353,6 +441,15 @@ def prepare_production_model(
         "evaluation_rows": int(len(X_evaluation)),
         "source_model_sha256": hashlib.sha256(source_model_path.read_bytes()).hexdigest(),
         "source_training": source_training,
+        "baseline_comparison": {
+            "training_contract": baseline_training,
+            "model_sha256": hashlib.sha256(baseline_model_path.read_bytes()).hexdigest(),
+            "evaluation_metrics": baseline_evaluation_metrics,
+            "roc_auc_difference_interval": baseline_comparison_interval,
+        },
+        "confidence_intervals": confidence_intervals,
+        "subgroup_monitoring": subgroup_report,
+        "acceptance": acceptance_report,
         "metrics": {
             "raw": raw_metrics,
             "calibrated": calibrated_metrics,
@@ -374,6 +471,7 @@ def prepare_production_model(
         "model_version": model_version,
         "model_type": model_type,
         "decision_threshold": threshold,
+        "acceptance_status": acceptance_report["status"],
         "training_rows": int(len(X_source_train)),
         "calibration_rows": int(len(X_calibration)),
         "evaluation_rows": int(len(X_evaluation)),

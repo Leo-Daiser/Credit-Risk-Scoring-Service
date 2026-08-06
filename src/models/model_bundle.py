@@ -48,8 +48,7 @@ class ModelBundle:
             sample = invalid_numeric[:10]
             suffix = "" if len(invalid_numeric) <= 10 else f" (+{len(invalid_numeric) - 10} more)"
             raise ValueError(
-                "Numeric model features must contain finite numbers or null: "
-                f"{sample}{suffix}."
+                f"Numeric model features must contain finite numbers or null: {sample}{suffix}."
             )
         for column in self.feature_schema.get("categorical_features", []):
             frame[column] = frame[column].astype("object")
@@ -61,6 +60,55 @@ class ModelBundle:
         if probabilities.ndim != 2 or probabilities.shape[1] != 2:
             raise RuntimeError("The production model must return binary probabilities.")
         return probabilities[:, 1]
+
+    def assess_input_quality(
+        self,
+        record: dict[str, Any],
+        prepared_frame: pd.DataFrame,
+    ) -> dict[str, Any]:
+        """Describe feature completeness and training-domain deviations."""
+        expected = set(self.feature_names)
+        supplied = {key for key, value in record.items() if key in expected and value is not None}
+        row = prepared_frame.iloc[0]
+        numeric_reference = self.reference_stats.get("numeric", {})
+        categorical_reference = self.reference_stats.get("categorical", {})
+
+        out_of_range: list[str] = []
+        for feature, stats in numeric_reference.items():
+            value = row.get(feature)
+            if pd.isna(value):
+                continue
+            minimum = stats.get("min")
+            maximum = stats.get("max")
+            if (minimum is not None and float(value) < float(minimum)) or (
+                maximum is not None and float(value) > float(maximum)
+            ):
+                out_of_range.append(feature)
+
+        unseen_categories: list[str] = []
+        for feature, stats in categorical_reference.items():
+            value = row.get(feature)
+            if pd.isna(value):
+                continue
+            allowed = stats.get("allowed_values")
+            if allowed is not None and str(value) not in set(allowed):
+                unseen_categories.append(feature)
+
+        warnings: list[str] = []
+        if out_of_range:
+            warnings.append("numeric_values_outside_training_range")
+        if unseen_categories:
+            warnings.append("categorical_values_not_seen_in_training")
+        supplied_count = len(supplied)
+        total = len(self.feature_names)
+        return {
+            "supplied_feature_count": supplied_count,
+            "supplied_feature_coverage": supplied_count / total if total else 0.0,
+            "missing_feature_count": int(row.isna().sum()),
+            "out_of_range_features": sorted(out_of_range),
+            "unseen_categorical_features": sorted(unseen_categories),
+            "warnings": warnings,
+        }
 
     def risk_band(self, probability: float) -> str:
         """Map a calibrated probability to the configured risk band."""

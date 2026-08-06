@@ -19,7 +19,7 @@ class ScoreRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
     request_id: RequestId | None = None
-    features: dict[str, FeatureValue] = Field(min_length=1, max_length=512)
+    features: dict[str, FeatureValue] = Field(min_length=1, max_length=1000)
 
 
 class ReasonCode(BaseModel):
@@ -28,6 +28,15 @@ class ReasonCode(BaseModel):
     contribution: float
     direction: Literal["increases_risk"]
     description: str
+
+
+class InputQuality(BaseModel):
+    supplied_feature_count: int = Field(ge=0)
+    supplied_feature_coverage: float = Field(ge=0.0, le=1.0)
+    missing_feature_count: int = Field(ge=0)
+    out_of_range_features: list[str]
+    unseen_categorical_features: list[str]
+    warnings: list[str]
 
 
 class ScoreResponse(BaseModel):
@@ -39,6 +48,7 @@ class ScoreResponse(BaseModel):
     reason_codes: list[ReasonCode]
     model_version: str
     missing_feature_count: int = Field(ge=0)
+    input_quality: InputQuality
     latency_ms: float = Field(ge=0.0)
     logging_status: Literal["persisted", "disabled", "failed"]
 
@@ -51,6 +61,17 @@ class ModelInfoResponse(BaseModel):
     decision_threshold: float
     risk_bands: list[dict[str, Any]]
     metrics: dict[str, float | None]
+    confidence_intervals: dict[str, dict[str, float]]
+    acceptance_status: str | None
+
+
+class FeatureSchemaResponse(BaseModel):
+    model_version: str
+    feature_count: int = Field(ge=1)
+    numeric_features: list[str]
+    categorical_features: list[str]
+    required_features: list[str]
+    min_feature_coverage: float = Field(ge=0.0, le=1.0)
 
 
 class ReadinessResponse(BaseModel):

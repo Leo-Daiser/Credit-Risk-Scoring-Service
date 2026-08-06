@@ -44,41 +44,26 @@ def test_cli_init_db_command_calls_init_db(monkeypatch, capsys):
 def test_cli_validate_raw_command_calls_expected_functions(monkeypatch, capsys):
     calls = {}
 
-    def fake_load_data_config(path):
+    def fake_validate_configured_raw_data(path, strict_fk):
         calls["config_path"] = path
-        return {"sentinel": "config"}
-
-    def fake_load_raw_tables(path):
-        calls["tables_path"] = path
-
-        class _DummyDF:
-            shape = (10, 3)
-
-        return {"application_train": _DummyDF()}
-
-    def fake_validate_raw_tables(tables, config, strict_fk):
-        calls["tables"] = tables
-        calls["config"] = config
         calls["strict_fk"] = strict_fk
         return {
-            "fk_report": {
-                "relationship_name": "bureau->application_train",
-                "orphan_count": 0,
-                "orphan_ratio": 0.0,
-                "sample_orphans": [],
-            }
+            "table_reports": {
+                "application_train": {"rows": 10, "columns": 3},
+            },
+            "relationship_reports": [],
         }
 
-    monkeypatch.setattr(cli, "load_data_config", fake_load_data_config)
-    monkeypatch.setattr(cli, "load_raw_tables", fake_load_raw_tables)
-    monkeypatch.setattr(cli, "validate_raw_tables", fake_validate_raw_tables)
+    monkeypatch.setattr(
+        cli,
+        "validate_configured_raw_data",
+        fake_validate_configured_raw_data,
+    )
 
     cli.main(["validate-raw"])
 
     assert calls["config_path"] == cli.DATA_CONFIG_PATH
-    assert calls["tables_path"] == cli.DATA_CONFIG_PATH
     assert calls["strict_fk"] is False
-    assert calls["config"] == {"sentinel": "config"}
     assert "Raw data validation completed." in capsys.readouterr().out
 
 
@@ -126,6 +111,27 @@ def test_cli_build_bureau_features_command_calls_runner(monkeypatch, capsys):
     assert "Unique applicants: 300" in out
 
 
+def test_cli_build_advanced_history_features_command_calls_runner(monkeypatch, capsys):
+    calls = {}
+
+    def fake_runner(data_config_path, feature_config_path):
+        calls["args"] = (data_config_path, feature_config_path)
+        return {
+            "shape": (350, 120),
+            "unique_applicants": 350,
+            "feature_count": 119,
+            "output_path": "data/processed/advanced_history_features.parquet",
+        }
+
+    monkeypatch.setattr(cli, "run_build_advanced_history_features", fake_runner)
+    cli.main(["build-advanced-history-features"])
+
+    assert calls["args"] == (cli.DATA_CONFIG_PATH, cli.FEATURE_CONFIG_PATH)
+    out = capsys.readouterr().out
+    assert "Advanced history features built." in out
+    assert "Feature count: 119" in out
+
+
 def test_cli_build_full_features_command_calls_runner(monkeypatch, capsys):
     calls = {}
 
@@ -171,9 +177,7 @@ def test_cli_train_baseline_command_calls_runner(monkeypatch, capsys):
             "model_output_path": "artifacts/models/logistic_regression_baseline.joblib",
             "metrics_output_path": "artifacts/metrics/baseline_metrics.json",
             "feature_schema_output_path": "artifacts/reports/feature_schema.json",
-            "evaluation_report_output_path": (
-                "artifacts/reports/evaluation_report.json"
-            ),
+            "evaluation_report_output_path": ("artifacts/reports/evaluation_report.json"),
         }
 
     monkeypatch.setattr(cli, "train_logistic_regression_baseline", fake_runner)
@@ -198,6 +202,7 @@ def test_cli_prepare_production_model_command_calls_runner(monkeypatch, capsys):
         calls["config_path"] = config_path
         return {
             "model_version": "logistic_regression_calibrated-abc123",
+            "acceptance_status": "passed",
             "decision_threshold": 0.12,
             "calibration_rows": 100,
             "evaluation_rows": 100,
@@ -213,6 +218,7 @@ def test_cli_prepare_production_model_command_calls_runner(monkeypatch, capsys):
     assert calls["config_path"] == cli.TRAIN_CONFIG_PATH
     output = capsys.readouterr().out
     assert "Production model prepared." in output
+    assert "Acceptance gates: passed" in output
     assert "Decision threshold: 0.12" in output
 
 

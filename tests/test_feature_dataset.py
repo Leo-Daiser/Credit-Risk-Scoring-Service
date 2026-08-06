@@ -48,6 +48,16 @@ def _bureau() -> pd.DataFrame:
     )
 
 
+def _advanced_history() -> pd.DataFrame:
+    return pd.DataFrame(
+        {
+            "SK_ID_CURR": [1, 2, 4],
+            "PREV_APPROVED_RATIO": [0.5, 1.0, 0.25],
+            "INSTALLMENT_DAYS_LATE_MAX": [3.0, 0.0, 10.0],
+        }
+    )
+
+
 # ---------------------------------------------------------------------------
 # validate_feature_key_contract
 # ---------------------------------------------------------------------------
@@ -100,15 +110,13 @@ def test_merge_application_with_bureau_column_order_with_target():
 # ---------------------------------------------------------------------------
 def test_build_full_feature_dataset_contract():
     train_df, test_df = build_full_feature_dataset(
-        _application_train(), _application_test(), _bureau()
+        _application_train(), _application_test(), _bureau(), _advanced_history()
     )
     assert list(train_df.columns[:2]) == ["SK_ID_CURR", "TARGET"]
     assert test_df.columns[0] == "SK_ID_CURR"
     assert "TARGET" not in test_df.columns
 
-    train_feature_cols = [
-        c for c in train_df.columns if c not in ("SK_ID_CURR", "TARGET")
-    ]
+    train_feature_cols = [c for c in train_df.columns if c not in ("SK_ID_CURR", "TARGET")]
     test_feature_cols = [c for c in test_df.columns if c != "SK_ID_CURR"]
     assert train_feature_cols == test_feature_cols
 
@@ -130,9 +138,7 @@ def test_build_full_feature_dataset_missing_target_raises():
 def test_build_full_feature_dataset_drops_target_from_test_if_present():
     app_test = _application_test().copy()
     app_test["TARGET"] = [0, 1]
-    train_df, test_df = build_full_feature_dataset(
-        _application_train(), app_test, _bureau()
-    )
+    train_df, test_df = build_full_feature_dataset(_application_train(), app_test, _bureau())
     assert "TARGET" not in test_df.columns
 
 
@@ -142,6 +148,26 @@ def test_build_full_feature_dataset_replaces_infinities():
     train_df, _ = build_full_feature_dataset(app_train, _application_test(), _bureau())
     assert not np.isinf(train_df["AMT_CREDIT"]).any()
     assert np.isnan(train_df.loc[train_df["SK_ID_CURR"] == 1, "AMT_CREDIT"]).all()
+
+
+def test_build_full_feature_dataset_drops_constant_and_extremely_sparse_features():
+    train = _application_train().copy()
+    test = _application_test().copy()
+    train["CONSTANT"] = 1
+    test["CONSTANT"] = 1
+    train["SPARSE"] = [np.nan, np.nan, 1.0]
+    test["SPARSE"] = np.nan
+
+    train_df, test_df = build_full_feature_dataset(
+        train,
+        test,
+        _bureau(),
+        max_missing_rate=0.5,
+    )
+
+    assert "CONSTANT" not in train_df
+    assert "SPARSE" not in train_df
+    assert "CONSTANT" not in test_df
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +193,7 @@ def test_run_build_full_feature_dataset_end_to_end(tmp_path):
     _application_train().to_parquet(processed / "app_train.parquet", index=False)
     _application_test().to_parquet(processed / "app_test.parquet", index=False)
     _bureau().to_parquet(processed / "bureau.parquet", index=False)
+    _advanced_history().to_parquet(processed / "advanced.parquet", index=False)
 
     config = {
         "full_feature_dataset": {
@@ -175,6 +202,7 @@ def test_run_build_full_feature_dataset_end_to_end(tmp_path):
             "application_train_features_path": str(processed / "app_train.parquet"),
             "application_test_features_path": str(processed / "app_test.parquet"),
             "bureau_features_path": str(processed / "bureau.parquet"),
+            "advanced_history_features_path": str(processed / "advanced.parquet"),
             "output_train_path": str(processed / "train_features.parquet"),
             "output_test_path": str(processed / "test_features.parquet"),
         }

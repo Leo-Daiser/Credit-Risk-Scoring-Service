@@ -8,6 +8,7 @@ Supported commands:
     validate-raw
     build-application-features
     build-bureau-features
+    build-advanced-history-features
     build-full-features
     train-baseline
     train-catboost
@@ -18,9 +19,9 @@ Supported commands:
 
 import sys
 
-from src.data.load_raw import load_data_config, load_raw_tables
-from src.data.validate_schema import validate_raw_tables
+from src.data.validate_schema import validate_configured_raw_data
 from src.db.init_db import init_db
+from src.features.advanced_history_features import run_build_advanced_history_features
 from src.features.application_features import run_build_application_features
 from src.features.bureau_features import run_build_bureau_features
 from src.features.feature_dataset import run_build_full_feature_dataset
@@ -40,6 +41,7 @@ AVAILABLE_COMMANDS = (
     "validate-raw",
     "build-application-features",
     "build-bureau-features",
+    "build-advanced-history-features",
     "build-full-features",
     "train-baseline",
     "train-catboost",
@@ -57,22 +59,20 @@ def cmd_init_db() -> None:
 
 def cmd_validate_raw() -> None:
     """Load and validate the raw Home Credit tables."""
-    config = load_data_config(DATA_CONFIG_PATH)
-    tables = load_raw_tables(DATA_CONFIG_PATH)
-    report = validate_raw_tables(tables, config, strict_fk=False)
+    report = validate_configured_raw_data(DATA_CONFIG_PATH, strict_fk=False)
 
     print("Raw data validation completed.")
-    for table_name, df in tables.items():
-        print(f"{table_name}: shape={df.shape}")
+    for table_name, table_report in report["table_reports"].items():
+        print(f"{table_name}: shape=({table_report['rows']}, {table_report['columns']})")
 
-    fk_report = report["fk_report"]
-    print(
-        f"FK report | {fk_report['relationship_name']} | "
-        f"orphans={fk_report['orphan_count']} "
-        f"({fk_report['orphan_ratio']:.4%})"
-    )
-    if fk_report["orphan_count"] > 0:
-        print("Sample orphan keys:", fk_report["sample_orphans"])
+    for fk_report in report["relationship_reports"]:
+        print(
+            f"FK report | {fk_report['relationship_name']} | "
+            f"orphans={fk_report['orphan_count']} "
+            f"({fk_report['orphan_ratio']:.4%})"
+        )
+        if fk_report["orphan_count"] > 0:
+            print("Sample orphan keys:", fk_report["sample_orphans"])
 
 
 def cmd_build_application_features() -> None:
@@ -100,6 +100,19 @@ def cmd_build_bureau_features() -> None:
 
     print("Bureau features built.")
     print(f"Bureau features: shape={summary['shape']}")
+    print(f"Unique applicants: {summary['unique_applicants']}")
+    print(f"Feature count: {summary['feature_count']}")
+    print(f"Saved to: {summary['output_path']}")
+
+
+def cmd_build_advanced_history_features() -> None:
+    """Build applicant-level previous/POS/installment/credit-card features."""
+    summary = run_build_advanced_history_features(
+        data_config_path=DATA_CONFIG_PATH,
+        feature_config_path=FEATURE_CONFIG_PATH,
+    )
+    print("Advanced history features built.")
+    print(f"Advanced features: shape={summary['shape']}")
     print(f"Unique applicants: {summary['unique_applicants']}")
     print(f"Feature count: {summary['feature_count']}")
     print(f"Saved to: {summary['output_path']}")
@@ -152,6 +165,7 @@ def cmd_prepare_production_model() -> None:
     summary = prepare_production_model(config_path=TRAIN_CONFIG_PATH)
     print("Production model prepared.")
     print(f"Model version: {summary['model_version']}")
+    print(f"Acceptance gates: {summary['acceptance_status']}")
     print(f"Decision threshold: {summary['decision_threshold']}")
     print(f"Calibration rows: {summary['calibration_rows']}")
     print(f"Evaluation rows: {summary['evaluation_rows']}")
@@ -202,6 +216,7 @@ COMMANDS = {
     "validate-raw": cmd_validate_raw,
     "build-application-features": cmd_build_application_features,
     "build-bureau-features": cmd_build_bureau_features,
+    "build-advanced-history-features": cmd_build_advanced_history_features,
     "build-full-features": cmd_build_full_features,
     "train-baseline": cmd_train_baseline,
     "train-catboost": cmd_train_catboost,
@@ -224,8 +239,7 @@ def main(argv: list[str] | None = None) -> None:
     handler = COMMANDS.get(command)
     if handler is None:
         raise SystemExit(
-            f"Unknown command: {command}\n"
-            f"Available commands: {', '.join(AVAILABLE_COMMANDS)}"
+            f"Unknown command: {command}\nAvailable commands: {', '.join(AVAILABLE_COMMANDS)}"
         )
 
     handler()
