@@ -1,4 +1,4 @@
-"""Tests for the Phase 2.3 full feature dataset builder."""
+"""Tests for the Phase 2.4 full feature dataset builder."""
 
 import numpy as np
 import pandas as pd
@@ -219,3 +219,4 @@ def test_run_build_full_feature_dataset_end_to_end(tmp_path):
     assert summary["test_shape"][0] == 2
     assert summary["id_column"] == "SK_ID_CURR"
     assert summary["target_column"] == "TARGET"
+

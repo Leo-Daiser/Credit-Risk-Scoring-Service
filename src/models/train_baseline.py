@@ -1,7 +1,7 @@
 """Logistic Regression baseline trainer (Phase 3.1 + 3.1.1 hardening).
 
 This module trains the first *real* ML baseline for the credit-risk scoring
-service on top of the final feature dataset produced in Phase 2.3
+service on top of the final feature dataset produced in Phase 2.4
 (``data/processed/train_features.parquet``).
 
 Design goals:
@@ -33,9 +33,9 @@ in this repo — the data-dependent CLI command (``train-baseline``) is meant to
 be run locally by the user, while the unit tests exercise the full pipeline on
 small synthetic data.
 
-NOT implemented here (by design, until later phases): CatBoost / LightGBM
-challengers, calibration, SHAP / reason codes, the API ``/score`` endpoint,
-PostgreSQL inference logging, batch scoring and drift monitoring.
+CatBoost, calibration, serving, persistence, batch scoring and monitoring are
+implemented in separate modules; this module intentionally remains limited to
+the Logistic Regression baseline.
 """
 
 from __future__ import annotations
@@ -819,3 +819,4 @@ def train_logistic_regression_baseline(
         "feature_schema_output_path": str(feature_schema_output_path),
         "evaluation_report_output_path": str(evaluation_report_output_path),
     }
+

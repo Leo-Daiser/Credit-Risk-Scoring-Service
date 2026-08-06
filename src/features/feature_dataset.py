@@ -8,8 +8,8 @@ parquet files produced in earlier phases:
 * ``bureau_features.parquet`` (Phase 2.2, applicant-level bureau aggregates)
 * ``advanced_history_features.parquet`` (Phase 2.3, previous/POS/payment/card aggregates)
 
-The application feature tables are left-joined with the bureau feature table on
-``SK_ID_CURR`` to produce::
+The application feature tables are left-joined with the applicant-level bureau
+and advanced-history feature tables on ``SK_ID_CURR`` to produce::
 
     train_features.parquet  ->  SK_ID_CURR | TARGET | <features...>
     test_features.parquet   ->  SK_ID_CURR | <features...>
@@ -379,3 +379,4 @@ def run_build_full_feature_dataset(
         "id_column": id_column,
         "target_column": target_column,
     }
+

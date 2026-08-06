@@ -149,7 +149,8 @@ ruff check src tests migrations
 pytest -q
 ```
 
-Ожидаемый статус текущей версии: `127 passed`.
+Результат последнего локального запуска на этой ветке: `127 passed`. Это число
+относится к конкретному checkout и может измениться при добавлении или удалении тестов.
 
 ## Данные
 
@@ -263,6 +264,10 @@ docker compose down
 
 ## API
 
+Примеры ниже показывают форму контракта. `model_version`, `feature_count` и
+зависящие от них счётчики берутся из bundle, который генерируется локально и не
+хранится в Git. Поэтому они не являются фиксированными свойствами исходного кода.
+
 ### `GET /health`
 
 ```json
@@ -277,7 +282,7 @@ docker compose down
 ```json
 {
   "status": "ready",
-  "model_version": "catboost_calibrated-fc23c5cd419a",
+  "model_version": "catboost_calibrated-<generated-hash>",
   "database": "ok"
 }
 ```
@@ -309,9 +314,18 @@ Request:
 }
 ```
 
-Все 622 признака передавать не обязательно, но обязательны `AGE_YEARS`, `AMT_CREDIT`, `AMT_ANNUITY`, `AMT_INCOME_TOTAL`, а доля непустых переданных признаков должна быть не ниже `MIN_FEATURE_COVERAGE` (по умолчанию `0.01`). Неизвестные имена, нечисловые/бесконечные numeric values, пустые request IDs и чрезмерно длинные categorical values отклоняются с `422`. Ответ содержит полноту входа и предупреждения о значениях вне обучающего диапазона или неизвестных категориях.
+Все признаки передавать не обязательно. Их фактическое число определяется текущим
+bundle (`622` в локальном прогоне, описанном в разделе «Статус проекта»). Обязательны
+`AGE_YEARS`, `AMT_CREDIT`, `AMT_ANNUITY`, `AMT_INCOME_TOTAL`, а доля непустых
+переданных признаков должна быть не ниже `MIN_FEATURE_COVERAGE` (по умолчанию
+`0.01`). Неизвестные имена, нечисловые/бесконечные numeric values, пустые request
+IDs и чрезмерно длинные categorical values отклоняются с `422`. Ответ содержит
+полноту входа и предупреждения о значениях вне обучающего диапазона или неизвестных
+категориях.
 
-Если в `.env` задан `API_KEY`, запрос должен содержать заголовок `X-API-Key`. Для production пустой ключ недопустим; режим без ключа предназначен только для локальной разработки.
+Если в `.env` задан `API_KEY`, запрос должен содержать заголовок `X-API-Key`. При
+пустом `API_KEY` проверка отключена; перед production-развёртыванием оператор обязан
+задать сильный случайный ключ.
 
 Response:
 
@@ -331,7 +345,7 @@ Response:
       "description": "External credit score increased the estimated risk."
     }
   ],
-  "model_version": "catboost_calibrated-fc23c5cd419a",
+  "model_version": "catboost_calibrated-<generated-hash>",
   "missing_feature_count": 615,
   "input_quality": {
     "supplied_feature_count": 7,
@@ -448,3 +462,4 @@ GitHub Actions:
 ## Лицензия
 
 MIT. Проект предназначен для учебно-прикладного использования.
+
