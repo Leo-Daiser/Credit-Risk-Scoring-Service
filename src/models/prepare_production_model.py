@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import tempfile
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,12 +29,11 @@ from src.models.evaluation import (
     evaluate_acceptance_gates,
     select_cost_sensitive_threshold,
 )
-from src.models.model_bundle import ModelBundle
+from src.models.model_bundle import BUNDLE_FORMAT_VERSION, ModelBundle, derive_model_version
 from src.models.train_baseline import (
     DEFAULT_THRESHOLD_GRID,
     evaluate_binary_classifier,
     load_training_data,
-    save_json,
     select_best_threshold,
     split_features_target,
 )
@@ -197,38 +198,144 @@ def _validate_risk_bands(risk_bands: Any) -> list[dict[str, Any]]:
     return result
 
 
-def _artifact_version(
-    path: Path,
-    model_type: str,
+def _validate_input_contract(
+    input_contract: Any,
+    feature_names: list[str],
+) -> dict[str, Any]:
+    if not isinstance(input_contract, dict):
+        raise ValueError("production_model.input_contract must be a dictionary.")
+    required_features = input_contract.get("required_features")
+    if not isinstance(required_features, list) or any(
+        not isinstance(value, str) or not value for value in required_features
+    ):
+        raise ValueError("input_contract.required_features must be a list of strings.")
+    if len(required_features) != len(set(required_features)):
+        raise ValueError("input_contract.required_features must be unique.")
+    unknown = sorted(set(required_features) - set(feature_names))
+    if unknown:
+        raise ValueError(f"Required input features are absent from the schema: {unknown}.")
+    minimum_coverage = float(input_contract.get("min_feature_coverage", -1.0))
+    if not np.isfinite(minimum_coverage) or not 0.0 <= minimum_coverage <= 1.0:
+        raise ValueError("input_contract.min_feature_coverage must be within [0, 1].")
+    return {
+        "required_features": list(required_features),
+        "min_feature_coverage": minimum_coverage,
+    }
+
+
+VERSION_CONFIG_KEYS = (
+    "acceptance_gates",
+    "bootstrap_samples",
+    "calibration_cv",
+    "calibration_fraction",
+    "calibration_method",
+    "confidence_level",
+    "holdout_size",
+    "input_contract",
+    "random_seed",
+    "risk_bands",
+    "subgroup_min_rows",
+    "threshold_policy",
+    "thresholds",
+)
+PACKAGING_CODE_PATHS = (
+    "src/models/evaluation.py",
+    "src/models/model_bundle.py",
+    "src/models/prepare_production_model.py",
+    "src/models/train_baseline.py",
+)
+
+
+def sha256_file(path: str | Path, chunk_size: int = 1024 * 1024) -> str:
+    """Hash a potentially large artifact without loading it into memory."""
+    artifact_path = Path(path)
+    digest = hashlib.sha256()
+    with artifact_path.open("rb") as file:
+        while chunk := file.read(chunk_size):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def sha256_json(value: Any) -> str:
+    """Hash a JSON-compatible value using a canonical representation."""
+    payload = json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def build_artifact_input_fingerprints(
     config: dict[str, Any],
     feature_schema: dict[str, Any],
-) -> str:
-    """Hash every inference-relevant input into the model version."""
-    digest_builder = hashlib.sha256(path.read_bytes())
-    version_config = {
-        key: config.get(key)
-        for key in (
-            "calibration_method",
-            "calibration_cv",
-            "holdout_size",
-            "calibration_fraction",
-            "random_seed",
-            "thresholds",
-            "threshold_policy",
-            "acceptance_gates",
-            "bootstrap_samples",
-            "confidence_level",
-            "risk_bands",
-        )
+) -> dict[str, str]:
+    """Fingerprint every input that can change bundle content or acceptance."""
+    version_config = {key: config.get(key) for key in VERSION_CONFIG_KEYS}
+    project_root = Path(__file__).resolve().parents[2]
+    packaging_code = {
+        relative_path: sha256_file(project_root / relative_path)
+        for relative_path in PACKAGING_CODE_PATHS
     }
-    digest_builder.update(
-        json.dumps(version_config, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return {
+        "source_model_sha256": sha256_file(config["source_model_path"]),
+        "source_metrics_sha256": sha256_file(config["source_metrics_path"]),
+        "baseline_model_sha256": sha256_file(config["baseline_model_path"]),
+        "baseline_metrics_sha256": sha256_file(config["baseline_metrics_path"]),
+        "training_data_sha256": sha256_file(config["train_features_path"]),
+        "feature_schema_sha256": sha256_json(feature_schema),
+        "production_config_sha256": sha256_json(version_config),
+        "packaging_code_sha256": sha256_json(packaging_code),
+        "dependency_lock_sha256": sha256_file(project_root / "requirements.txt"),
+    }
+
+
+def artifact_version(model_type: str, artifact_inputs: dict[str, str]) -> str:
+    """Derive one stable version from all bundle-producing inputs."""
+    return derive_model_version(model_type, artifact_inputs)
+
+
+def _temporary_output_path(output_path: Path) -> Path:
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    handle = tempfile.NamedTemporaryFile(
+        prefix=f".{output_path.name}.",
+        suffix=".tmp",
+        dir=output_path.parent,
+        delete=False,
     )
-    digest_builder.update(
-        json.dumps(feature_schema, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    )
-    digest = digest_builder.hexdigest()[:12]
-    return f"{model_type}-{digest}"
+    handle.close()
+    return Path(handle.name)
+
+
+def save_production_artifacts_atomically(
+    bundle: ModelBundle,
+    metadata: dict[str, Any],
+    bundle_path: str | Path,
+    metadata_path: str | Path,
+) -> None:
+    """Replace validated runtime artifacts only after both writes succeed."""
+    resolved_bundle_path = Path(bundle_path)
+    resolved_metadata_path = Path(metadata_path)
+    if resolved_bundle_path == resolved_metadata_path:
+        raise ValueError("Bundle and metadata output paths must be different.")
+    bundle.validate_contract()
+
+    temporary_bundle = _temporary_output_path(resolved_bundle_path)
+    temporary_metadata = _temporary_output_path(resolved_metadata_path)
+    try:
+        joblib.dump(bundle, temporary_bundle)
+        with temporary_metadata.open("w", encoding="utf-8") as file:
+            json.dump(metadata, file, ensure_ascii=False, indent=2)
+            file.flush()
+            os.fsync(file.fileno())
+
+        # The bundle is the serving source of truth, so publish it last.
+        os.replace(temporary_metadata, resolved_metadata_path)
+        os.replace(temporary_bundle, resolved_bundle_path)
+    finally:
+        temporary_bundle.unlink(missing_ok=True)
+        temporary_metadata.unlink(missing_ok=True)
 
 
 def prepare_production_model(
@@ -241,6 +348,7 @@ def prepare_production_model(
     baseline_model_path = Path(config["baseline_model_path"])
     baseline_metrics_path = Path(config["baseline_metrics_path"])
     schema_path = Path(config["feature_schema_path"])
+    training_data_path = Path(config["train_features_path"])
     if not source_model_path.exists():
         raise FileNotFoundError(f"Source model not found: {source_model_path}")
     if not source_metrics_path.exists():
@@ -251,6 +359,8 @@ def prepare_production_model(
         raise FileNotFoundError(f"Baseline metrics not found: {baseline_metrics_path}")
     if not schema_path.exists():
         raise FileNotFoundError(f"Feature schema not found: {schema_path}")
+    if not training_data_path.exists():
+        raise FileNotFoundError(f"Training data not found: {training_data_path}")
 
     with schema_path.open("r", encoding="utf-8") as file:
         feature_schema = json.load(file)
@@ -262,6 +372,7 @@ def prepare_production_model(
         raise ValueError("Source model metrics must be a JSON object.")
     if not isinstance(baseline_metrics, dict):
         raise ValueError("Baseline metrics must be a JSON object.")
+    artifact_inputs = build_artifact_input_fingerprints(config, feature_schema)
     source_model = joblib.load(source_model_path)
     baseline_model = joblib.load(baseline_model_path)
     frame = load_training_data(config["train_features_path"])
@@ -272,6 +383,7 @@ def prepare_production_model(
     )
     if feature_names != feature_schema["feature_names"]:
         raise ValueError("Training data columns do not match the feature schema.")
+    input_contract = _validate_input_contract(config.get("input_contract"), feature_names)
 
     source_training = validate_source_training_contract(
         config,
@@ -418,32 +530,38 @@ def prepare_production_model(
         )
     )
     model_type = str(config.get("model_type", "logistic_regression_calibrated"))
-    model_version = str(
-        config.get("model_version")
-        or _artifact_version(source_model_path, model_type, config, feature_schema)
-    )
+    model_version = artifact_version(model_type, artifact_inputs)
+    configured_model_version = config.get("model_version")
+    if configured_model_version is not None and str(configured_model_version) != model_version:
+        raise ValueError(
+            "Configured model_version does not match the deterministic artifact version: "
+            f"{configured_model_version!r} != {model_version!r}."
+        )
     reference_stats = build_reference_stats(
         X_source_train,
         feature_schema["numeric_features"],
         feature_schema["categorical_features"],
     )
     metadata = {
+        "bundle_format_version": BUNDLE_FORMAT_VERSION,
         "model_version": model_version,
         "model_type": model_type,
         "created_at": datetime.now(UTC).isoformat(),
         "calibration_method": method,
         "decision_threshold": threshold,
+        "input_contract": input_contract,
         "threshold_policy": selection,
         "risk_bands": risk_bands,
         "feature_count": len(feature_names),
         "training_rows": int(len(X_source_train)),
         "calibration_rows": int(len(X_calibration)),
         "evaluation_rows": int(len(X_evaluation)),
-        "source_model_sha256": hashlib.sha256(source_model_path.read_bytes()).hexdigest(),
+        "artifact_inputs": artifact_inputs,
+        "source_model_sha256": artifact_inputs["source_model_sha256"],
         "source_training": source_training,
         "baseline_comparison": {
             "training_contract": baseline_training,
-            "model_sha256": hashlib.sha256(baseline_model_path.read_bytes()).hexdigest(),
+            "model_sha256": artifact_inputs["baseline_model_sha256"],
             "evaluation_metrics": baseline_evaluation_metrics,
             "roc_auc_difference_interval": baseline_comparison_interval,
         },
@@ -463,9 +581,12 @@ def prepare_production_model(
     )
 
     bundle_path = Path(config["bundle_output_path"])
-    bundle_path.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(bundle, bundle_path)
-    save_json(metadata, config["metadata_output_path"])
+    save_production_artifacts_atomically(
+        bundle,
+        metadata,
+        bundle_path,
+        config["metadata_output_path"],
+    )
 
     return {
         "model_version": model_version,

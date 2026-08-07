@@ -10,6 +10,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from src.core.config import settings
 from src.services.batch import load_service_config, read_table
 from src.services.scoring import load_model_bundle
 
@@ -115,7 +116,7 @@ def run_drift_monitoring(
     model = config.get("model")
     if not isinstance(monitoring, dict) or not isinstance(model, dict):
         raise ValueError("Service config requires 'model' and 'monitoring' sections.")
-    bundle = load_model_bundle(model["bundle_path"])
+    bundle = load_model_bundle(settings.resolve_model_bundle_path(model.get("bundle_path")))
     raw = read_table(monitoring["input_path"])
     id_column = monitoring.get("id_column", bundle.feature_schema.get("id_column"))
     if id_column in raw.columns:

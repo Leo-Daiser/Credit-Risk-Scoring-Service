@@ -36,7 +36,7 @@ Production-like ML-сервис оценки вероятности дефолт
 Финальный локальный production bundle:
 
 - model: calibrated CatBoost;
-- version: `catboost_calibrated-fc23c5cd419a`;
+- version: `catboost_calibrated-6dba880cb73a`;
 - features: `622`;
 - evaluation ROC-AUC: `0.79233` (95% CI: `0.78272–0.80081`);
 - evaluation PR-AUC: `0.29791` (95% CI: `0.27858–0.31985`);
@@ -48,7 +48,11 @@ Production-like ML-сервис оценки вероятности дефолт
   (paired 95% CI: `+0.00391…+0.01165`);
 - acceptance gates: `passed`.
 
-Версия строится из SHA-256 source artifact. Значения выше относятся к конкретному локальному прогону на полном датасете и не зашиты в код как гарантии.
+Версия детерминированно строится из SHA-256 source/baseline models, metrics,
+feature schema, production config, packaging code, pinned dependencies и training
+parquet, использованного для calibration.
+Значения выше относятся к конкретному локальному прогону на полном датасете и не
+зашиты в код как гарантии.
 
 ## Архитектура
 
@@ -149,7 +153,7 @@ ruff check src tests migrations
 pytest -q
 ```
 
-Результат последнего локального запуска на этой ветке: `127 passed`. Это число
+Результат последнего локального запуска на этой ветке: `132 passed`. Это число
 относится к конкретному checkout и может измениться при добавлении или удалении тестов.
 
 ## Данные
@@ -193,7 +197,19 @@ python -m src.cli prepare-production-model
 artifacts/models/production_model_bundle.joblib
 ```
 
-Bundle содержит calibrated estimator, feature schema, model metadata, risk bands, confidence intervals, acceptance report, subgroup report и reference distributions. Он создаётся только из реального обучения и намеренно не хранится в Git.
+Bundle содержит calibrated estimator, versioned format contract, feature schema,
+обязательные входные признаки и минимальное покрытие payload,
+fingerprints всех воспроизводящих входов, model metadata, risk bands, confidence
+intervals, acceptance report, subgroup report и reference distributions. Перед
+публикацией bundle и metadata записываются во временные файлы, а runtime проверяет
+format version, feature partition, threshold, risk bands и SHA-256 manifest.
+Artifact создаётся только из реального обучения и намеренно не хранится в Git.
+
+`joblib` следует загружать только из доверенного training pipeline: формат Python
+serialization не является безопасным для artifacts из внешних источников.
+
+Архитектурное решение и его границы зафиксированы в
+[`docs/adr/001-model-artifact-contract.md`](docs/adr/001-model-artifact-contract.md).
 
 ## CLI
 
@@ -317,11 +333,17 @@ Request:
 Все признаки передавать не обязательно. Их фактическое число определяется текущим
 bundle (`622` в локальном прогоне, описанном в разделе «Статус проекта»). Обязательны
 `AGE_YEARS`, `AMT_CREDIT`, `AMT_ANNUITY`, `AMT_INCOME_TOTAL`, а доля непустых
-переданных признаков должна быть не ниже `MIN_FEATURE_COVERAGE` (по умолчанию
-`0.01`). Неизвестные имена, нечисловые/бесконечные numeric values, пустые request
+переданных признаков должна быть не ниже `0.01`. Это требования конкретного
+локального bundle: они задаются в `production_model.input_contract`, входят в его
+детерминированную версию и одинаково применяются API и batch scoring. Неизвестные
+имена, нечисловые/бесконечные numeric values, пустые request
 IDs и чрезмерно длинные categorical values отклоняются с `422`. Ответ содержит
 полноту входа и предупреждения о значениях вне обучающего диапазона или неизвестных
 категориях.
+
+Обязательный признак означает обязательное наличие ключа/колонки. Его значение
+может быть `null`, если обученный preprocessing поддерживает пропуски; такой `null`
+не засчитывается в минимальное покрытие payload.
 
 Если в `.env` задан `API_KEY`, запрос должен содержать заголовок `X-API-Key`. При
 пустом `API_KEY` проверка отключена; перед production-развёртыванием оператор обязан
@@ -418,11 +440,14 @@ python -m src.cli monitor-drift
 
 - `configs/data.yaml` — raw paths и data contracts;
 - `configs/features.yaml` — feature builders и processed outputs;
-- `configs/train.yaml` — baseline, CatBoost, calibration, threshold policy, quality gates и risk bands;
+- `configs/train.yaml` — baseline, CatBoost, calibration, input contract, threshold policy, quality gates и risk bands;
 - `configs/service.yaml` — model bundle, batch и monitoring paths;
-- `.env` — DB, runtime model path, logging policy, input contract и API key.
+- `.env` — DB, deployment override model path, logging policy и API key.
 
-Основные env-параметры перечислены в `.env.example`. `DATABASE_URL` при наличии имеет приоритет над отдельными `POSTGRES_*`.
+Основные env-параметры перечислены в `.env.example`. `DATABASE_URL` при наличии
+имеет приоритет над отдельными `POSTGRES_*`. `MODEL_BUNDLE_PATH` при наличии
+одинаково переопределяет путь из service config для API, batch и monitoring; сам
+input contract берётся только из загруженного bundle.
 
 ## Тесты и CI
 

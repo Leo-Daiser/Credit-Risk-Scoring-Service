@@ -13,10 +13,8 @@ from src.services.scoring import ScoringService
 @lru_cache(maxsize=1)
 def _cached_scoring_service() -> ScoringService:
     return ScoringService.from_path(
-        settings.model_bundle_path,
+        settings.resolve_model_bundle_path(),
         top_reason_codes=settings.top_reason_codes,
-        min_feature_coverage=settings.min_feature_coverage,
-        required_features=settings.required_model_feature_list,
     )
 
 

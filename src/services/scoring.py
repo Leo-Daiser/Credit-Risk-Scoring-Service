@@ -73,6 +73,11 @@ def _register_model_if_needed(session: Session, result: dict[str, Any]) -> None:
 
 
 def load_model_bundle(path: str | Path) -> ModelBundle:
+    """Load and validate a trusted production artifact.
+
+    Joblib artifacts can execute code during deserialization and therefore
+    must only come from the controlled training pipeline.
+    """
     bundle_path = Path(path)
     if not bundle_path.exists():
         raise FileNotFoundError(
@@ -82,10 +87,7 @@ def load_model_bundle(path: str | Path) -> ModelBundle:
     bundle = joblib.load(bundle_path)
     if not isinstance(bundle, ModelBundle):
         raise TypeError(f"Artifact at {bundle_path} is not a ModelBundle.")
-    required_metadata = {"model_version", "model_type", "decision_threshold", "risk_bands"}
-    missing = required_metadata - set(bundle.metadata)
-    if missing:
-        raise ValueError(f"Model bundle metadata is missing: {sorted(missing)}.")
+    bundle.validate_contract()
     return bundle
 
 
@@ -202,37 +204,67 @@ class ScoringService:
         bundle: ModelBundle,
         top_reason_codes: int = 5,
         artifact_path: str = "in-memory",
-        min_feature_coverage: float = 0.0,
-        required_features: list[str] | None = None,
     ):
+        bundle.validate_contract()
         self.bundle = bundle
         self.top_reason_codes = top_reason_codes
         self.artifact_path = artifact_path
-        if not 0.0 <= min_feature_coverage <= 1.0:
-            raise ValueError("min_feature_coverage must be in [0, 1].")
-        self.min_feature_coverage = min_feature_coverage
-        self.required_features = list(required_features or [])
-        unknown_required = sorted(set(self.required_features) - set(bundle.feature_names))
-        if unknown_required:
-            raise ValueError(
-                f"Required features are absent from the model schema: {unknown_required}."
-            )
+        input_contract = bundle.metadata["input_contract"]
+        self.min_feature_coverage = float(input_contract["min_feature_coverage"])
+        self.required_features = list(input_contract["required_features"])
 
     @classmethod
     def from_path(
         cls,
         path: str | Path,
         top_reason_codes: int = 5,
-        min_feature_coverage: float = 0.0,
-        required_features: list[str] | None = None,
     ) -> ScoringService:
         return cls(
             load_model_bundle(path),
             top_reason_codes=top_reason_codes,
             artifact_path=str(path),
-            min_feature_coverage=min_feature_coverage,
-            required_features=required_features,
         )
+
+    def prepare_features(self, records: list[dict[str, Any]]) -> pd.DataFrame:
+        """Apply the bundle's immutable input contract to API or batch records."""
+        frame = self.bundle.prepare_frame(records)
+        if self.required_features:
+            missing_by_row = {
+                index: [feature for feature in self.required_features if feature not in record]
+                for index, record in enumerate(records)
+            }
+            missing_by_row = {
+                index: missing for index, missing in missing_by_row.items() if missing
+            }
+            if missing_by_row:
+                row_indices = list(missing_by_row)
+                if len(frame) == 1:
+                    raise ValueError(
+                        f"Required model features are missing: {missing_by_row[0]}."
+                    )
+                sample = {index: missing_by_row[index] for index in row_indices[:10]}
+                raise ValueError(
+                    "Required model features are missing in batch rows "
+                    f"{row_indices[:10]}: {sample}."
+                )
+
+        coverage = frame.notna().sum(axis=1) / len(self.bundle.feature_names)
+        insufficient = coverage < self.min_feature_coverage
+        if insufficient.any():
+            row_indices = coverage.index[insufficient].tolist()
+            if len(frame) == 1:
+                raise ValueError(
+                    "Insufficient feature coverage: "
+                    f"{coverage.iloc[0]:.4f} < {self.min_feature_coverage:.4f}."
+                )
+            sample = {
+                int(index): round(float(coverage.loc[index]), 4) for index in row_indices[:10]
+            }
+            raise ValueError(
+                "Insufficient feature coverage in batch rows "
+                f"{row_indices[:10]}: {sample}; required {self.min_feature_coverage:.4f}."
+            )
+        return frame
 
     def model_info(self) -> dict[str, Any]:
         metadata = self.bundle.metadata
@@ -255,21 +287,8 @@ class ScoringService:
 
     def score(self, features: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         started = time.perf_counter()
-        frame = self.bundle.prepare_frame([features])
+        frame = self.prepare_features([features])
         input_quality = self.bundle.assess_input_quality(features, frame)
-        missing_required = [
-            feature
-            for feature in self.required_features
-            if feature not in features or features[feature] is None
-        ]
-        if missing_required:
-            raise ValueError(f"Required model features are missing: {missing_required}.")
-        if input_quality["supplied_feature_coverage"] < self.min_feature_coverage:
-            raise ValueError(
-                "Insufficient feature coverage: "
-                f"{input_quality['supplied_feature_coverage']:.4f} < "
-                f"{self.min_feature_coverage:.4f}."
-            )
         probability = float(self.bundle.predict_default_probability(frame)[0])
         threshold = float(self.bundle.metadata["decision_threshold"])
         missing_count = int(frame.iloc[0].isna().sum())

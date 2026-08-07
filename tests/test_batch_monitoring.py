@@ -3,9 +3,16 @@ import json
 import joblib
 import numpy as np
 import pandas as pd
+import pytest
 import yaml
 
-from src.models.model_bundle import ModelBundle
+from src.core.config import settings
+from src.models.model_bundle import (
+    BUNDLE_FORMAT_VERSION,
+    REQUIRED_ARTIFACT_INPUTS,
+    ModelBundle,
+    derive_model_version,
+)
 from src.models.prepare_production_model import build_reference_stats
 from src.models.train_baseline import build_logistic_regression_pipeline
 from src.services.batch import run_batch_scoring
@@ -16,7 +23,7 @@ from src.services.monitoring import (
 )
 
 
-def _bundle_and_reference(tmp_path):
+def _bundle_and_reference(tmp_path, input_contract=None):
     rng = np.random.default_rng(3)
     training = pd.DataFrame(
         {
@@ -31,12 +38,19 @@ def _bundle_and_reference(tmp_path):
     )
     model.fit(training, target)
     reference = build_reference_stats(training, ["INCOME", "AGE"], ["CONTRACT"])
+    artifact_inputs = {name: "0" * 64 for name in REQUIRED_ARTIFACT_INPUTS}
+    model_version = derive_model_version("logistic_regression", artifact_inputs)
     bundle = ModelBundle(
         model=model,
         metadata={
-            "model_version": "batch-v1",
+            "bundle_format_version": BUNDLE_FORMAT_VERSION,
+            "model_version": model_version,
             "model_type": "logistic_regression",
+            "feature_count": 3,
             "decision_threshold": 0.5,
+            "input_contract": input_contract
+            or {"required_features": [], "min_feature_coverage": 0.0},
+            "artifact_inputs": artifact_inputs,
             "risk_bands": [
                 {"name": "low", "upper_bound": 0.3},
                 {"name": "high", "upper_bound": None},
@@ -61,7 +75,8 @@ def test_population_stability_index_detects_shift():
     assert population_stability_index([0.9, 0.1], [0.1, 0.9]) > 1.0
 
 
-def test_batch_scoring_and_drift_monitoring_end_to_end(tmp_path):
+def test_batch_scoring_and_drift_monitoring_end_to_end(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "model_bundle_path", None)
     bundle_path, training, _ = _bundle_and_reference(tmp_path)
     batch_input = training.iloc[:12].copy()
     batch_input.insert(0, "SK_ID_CURR", np.arange(12))
@@ -104,7 +119,37 @@ def test_batch_scoring_and_drift_monitoring_end_to_end(tmp_path):
     ]
     assert drift_report["rows_analyzed"] == 12
     assert drift_path.exists()
-    assert json.loads(drift_path.read_text(encoding="utf-8"))["model_version"] == "batch-v1"
+    assert json.loads(drift_path.read_text(encoding="utf-8"))["model_version"] == (
+        derive_model_version(
+            "logistic_regression", {name: "0" * 64 for name in REQUIRED_ARTIFACT_INPUTS}
+        )
+    )
+
+
+def test_batch_scoring_enforces_bundle_input_contract(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "model_bundle_path", None)
+    bundle_path, training, _ = _bundle_and_reference(
+        tmp_path,
+        input_contract={"required_features": ["INCOME"], "min_feature_coverage": 0.75},
+    )
+    batch_input = training.iloc[:2].drop(columns=["INCOME"]).copy()
+    batch_input.insert(0, "SK_ID_CURR", [1, 2])
+    input_path = tmp_path / "invalid-input.parquet"
+    batch_input.to_parquet(input_path, index=False)
+    config = {
+        "model": {"bundle_path": str(bundle_path)},
+        "batch_scoring": {
+            "input_path": str(input_path),
+            "output_path": str(tmp_path / "scores.parquet"),
+            "id_column": "SK_ID_CURR",
+            "max_rows": 10,
+        },
+    }
+    config_path = tmp_path / "service.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Required model features are missing in batch rows"):
+        run_batch_scoring(config_path)
 
 
 def test_build_drift_report_flags_large_numeric_shift(tmp_path):

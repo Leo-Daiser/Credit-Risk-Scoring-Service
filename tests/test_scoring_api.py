@@ -13,10 +13,18 @@ from src.core.config import settings
 from src.db.base import Base
 from src.db.models import ModelRegistry, ScoringPrediction, ScoringRequest
 from src.db.session import get_db
-from src.models.model_bundle import ModelBundle
+from src.models.model_bundle import (
+    BUNDLE_FORMAT_VERSION,
+    REQUIRED_ARTIFACT_INPUTS,
+    ModelBundle,
+    derive_model_version,
+)
 from src.models.train_baseline import build_logistic_regression_pipeline
 from src.models.train_catboost import build_catboost_pipeline
 from src.services.scoring import ScoringService, catboost_reason_codes, linear_reason_codes
+
+TEST_ARTIFACT_INPUTS = {name: "0" * 64 for name in REQUIRED_ARTIFACT_INPUTS}
+TEST_MODEL_VERSION = derive_model_version("logistic_regression", TEST_ARTIFACT_INPUTS)
 
 
 @pytest.fixture()
@@ -43,7 +51,8 @@ def scoring_service() -> ScoringService:
     bundle = ModelBundle(
         model=pipeline,
         metadata={
-            "model_version": "test-model-v1",
+            "bundle_format_version": BUNDLE_FORMAT_VERSION,
+            "model_version": TEST_MODEL_VERSION,
             "model_type": "logistic_regression",
             "created_at": "2026-08-06T00:00:00+00:00",
             "decision_threshold": 0.5,
@@ -53,6 +62,8 @@ def scoring_service() -> ScoringService:
                 {"name": "medium", "upper_bound": 0.5},
                 {"name": "high", "upper_bound": None},
             ],
+            "input_contract": {"required_features": [], "min_feature_coverage": 0.0},
+            "artifact_inputs": TEST_ARTIFACT_INPUTS,
             "metrics": {"calibrated": {"roc_auc": 0.8, "brier_score": 0.1}},
         },
         feature_schema={
@@ -60,7 +71,7 @@ def scoring_service() -> ScoringService:
             "numeric_features": ["INCOME", "AGE_YEARS"],
             "categorical_features": ["CONTRACT"],
         },
-        reference_stats={},
+        reference_stats={"numeric": {}, "categorical": {}},
     )
     return ScoringService(bundle, top_reason_codes=3)
 
@@ -107,7 +118,7 @@ def test_model_info_returns_production_metadata(api_client):
     client, _ = api_client
     response = client.get("/model_info")
     assert response.status_code == 200
-    assert response.json()["model_version"] == "test-model-v1"
+    assert response.json()["model_version"] == TEST_MODEL_VERSION
     assert response.json()["decision_threshold"] == 0.5
     assert response.json()["confidence_intervals"] == {}
 
@@ -117,7 +128,7 @@ def test_feature_schema_returns_machine_readable_input_contract(api_client):
     response = client.get("/feature_schema")
     assert response.status_code == 200
     assert response.json() == {
-        "model_version": "test-model-v1",
+        "model_version": TEST_MODEL_VERSION,
         "feature_count": 3,
         "numeric_features": ["INCOME", "AGE_YEARS"],
         "categorical_features": ["CONTRACT"],
@@ -132,7 +143,7 @@ def test_readiness_checks_model_and_database(api_client):
     assert response.status_code == 200
     assert response.json() == {
         "status": "ready",
-        "model_version": "test-model-v1",
+        "model_version": TEST_MODEL_VERSION,
         "database": "ok",
     }
 
@@ -149,7 +160,7 @@ def test_score_persists_request_and_prediction_atomically(api_client):
     assert body["request_id"] == "request-001"
     assert 0.0 <= body["default_probability"] <= 1.0
     assert body["logging_status"] == "persisted"
-    assert body["model_version"] == "test-model-v1"
+    assert body["model_version"] == TEST_MODEL_VERSION
     assert body["input_quality"] == {
         "supplied_feature_count": 3,
         "supplied_feature_coverage": 1.0,
@@ -176,7 +187,7 @@ def test_distinct_requests_register_model_once(api_client):
     with TestingSession() as session:
         registries = session.scalars(select(ModelRegistry)).all()
         assert len(registries) == 1
-        assert registries[0].model_version == "test-model-v1"
+        assert registries[0].model_version == TEST_MODEL_VERSION
 
 
 def test_score_rejects_unknown_features(api_client):
@@ -217,11 +228,20 @@ def test_score_rejects_invalid_numeric_feature(api_client):
 
 
 def test_scoring_service_enforces_required_features_and_coverage(scoring_service):
-    strict = ScoringService(
-        scoring_service.bundle,
-        min_feature_coverage=0.75,
-        required_features=["INCOME"],
+    source = scoring_service.bundle
+    strict_bundle = ModelBundle(
+        model=source.model,
+        metadata={
+            **source.metadata,
+            "input_contract": {
+                "required_features": ["INCOME"],
+                "min_feature_coverage": 0.75,
+            },
+        },
+        feature_schema=source.feature_schema,
+        reference_stats=source.reference_stats,
     )
+    strict = ScoringService(strict_bundle)
     with pytest.raises(ValueError, match="Required model features"):
         strict.score({"AGE_YEARS": 31, "CONTRACT": "cash"})
     with pytest.raises(ValueError, match="Insufficient feature coverage"):
