@@ -7,10 +7,18 @@ import pytest
 import yaml
 from sklearn.model_selection import train_test_split
 
-from src.models.model_bundle import ModelBundle
+from src.models.model_bundle import (
+    BUNDLE_FORMAT_VERSION,
+    REQUIRED_ARTIFACT_INPUTS,
+    ModelBundle,
+    derive_model_version,
+)
 from src.models.prepare_production_model import (
+    artifact_version,
     expected_calibration_error,
     prepare_production_model,
+    save_production_artifacts_atomically,
+    sha256_file,
     validate_source_training_contract,
 )
 from src.models.train_baseline import (
@@ -18,6 +26,7 @@ from src.models.train_baseline import (
     build_logistic_regression_pipeline,
     split_features_target,
 )
+from src.services.scoring import load_model_bundle
 
 
 def _training_frame(n: int = 240) -> pd.DataFrame:
@@ -77,6 +86,20 @@ def test_model_bundle_aligns_features_and_rejects_unknowns():
         bundle.prepare_frame([{"NUM": np.inf}])
 
 
+def test_load_model_bundle_rejects_legacy_contract(tmp_path):
+    legacy_bundle = ModelBundle(
+        model=None,
+        metadata={"model_version": "legacy"},
+        feature_schema={"feature_names": ["NUM"]},
+        reference_stats={},
+    )
+    bundle_path = tmp_path / "legacy.joblib"
+    joblib.dump(legacy_bundle, bundle_path)
+
+    with pytest.raises(ValueError, match="Unsupported model bundle format"):
+        load_model_bundle(bundle_path)
+
+
 def test_source_training_contract_rejects_split_mismatch():
     schema = {"feature_names": ["NUM", "CAT"]}
     metrics = {
@@ -96,6 +119,70 @@ def test_source_training_contract_rejects_split_mismatch():
         validate_source_training_contract(
             {"random_seed": 42, "holdout_size": 0.25}, metrics, schema
         )
+
+
+def test_artifact_version_changes_with_any_reproducibility_input():
+    fingerprints = {name: "0" * 64 for name in REQUIRED_ARTIFACT_INPUTS}
+    original = artifact_version("catboost_calibrated", fingerprints)
+
+    changed = dict(fingerprints)
+    changed["training_data_sha256"] = "1" * 64
+
+    assert artifact_version("catboost_calibrated", changed) != original
+
+
+def test_atomic_bundle_write_preserves_existing_outputs_on_failure(tmp_path, monkeypatch):
+    class ProbabilityModel:
+        def predict_proba(self, frame):
+            return np.tile([0.8, 0.2], (len(frame), 1))
+
+    metadata = {
+        "bundle_format_version": BUNDLE_FORMAT_VERSION,
+        "model_version": derive_model_version(
+            "test", {name: "0" * 64 for name in REQUIRED_ARTIFACT_INPUTS}
+        ),
+        "model_type": "test",
+        "feature_count": 1,
+        "decision_threshold": 0.5,
+        "risk_bands": [
+            {"name": "low", "upper_bound": 0.5},
+            {"name": "high", "upper_bound": None},
+        ],
+        "input_contract": {"required_features": [], "min_feature_coverage": 0.0},
+        "artifact_inputs": {name: "0" * 64 for name in REQUIRED_ARTIFACT_INPUTS},
+    }
+    bundle = ModelBundle(
+        model=ProbabilityModel(),
+        metadata=metadata,
+        feature_schema={
+            "feature_names": ["NUM"],
+            "numeric_features": ["NUM"],
+            "categorical_features": [],
+        },
+        reference_stats={"numeric": {}, "categorical": {}},
+    )
+    valid_version = metadata["model_version"]
+    bundle.metadata["model_version"] = "tampered-version"
+    with pytest.raises(ValueError, match="does not match its artifact_inputs manifest"):
+        bundle.validate_contract()
+    bundle.metadata["model_version"] = valid_version
+    bundle_path = tmp_path / "bundle.joblib"
+    metadata_path = tmp_path / "metadata.json"
+    bundle_path.write_bytes(b"existing-bundle")
+    metadata_path.write_text("existing-metadata", encoding="utf-8")
+
+    def fail_dump(value, path):
+        path.write_bytes(b"partial")
+        raise OSError("simulated artifact write failure")
+
+    monkeypatch.setattr("src.models.prepare_production_model.joblib.dump", fail_dump)
+
+    with pytest.raises(OSError, match="simulated artifact write failure"):
+        save_production_artifacts_atomically(bundle, metadata, bundle_path, metadata_path)
+
+    assert bundle_path.read_bytes() == b"existing-bundle"
+    assert metadata_path.read_text(encoding="utf-8") == "existing-metadata"
+    assert not list(tmp_path.glob("*.tmp"))
 
 
 def test_prepare_production_model_end_to_end(tmp_path):
@@ -166,6 +253,10 @@ def test_prepare_production_model_end_to_end(tmp_path):
             "holdout_size": 0.2,
             "calibration_fraction": 0.5,
             "calibration_cv": 2,
+            "input_contract": {
+                "required_features": ["AGE_YEARS"],
+                "min_feature_coverage": 0.25,
+            },
             "thresholds": [0.05, 0.1, 0.2, 0.3],
             "threshold_policy": {
                 "strategy": "expected_cost",
@@ -200,6 +291,7 @@ def test_prepare_production_model_end_to_end(tmp_path):
     assert summary["calibration_rows"] + summary["evaluation_rows"] == 48
     bundle = joblib.load(bundle_path)
     assert isinstance(bundle, ModelBundle)
+    bundle.validate_contract()
     aligned = bundle.prepare_frame([data.loc[0, features].to_dict()])
     probability = bundle.predict_default_probability(aligned)[0]
     assert 0.0 <= probability <= 1.0
@@ -216,6 +308,13 @@ def test_prepare_production_model_end_to_end(tmp_path):
         "brier_score",
     }
     assert len(bundle.metadata["source_model_sha256"]) == 64
+    assert bundle.metadata["bundle_format_version"] == BUNDLE_FORMAT_VERSION
+    assert bundle.metadata["input_contract"] == {
+        "required_features": ["AGE_YEARS"],
+        "min_feature_coverage": 0.25,
+    }
+    assert set(bundle.metadata["artifact_inputs"]) == REQUIRED_ARTIFACT_INPUTS
+    assert bundle.metadata["artifact_inputs"]["training_data_sha256"] == sha256_file(train_path)
     assert set(bundle.reference_stats) == {"numeric", "categorical"}
     assert bundle.reference_stats["numeric"]["AGE_YEARS"]["min"] >= 21
     assert (

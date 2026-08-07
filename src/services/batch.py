@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 import yaml
 
+from src.core.config import settings
 from src.services.scoring import ScoringService
 
 
@@ -72,10 +73,11 @@ def run_batch_scoring(
         raise ValueError(f"Batch id column '{id_column}' must be unique.")
 
     service = ScoringService.from_path(
-        model["bundle_path"], top_reason_codes=int(model.get("top_reason_codes", 5))
+        settings.resolve_model_bundle_path(model.get("bundle_path")),
+        top_reason_codes=int(model.get("top_reason_codes", 5)),
     )
     raw_features = frame.drop(columns=[id_column]).to_dict(orient="records")
-    feature_frame = service.bundle.prepare_frame(raw_features)
+    feature_frame = service.prepare_features(raw_features)
     probabilities = service.bundle.predict_default_probability(feature_frame)
     threshold = float(service.bundle.metadata["decision_threshold"])
     output = pd.DataFrame(

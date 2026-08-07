@@ -1,5 +1,7 @@
-from pydantic import Field, SecretStr
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+DEFAULT_MODEL_BUNDLE_PATH = "artifacts/models/production_model_bundle.joblib"
 
 
 class Settings(BaseSettings):
@@ -15,13 +17,11 @@ class Settings(BaseSettings):
     app_env: str = "dev"
 
     database_url: str | None = None
-    model_bundle_path: str = "artifacts/models/production_model_bundle.joblib"
+    model_bundle_path: str | None = None
     inference_logging_enabled: bool = True
     database_required: bool = True
     top_reason_codes: int = 5
     max_batch_size: int = 1000
-    min_feature_coverage: float = Field(default=0.01, ge=0.0, le=1.0)
-    required_model_features: str = "AGE_YEARS,AMT_CREDIT,AMT_ANNUITY,AMT_INCOME_TOTAL"
     api_key: SecretStr | None = None
     log_level: str = "INFO"
 
@@ -36,9 +36,9 @@ class Settings(BaseSettings):
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
         )
 
-    @property
-    def required_model_feature_list(self) -> list[str]:
-        return [value.strip() for value in self.required_model_features.split(",") if value.strip()]
+    def resolve_model_bundle_path(self, configured_path: str | None = None) -> str:
+        """Apply one deployment override consistently across all inference jobs."""
+        return self.model_bundle_path or configured_path or DEFAULT_MODEL_BUNDLE_PATH
 
 
 settings = Settings()
