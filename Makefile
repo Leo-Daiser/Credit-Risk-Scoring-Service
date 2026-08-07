@@ -23,5 +23,8 @@ batch:
 monitor:
 	python -m src.cli monitor-drift
 
+load-smoke:
+	python scripts/load_smoke.py --requests 50 --concurrency 2
+
 api:
 	uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload

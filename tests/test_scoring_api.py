@@ -271,6 +271,35 @@ def test_metrics_endpoint_exposes_service_metrics(api_client):
     assert "credit_risk_http_requests_total" in response.text
 
 
+def test_response_echoes_safe_correlation_id(api_client):
+    client, _ = api_client
+    response = client.get("/health", headers={"X-Correlation-ID": "portfolio-smoke-42"})
+    assert response.status_code == 200
+    assert response.headers["X-Correlation-ID"] == "portfolio-smoke-42"
+
+
+def test_invalid_correlation_id_is_replaced(api_client):
+    client, _ = api_client
+    response = client.get("/health", headers={"X-Correlation-ID": "unsafe value"})
+    assert response.status_code == 200
+    assert response.headers["X-Correlation-ID"] != "unsafe value"
+    assert len(response.headers["X-Correlation-ID"]) == 36
+
+
+def test_decision_metric_records_only_successful_responses(api_client, monkeypatch):
+    client, _ = api_client
+    recorded: list[dict] = []
+    monkeypatch.setattr(
+        "src.api.routes.record_scoring_result", lambda result: recorded.append(result)
+    )
+    payload = {"request_id": "metric-once", "features": {"INCOME": 100_000}}
+
+    assert client.post("/score", json=payload).status_code == 200
+    assert client.post("/score", json=payload).status_code == 409
+    assert client.post("/score", json={"features": {"UNKNOWN": 1}}).status_code == 422
+    assert len(recorded) == 1
+
+
 def test_score_bounds_identifiers_and_categorical_values(api_client):
     client, _ = api_client
     blank_id = client.post(

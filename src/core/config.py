@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -24,6 +26,7 @@ class Settings(BaseSettings):
     max_batch_size: int = 1000
     api_key: SecretStr | None = None
     log_level: str = "INFO"
+    log_format: Literal["json", "text"] = "json"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

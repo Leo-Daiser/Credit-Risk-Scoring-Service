@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -22,6 +24,7 @@ from src.services.scoring import (
 )
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -84,25 +87,34 @@ def score(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
-    record_scoring_result(result)
-
     if not settings.inference_logging_enabled:
         result["logging_status"] = "disabled"
-        return ScoreResponse.model_validate(result)
-
-    try:
-        persist_scoring_result(session, payload.features, result)
-        result["logging_status"] = "persisted"
-    except DuplicateRequestError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=str(exc),
-        ) from exc
-    except SQLAlchemyError as exc:
-        if settings.database_required:
+    else:
+        try:
+            persist_scoring_result(session, payload.features, result)
+            result["logging_status"] = "persisted"
+        except DuplicateRequestError as exc:
             raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Scoring succeeded, but the required inference log could not be persisted.",
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(exc),
             ) from exc
-        result["logging_status"] = "failed"
+        except SQLAlchemyError as exc:
+            if settings.database_required:
+                raise HTTPException(
+                    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                    detail=(
+                        "Scoring succeeded, but the required inference log could not be persisted."
+                    ),
+                ) from exc
+            result["logging_status"] = "failed"
+    record_scoring_result(result)
+    logger.info(
+        "score_completed",
+        extra={
+            "model_version": result["model_version"],
+            "decision": result["decision"],
+            "risk_band": result["risk_band"],
+            "logging_status": result["logging_status"],
+        },
+    )
     return ScoreResponse.model_validate(result)
