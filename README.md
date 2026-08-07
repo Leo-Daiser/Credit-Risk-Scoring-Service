@@ -159,7 +159,7 @@ ruff check src tests migrations scripts
 pytest -q
 ```
 
-Результат последнего локального запуска на этой ветке: `138 passed`. Это число
+Результат последнего локального запуска на этой ветке: `143 passed`. Это число
 относится к конкретному checkout и может измениться при добавлении или удалении тестов.
 
 ## Данные
@@ -411,6 +411,10 @@ Alembic migration создаёт:
 - `feature_stats` — задел для периодической агрегации feature statistics.
 
 Запрос и prediction сохраняются одной транзакцией. При ошибке выполняется rollback.
+Audit schema запрещает request без зарегистрированной версии модели, prediction без
+обязательных полей и probability вне диапазона `[0, 1]`. Связь request/prediction
+остаётся one-to-one, а индекс `(model_version, received_at)` поддерживает выборки по
+версии и временному окну.
 
 `sql/init.sql` оставлен как legacy/reference schema; Docker Compose использует Alembic как единственный authoritative migration mechanism.
 

@@ -1,13 +1,24 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, Float, ForeignKey, String, Text, func
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.db.base import Base
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
+
 
 class ModelRegistry(Base):
     __tablename__ = "model_registry"
@@ -22,24 +33,41 @@ class ModelRegistry(Base):
 
 class ScoringRequest(Base):
     __tablename__ = "scoring_requests"
+    __table_args__ = (
+        Index("ix_scoring_requests_model_version_received_at", "model_version", "received_at"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[str] = mapped_column(String(128), unique=True, nullable=False)
     payload_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE, nullable=False)
-    model_version: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    model_version: Mapped[str] = mapped_column(
+        String(128),
+        ForeignKey("model_registry.model_version"),
+        nullable=False,
+    )
     received_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
 class ScoringPrediction(Base):
     __tablename__ = "scoring_predictions"
+    __table_args__ = (
+        CheckConstraint(
+            "default_probability >= 0 AND default_probability <= 1",
+            name="ck_scoring_predictions_probability_range",
+        ),
+        CheckConstraint(
+            "length(risk_band) > 0",
+            name="ck_scoring_predictions_risk_band_nonempty",
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     request_id: Mapped[str] = mapped_column(
         String(128), ForeignKey("scoring_requests.request_id"), unique=True, nullable=False
     )
-    default_probability: Mapped[float | None] = mapped_column(Float, nullable=True)
-    risk_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
-    top_reason_codes: Mapped[list[dict[str, Any]] | None] = mapped_column(JSON_TYPE, nullable=True)
+    default_probability: Mapped[float] = mapped_column(Float, nullable=False)
+    risk_band: Mapped[str] = mapped_column(String(32), nullable=False)
+    top_reason_codes: Mapped[list[dict[str, Any]]] = mapped_column(JSON_TYPE, nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
