@@ -15,10 +15,10 @@ baseline:
   evaluation_report_output_path: artifacts/reports/logistic_regression_baseline_evaluation_report.json
 
   logistic_regression:
-    max_iter: 5000
-    solver: saga
+    max_iter: 1000
+    solver: lbfgs
     class_weight: balanced
-    n_jobs: -1
+    n_jobs: null
     C: 1.0
 
   thresholds:
@@ -58,6 +58,8 @@ catboost_challenger:
 production_model:
   source_model_path: artifacts/models/catboost_challenger.joblib
   source_metrics_path: artifacts/metrics/catboost_challenger_metrics.json
+  baseline_model_path: artifacts/models/logistic_regression_baseline.joblib
+  baseline_metrics_path: artifacts/metrics/logistic_regression_baseline_metrics.json
   feature_schema_path: artifacts/reports/catboost_challenger_feature_schema.json
   train_features_path: data/processed/train_features.parquet
   bundle_output_path: artifacts/models/production_model_bundle.joblib
@@ -68,8 +70,25 @@ production_model:
   calibration_fraction: 0.5
   calibration_method: sigmoid
   calibration_cv: 5
-  selected_threshold_metric: f1
   thresholds: [0.03, 0.05, 0.07, 0.10, 0.12, 0.15, 0.20, 0.25, 0.30]
+  threshold_policy:
+    strategy: expected_cost
+    false_negative_cost: 5.0
+    false_positive_cost: 1.0
+    min_recall: 0.45
+    max_predicted_positive_rate: 0.25
+  bootstrap_samples: 200
+  confidence_level: 0.95
+  subgroup_min_rows: 500
+  acceptance_gates:
+    min_roc_auc: 0.77
+    min_roc_auc_ci_lower: 0.76
+    min_pr_auc: 0.26
+    max_brier_score: 0.07
+    max_expected_calibration_error: 0.02
+    min_roc_auc_improvement_over_baseline: 0.005
+    min_roc_auc_improvement_ci_lower: 0.0
+    require_calibration_improvement: true
   risk_bands:
     - name: low
       upper_bound: 0.05

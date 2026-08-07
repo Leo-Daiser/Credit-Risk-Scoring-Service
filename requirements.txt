@@ -13,3 +13,4 @@ numpy==2.2.4
 pyarrow==25.0.0
 scikit-learn==1.6.1
 catboost==1.2.8
+prometheus-client==0.26.0

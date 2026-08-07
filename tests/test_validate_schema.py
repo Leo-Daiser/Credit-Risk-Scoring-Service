@@ -6,12 +6,37 @@ import yaml
 
 from src.data.load_raw import load_data_config, load_raw_tables
 from src.data.validate_schema import (
+    validate_configured_raw_data,
     validate_foreign_key_relationship,
     validate_non_empty,
     validate_raw_tables,
     validate_required_columns,
     validate_unique_key,
 )
+
+
+def test_validate_configured_raw_data_streams_tables_and_reports_fk(tmp_path: Path) -> None:
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir()
+    _write_valid_raw_tables(raw_dir)
+    config = _build_valid_config(raw_dir)
+    config["relationships"] = [
+        {
+            "name": "bureau_balance -> bureau",
+            "child_table": "bureau_balance",
+            "child_column": "SK_ID_BUREAU",
+            "parent_tables": ["bureau"],
+            "parent_column": "SK_ID_BUREAU",
+        }
+    ]
+    config_path = tmp_path / "data.yaml"
+    config_path.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    report = validate_configured_raw_data(config_path, strict_fk=True)
+
+    assert report["table_reports"]["application_train"]["rows"] == 2
+    assert report["table_reports"]["bureau_balance"]["columns"] == 3
+    assert report["relationship_reports"][0]["orphan_count"] == 0
 
 
 def _write_csv(path: Path, data: dict) -> None:
@@ -260,6 +285,7 @@ def test_validate_raw_tables_duplicate_application_train_key(tmp_path: Path) -> 
     with pytest.raises(ValueError, match="duplicated rows"):
         validate_raw_tables(tables, config)
 
+
 def test_validate_raw_tables_orphan_bureau_balance_key(tmp_path: Path) -> None:
     raw_dir = tmp_path / "raw"
     raw_dir.mkdir()
@@ -298,4 +324,4 @@ def test_validate_raw_tables_orphan_bureau_balance_key(tmp_path: Path) -> None:
     tables = load_raw_tables(config_path)
 
     with pytest.raises(ValueError, match="Foreign key violation"):
-        validate_raw_tables(tables, config, strict_fk=True) 
+        validate_raw_tables(tables, config, strict_fk=True)

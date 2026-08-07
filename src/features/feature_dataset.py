@@ -1,4 +1,4 @@
-"""Full train/test ML feature dataset builder (Phase 2.3).
+"""Full train/test ML feature dataset builder (Phase 2.4).
 
 This module assembles the final modelling datasets from the per-table feature
 parquet files produced in earlier phases:
@@ -6,9 +6,10 @@ parquet files produced in earlier phases:
 * ``application_train_features.parquet`` / ``application_test_features.parquet``
   (Phase 2.1, application-level features)
 * ``bureau_features.parquet`` (Phase 2.2, applicant-level bureau aggregates)
+* ``advanced_history_features.parquet`` (Phase 2.3, previous/POS/payment/card aggregates)
 
-The application feature tables are left-joined with the bureau feature table on
-``SK_ID_CURR`` to produce::
+The application feature tables are left-joined with the applicant-level bureau
+and advanced-history feature tables on ``SK_ID_CURR`` to produce::
 
     train_features.parquet  ->  SK_ID_CURR | TARGET | <features...>
     test_features.parquet   ->  SK_ID_CURR | <features...>
@@ -41,6 +42,7 @@ _REQUIRED_CONFIG_KEYS = (
     "application_train_features_path",
     "application_test_features_path",
     "bureau_features_path",
+    "advanced_history_features_path",
     "output_train_path",
     "output_test_path",
 )
@@ -71,9 +73,7 @@ def load_full_feature_dataset_config(config_path: str | Path) -> dict[str, Any]:
         raise ValueError("Feature config must be a dictionary.")
 
     if "full_feature_dataset" not in config:
-        raise ValueError(
-            "Feature config must contain a 'full_feature_dataset' section."
-        )
+        raise ValueError("Feature config must contain a 'full_feature_dataset' section.")
 
     dataset_config = config["full_feature_dataset"]
     if not isinstance(dataset_config, dict):
@@ -82,8 +82,7 @@ def load_full_feature_dataset_config(config_path: str | Path) -> dict[str, Any]:
     for required_key in _REQUIRED_CONFIG_KEYS:
         if required_key not in dataset_config:
             raise ValueError(
-                "Feature config 'full_feature_dataset' must contain "
-                f"'{required_key}'."
+                f"Feature config 'full_feature_dataset' must contain '{required_key}'."
             )
 
     return config
@@ -129,9 +128,7 @@ def validate_feature_key_contract(
         ValueError: If the id column is missing or contains duplicates.
     """
     if id_column not in df.columns:
-        raise ValueError(
-            f"{dataset_name} is missing the required id column '{id_column}'."
-        )
+        raise ValueError(f"{dataset_name} is missing the required id column '{id_column}'.")
 
     duplicate_count = int(df[id_column].duplicated().sum())
     if duplicate_count > 0:
@@ -185,9 +182,7 @@ def merge_application_with_bureau_features(
         ValueError: If either input violates the key contract or the merge
             changes the application row count.
     """
-    validate_feature_key_contract(
-        application_features, id_column, "application_features"
-    )
+    validate_feature_key_contract(application_features, id_column, "application_features")
     validate_feature_key_contract(bureau_features, id_column, "bureau_features")
 
     n_before = len(application_features)
@@ -215,8 +210,11 @@ def build_full_feature_dataset(
     application_train_features: pd.DataFrame,
     application_test_features: pd.DataFrame,
     bureau_features: pd.DataFrame,
+    advanced_history_features: pd.DataFrame | None = None,
     id_column: str = DEFAULT_ID_COLUMN,
     target_column: str = DEFAULT_TARGET_COLUMN,
+    max_missing_rate: float = 0.995,
+    drop_constant_features: bool = True,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Build the final train/test ML feature datasets.
 
@@ -244,15 +242,12 @@ def build_full_feature_dataset(
     validate_feature_key_contract(
         application_train_features, id_column, "application_train_features"
     )
-    validate_feature_key_contract(
-        application_test_features, id_column, "application_test_features"
-    )
+    validate_feature_key_contract(application_test_features, id_column, "application_test_features")
     validate_feature_key_contract(bureau_features, id_column, "bureau_features")
 
     if target_column not in application_train_features.columns:
         raise ValueError(
-            "application_train_features must contain the target column "
-            f"'{target_column}'."
+            f"application_train_features must contain the target column '{target_column}'."
         )
 
     test_features = application_test_features
@@ -266,14 +261,23 @@ def build_full_feature_dataset(
     test_df = merge_application_with_bureau_features(
         test_features, bureau_features, id_column=id_column
     )
+    if advanced_history_features is not None:
+        train_df = merge_application_with_bureau_features(
+            train_df,
+            advanced_history_features,
+            id_column=id_column,
+        )
+        test_df = merge_application_with_bureau_features(
+            test_df,
+            advanced_history_features,
+            id_column=id_column,
+        )
 
     train_df = train_df.replace([np.inf, -np.inf], np.nan)
     test_df = test_df.replace([np.inf, -np.inf], np.nan)
 
     # The feature columns (everything except the id and target) must match.
-    train_feature_cols = [
-        c for c in train_df.columns if c not in (id_column, target_column)
-    ]
+    train_feature_cols = [c for c in train_df.columns if c not in (id_column, target_column)]
     test_feature_cols = [c for c in test_df.columns if c != id_column]
     if train_feature_cols != test_feature_cols:
         missing_in_test = sorted(set(train_feature_cols) - set(test_feature_cols))
@@ -283,6 +287,25 @@ def build_full_feature_dataset(
             f"Missing in test: {missing_in_test}; "
             f"missing in train: {missing_in_train}."
         )
+
+    if not 0.0 < max_missing_rate <= 1.0:
+        raise ValueError("max_missing_rate must be in (0, 1].")
+    feature_columns = [
+        column for column in train_df.columns if column not in (id_column, target_column)
+    ]
+    dropped = {
+        column
+        for column in feature_columns
+        if float(train_df[column].isna().mean()) > max_missing_rate
+    }
+    if drop_constant_features:
+        dropped.update(
+            column for column in feature_columns if train_df[column].nunique(dropna=False) <= 1
+        )
+    if dropped:
+        ordered_dropped = sorted(dropped)
+        train_df = train_df.drop(columns=ordered_dropped)
+        test_df = test_df.drop(columns=ordered_dropped)
 
     return train_df, test_df
 
@@ -326,22 +349,26 @@ def run_build_full_feature_dataset(
         dataset_config["application_test_features_path"]
     )
     bureau_features = load_feature_parquet(dataset_config["bureau_features_path"])
+    advanced_history_features = load_feature_parquet(
+        dataset_config["advanced_history_features_path"]
+    )
 
     train_df, test_df = build_full_feature_dataset(
         application_train_features,
         application_test_features,
         bureau_features,
+        advanced_history_features=advanced_history_features,
         id_column=id_column,
         target_column=target_column,
+        max_missing_rate=float(dataset_config.get("max_missing_rate", 0.995)),
+        drop_constant_features=bool(dataset_config.get("drop_constant_features", True)),
     )
 
     output_train_path = dataset_config["output_train_path"]
     output_test_path = dataset_config["output_test_path"]
     save_full_feature_dataset(train_df, test_df, output_train_path, output_test_path)
 
-    feature_count = len(
-        [c for c in train_df.columns if c not in (id_column, target_column)]
-    )
+    feature_count = len([c for c in train_df.columns if c not in (id_column, target_column)])
 
     return {
         "train_shape": train_df.shape,

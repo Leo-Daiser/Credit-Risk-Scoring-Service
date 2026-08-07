@@ -30,3 +30,113 @@ tables:
       - SK_ID_BUREAU
       - MONTHS_BALANCE
       - STATUS
+
+  previous_application:
+    filename: previous_application.csv
+    required_columns:
+      - SK_ID_PREV
+      - SK_ID_CURR
+      - NAME_CONTRACT_STATUS
+      - AMT_ANNUITY
+      - AMT_APPLICATION
+      - AMT_CREDIT
+      - AMT_DOWN_PAYMENT
+      - AMT_GOODS_PRICE
+      - HOUR_APPR_PROCESS_START
+      - RATE_DOWN_PAYMENT
+      - CNT_PAYMENT
+      - DAYS_DECISION
+      - DAYS_FIRST_DRAWING
+      - DAYS_FIRST_DUE
+      - DAYS_LAST_DUE
+      - DAYS_TERMINATION
+      - NFLAG_INSURED_ON_APPROVAL
+    unique_key:
+      - SK_ID_PREV
+
+  pos_cash_balance:
+    filename: POS_CASH_balance.csv
+    required_columns:
+      - SK_ID_PREV
+      - SK_ID_CURR
+      - MONTHS_BALANCE
+      - CNT_INSTALMENT
+      - CNT_INSTALMENT_FUTURE
+      - NAME_CONTRACT_STATUS
+      - SK_DPD
+      - SK_DPD_DEF
+
+  installments_payments:
+    filename: installments_payments.csv
+    required_columns:
+      - SK_ID_PREV
+      - SK_ID_CURR
+      - NUM_INSTALMENT_VERSION
+      - NUM_INSTALMENT_NUMBER
+      - DAYS_INSTALMENT
+      - DAYS_ENTRY_PAYMENT
+      - AMT_INSTALMENT
+      - AMT_PAYMENT
+
+  credit_card_balance:
+    filename: credit_card_balance.csv
+    required_columns:
+      - SK_ID_PREV
+      - SK_ID_CURR
+      - MONTHS_BALANCE
+      - AMT_BALANCE
+      - AMT_CREDIT_LIMIT_ACTUAL
+      - AMT_DRAWINGS_ATM_CURRENT
+      - AMT_DRAWINGS_CURRENT
+      - AMT_DRAWINGS_OTHER_CURRENT
+      - AMT_DRAWINGS_POS_CURRENT
+      - AMT_INST_MIN_REGULARITY
+      - AMT_PAYMENT_CURRENT
+      - AMT_PAYMENT_TOTAL_CURRENT
+      - AMT_RECEIVABLE_PRINCIPAL
+      - AMT_RECIVABLE
+      - AMT_TOTAL_RECEIVABLE
+      - CNT_DRAWINGS_ATM_CURRENT
+      - CNT_DRAWINGS_CURRENT
+      - CNT_DRAWINGS_OTHER_CURRENT
+      - CNT_DRAWINGS_POS_CURRENT
+      - CNT_INSTALMENT_MATURE_CUM
+      - NAME_CONTRACT_STATUS
+      - SK_DPD
+      - SK_DPD_DEF
+
+relationships:
+  - name: bureau_balance.SK_ID_BUREAU -> bureau.SK_ID_BUREAU
+    child_table: bureau_balance
+    child_column: SK_ID_BUREAU
+    parent_tables:
+      - bureau
+    parent_column: SK_ID_BUREAU
+  - name: previous_application.SK_ID_CURR -> applications.SK_ID_CURR
+    child_table: previous_application
+    child_column: SK_ID_CURR
+    parent_tables:
+      - application_train
+      - application_test
+    parent_column: SK_ID_CURR
+  - name: pos_cash_balance.SK_ID_CURR -> applications.SK_ID_CURR
+    child_table: pos_cash_balance
+    child_column: SK_ID_CURR
+    parent_tables:
+      - application_train
+      - application_test
+    parent_column: SK_ID_CURR
+  - name: installments_payments.SK_ID_CURR -> applications.SK_ID_CURR
+    child_table: installments_payments
+    child_column: SK_ID_CURR
+    parent_tables:
+      - application_train
+      - application_test
+    parent_column: SK_ID_CURR
+  - name: credit_card_balance.SK_ID_CURR -> applications.SK_ID_CURR
+    child_table: credit_card_balance
+    child_column: SK_ID_CURR
+    parent_tables:
+      - application_train
+      - application_test
+    parent_column: SK_ID_CURR

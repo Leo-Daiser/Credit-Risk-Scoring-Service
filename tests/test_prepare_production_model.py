@@ -50,7 +50,12 @@ def test_expected_calibration_error_is_zero_for_perfect_bins():
 def test_model_bundle_aligns_features_and_rejects_unknowns():
     bundle = ModelBundle(
         model=None,
-        metadata={"risk_bands": [{"name": "low", "upper_bound": 0.2}, {"name": "high", "upper_bound": None}]},
+        metadata={
+            "risk_bands": [
+                {"name": "low", "upper_bound": 0.2},
+                {"name": "high", "upper_bound": None},
+            ]
+        },
         feature_schema={
             "feature_names": ["NUM", "CAT"],
             "numeric_features": ["NUM"],
@@ -86,9 +91,7 @@ def test_source_training_contract_rejects_split_mismatch():
     assert contract["validation_size"] == pytest.approx(0.2)
 
     with pytest.raises(ValueError, match="random_seed"):
-        validate_source_training_contract(
-            {"random_seed": 7, "holdout_size": 0.2}, metrics, schema
-        )
+        validate_source_training_contract({"random_seed": 7, "holdout_size": 0.2}, metrics, schema)
     with pytest.raises(ValueError, match="validation_size"):
         validate_source_training_contract(
             {"random_seed": 42, "holdout_size": 0.25}, metrics, schema
@@ -103,9 +106,7 @@ def test_prepare_production_model_end_to_end(tmp_path):
     X, y, features = split_features_target(data)
     numeric = ["AMT_INCOME_TOTAL", "AGE_YEARS"]
     categorical = ["NAME_CONTRACT_TYPE"]
-    X_train, _, y_train, _ = train_test_split(
-        X, y, test_size=0.2, random_state=42, stratify=y
-    )
+    X_train, _, y_train, _ = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     source_model = build_logistic_regression_pipeline(
         numeric,
         categorical,
@@ -118,13 +119,14 @@ def test_prepare_production_model_end_to_end(tmp_path):
 
     source_path = tmp_path / "source.joblib"
     source_metrics_path = tmp_path / "source_metrics.json"
+    baseline_metrics_path = tmp_path / "baseline_metrics.json"
+    baseline_model_path = tmp_path / "baseline.joblib"
     schema_path = tmp_path / "schema.json"
     bundle_path = tmp_path / "bundle.joblib"
     metadata_path = tmp_path / "metadata.json"
     joblib.dump(source_model, source_path)
-    schema = build_feature_schema(
-        features, numeric, categorical, "SK_ID_CURR", "TARGET"
-    )
+    joblib.dump(source_model, baseline_model_path)
+    schema = build_feature_schema(features, numeric, categorical, "SK_ID_CURR", "TARGET")
     schema_path.write_text(json.dumps(schema), encoding="utf-8")
     source_metrics_path.write_text(
         json.dumps(
@@ -137,11 +139,25 @@ def test_prepare_production_model_end_to_end(tmp_path):
         ),
         encoding="utf-8",
     )
+    baseline_metrics_path.write_text(
+        json.dumps(
+            {
+                "model_type": "logistic_regression_baseline",
+                "random_seed": 42,
+                "validation_size": 0.2,
+                "feature_count": len(features),
+                "metrics": {"roc_auc": 0.0},
+            }
+        ),
+        encoding="utf-8",
+    )
 
     config = {
         "production_model": {
             "source_model_path": str(source_path),
             "source_metrics_path": str(source_metrics_path),
+            "baseline_model_path": str(baseline_model_path),
+            "baseline_metrics_path": str(baseline_metrics_path),
             "feature_schema_path": str(schema_path),
             "train_features_path": str(train_path),
             "bundle_output_path": str(bundle_path),
@@ -151,6 +167,25 @@ def test_prepare_production_model_end_to_end(tmp_path):
             "calibration_fraction": 0.5,
             "calibration_cv": 2,
             "thresholds": [0.05, 0.1, 0.2, 0.3],
+            "threshold_policy": {
+                "strategy": "expected_cost",
+                "false_negative_cost": 5.0,
+                "false_positive_cost": 1.0,
+                "min_recall": 0.0,
+                "max_predicted_positive_rate": 1.0,
+            },
+            "bootstrap_samples": 20,
+            "subgroup_min_rows": 10,
+            "acceptance_gates": {
+                "min_roc_auc": 0.0,
+                "min_roc_auc_ci_lower": 0.0,
+                "min_pr_auc": 0.0,
+                "max_brier_score": 1.0,
+                "max_expected_calibration_error": 1.0,
+                "min_roc_auc_improvement_over_baseline": 0.0,
+                "min_roc_auc_improvement_ci_lower": -1.0,
+                "require_calibration_improvement": False,
+            },
         }
     }
     config_path = tmp_path / "train.yaml"
@@ -161,6 +196,7 @@ def test_prepare_production_model_end_to_end(tmp_path):
     assert bundle_path.exists()
     assert metadata_path.exists()
     assert summary["training_rows"] == 192
+    assert summary["acceptance_status"] == "passed"
     assert summary["calibration_rows"] + summary["evaluation_rows"] == 48
     bundle = joblib.load(bundle_path)
     assert isinstance(bundle, ModelBundle)
@@ -169,5 +205,20 @@ def test_prepare_production_model_end_to_end(tmp_path):
     assert 0.0 <= probability <= 1.0
     assert bundle.metadata["decision_threshold"] in [0.05, 0.1, 0.2, 0.3]
     assert bundle.metadata["source_training"]["random_seed"] == 42
+    assert bundle.metadata["acceptance"]["status"] == "passed"
+    assert (
+        bundle.metadata["baseline_comparison"]["training_contract"]["model_type"]
+        == "logistic_regression_baseline"
+    )
+    assert set(bundle.metadata["confidence_intervals"]) == {
+        "roc_auc",
+        "pr_auc",
+        "brier_score",
+    }
     assert len(bundle.metadata["source_model_sha256"]) == 64
     assert set(bundle.reference_stats) == {"numeric", "categorical"}
+    assert bundle.reference_stats["numeric"]["AGE_YEARS"]["min"] >= 21
+    assert (
+        "Cash loans"
+        in bundle.reference_stats["categorical"]["NAME_CONTRACT_TYPE"]["allowed_values"]
+    )

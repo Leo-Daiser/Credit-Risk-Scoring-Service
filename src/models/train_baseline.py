@@ -1,7 +1,7 @@
 """Logistic Regression baseline trainer (Phase 3.1 + 3.1.1 hardening).
 
 This module trains the first *real* ML baseline for the credit-risk scoring
-service on top of the final feature dataset produced in Phase 2.3
+service on top of the final feature dataset produced in Phase 2.4
 (``data/processed/train_features.parquet``).
 
 Design goals:
@@ -33,9 +33,9 @@ in this repo — the data-dependent CLI command (``train-baseline``) is meant to
 be run locally by the user, while the unit tests exercise the full pipeline on
 small synthetic data.
 
-NOT implemented here (by design, until later phases): CatBoost / LightGBM
-challengers, calibration, SHAP / reason codes, the API ``/score`` endpoint,
-PostgreSQL inference logging, batch scoring and drift monitoring.
+CatBoost, calibration, serving, persistence, batch scoring and monitoring are
+implemented in separate modules; this module intentionally remains limited to
+the Logistic Regression baseline.
 """
 
 from __future__ import annotations
@@ -49,6 +49,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import yaml
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.compose import ColumnTransformer
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.impute import SimpleImputer
@@ -65,7 +66,8 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.utils.validation import check_is_fitted
 
 DEFAULT_ID_COLUMN = "SK_ID_CURR"
 DEFAULT_TARGET_COLUMN = "TARGET"
@@ -154,9 +156,7 @@ def resolve_logistic_regression_params(
     """
     lr_config = baseline_config.get("logistic_regression") or {}
     if not isinstance(lr_config, dict):
-        raise ValueError(
-            "Train config 'baseline.logistic_regression' must be a dictionary."
-        )
+        raise ValueError("Train config 'baseline.logistic_regression' must be a dictionary.")
 
     params = dict(DEFAULT_LOGISTIC_REGRESSION_PARAMS)
     # Backward compatibility: honour a legacy top-level max_iter if present.
@@ -207,9 +207,7 @@ def split_features_target(
     if id_column not in df.columns:
         raise ValueError(f"Training data is missing the id column '{id_column}'.")
     if target_column not in df.columns:
-        raise ValueError(
-            f"Training data is missing the target column '{target_column}'."
-        )
+        raise ValueError(f"Training data is missing the target column '{target_column}'.")
 
     if df[id_column].duplicated().any():
         duplicate_count = int(df[id_column].duplicated().sum())
@@ -268,6 +266,71 @@ def infer_feature_types(X: pd.DataFrame) -> tuple[list[str], list[str]]:
     return numeric_features, categorical_features
 
 
+class MemoryEfficientNumericTransformer(BaseEstimator, TransformerMixin):
+    """Median-impute and standardize numeric columns with bounded peak memory.
+
+    ``SimpleImputer(strategy="median")`` sorts one masked copy of the complete
+    numeric matrix. On the full Home Credit feature set that temporary array is
+    larger than 1 GiB. This transformer computes statistics column by column
+    and materializes only one float32 output matrix during transformation.
+    """
+
+    def fit(self, X: Any, y: Any = None) -> MemoryEfficientNumericTransformer:
+        frame = X if isinstance(X, pd.DataFrame) else pd.DataFrame(X)
+        self.feature_names_in_ = np.asarray(frame.columns, dtype=object)
+        self.n_features_in_ = len(self.feature_names_in_)
+        medians: list[float] = []
+        means: list[float] = []
+        scales: list[float] = []
+        row_count = len(frame)
+        if row_count == 0:
+            raise ValueError("Numeric transformer cannot be fitted on an empty frame.")
+
+        for column in frame.columns:
+            values = pd.to_numeric(frame[column], errors="coerce").replace(
+                [np.inf, -np.inf], np.nan
+            )
+            observed = values.dropna().to_numpy(dtype="float64")
+            median = float(np.median(observed)) if len(observed) else 0.0
+            missing_count = row_count - len(observed)
+            mean = float((observed.sum() + missing_count * median) / row_count)
+            squared_error = np.square(observed - mean).sum()
+            squared_error += missing_count * (median - mean) ** 2
+            scale = float(np.sqrt(squared_error / row_count))
+            medians.append(median)
+            means.append(mean)
+            scales.append(scale if np.isfinite(scale) and scale > 0.0 else 1.0)
+
+        self.medians_ = np.asarray(medians, dtype="float64")
+        self.means_ = np.asarray(means, dtype="float64")
+        self.scales_ = np.asarray(scales, dtype="float64")
+        return self
+
+    def transform(self, X: Any) -> np.ndarray:
+        check_is_fitted(self, ("medians_", "means_", "scales_"))
+        if isinstance(X, pd.DataFrame):
+            frame = X.reindex(columns=list(self.feature_names_in_))
+        else:
+            frame = pd.DataFrame(X, columns=self.feature_names_in_)
+        output = np.empty((len(frame), self.n_features_in_), dtype="float32")
+        for index, column in enumerate(frame.columns):
+            values = pd.to_numeric(frame[column], errors="coerce").to_numpy(
+                dtype="float64", na_value=np.nan
+            )
+            invalid = ~np.isfinite(values)
+            if invalid.any():
+                values[invalid] = self.medians_[index]
+            output[:, index] = ((values - self.means_[index]) / self.scales_[index]).astype(
+                "float32"
+            )
+        return output
+
+    def get_feature_names_out(self, input_features: Any = None) -> np.ndarray:
+        check_is_fitted(self, "feature_names_in_")
+        names = self.feature_names_in_ if input_features is None else input_features
+        return np.asarray(names, dtype=object)
+
+
 def build_logistic_regression_pipeline(
     numeric_features: list[str],
     categorical_features: list[str],
@@ -293,18 +356,17 @@ def build_logistic_regression_pipeline(
     Returns:
         An unfitted :class:`~sklearn.pipeline.Pipeline`.
     """
-    numeric_transformer = Pipeline(
-        steps=[
-            ("imputer", SimpleImputer(strategy="median")),
-            ("scaler", StandardScaler()),
-        ]
-    )
+    numeric_transformer = MemoryEfficientNumericTransformer()
     categorical_transformer = Pipeline(
         steps=[
             ("imputer", SimpleImputer(strategy="most_frequent")),
             (
                 "onehot",
-                OneHotEncoder(handle_unknown="ignore", sparse_output=True),
+                OneHotEncoder(
+                    handle_unknown="ignore",
+                    sparse_output=True,
+                    dtype=np.float32,
+                ),
             ),
         ]
     )
@@ -654,9 +716,7 @@ def train_logistic_regression_baseline(
     convergence_info = _fit_with_convergence_capture(pipeline, X_train, y_train)
 
     valid_proba = pipeline.predict_proba(X_valid)[:, 1]
-    metrics = evaluate_binary_classifier(
-        y_valid, valid_proba, threshold=0.5, thresholds=thresholds
-    )
+    metrics = evaluate_binary_classifier(y_valid, valid_proba, threshold=0.5, thresholds=thresholds)
 
     threshold_selection = select_best_threshold(
         metrics["threshold_metrics"], metric_name=selected_threshold_metric
@@ -711,9 +771,7 @@ def train_logistic_regression_baseline(
         "validation_size": validation_size,
         "logistic_regression": lr_hyperparameters,
         "convergence_warning": convergence_info["convergence_warning"],
-        "convergence_warning_messages": convergence_info[
-            "convergence_warning_messages"
-        ],
+        "convergence_warning_messages": convergence_info["convergence_warning_messages"],
         "metrics": metrics,
         "threshold_selection": threshold_selection,
         "probability_summary": probability_summary,
@@ -728,9 +786,7 @@ def train_logistic_regression_baseline(
         "categorical_feature_count": len(categorical_features),
         "encoded_feature_count": encoded_info["encoded_feature_count"],
         "convergence_warning": convergence_info["convergence_warning"],
-        "convergence_warning_messages": convergence_info[
-            "convergence_warning_messages"
-        ],
+        "convergence_warning_messages": convergence_info["convergence_warning_messages"],
         "logistic_regression": lr_hyperparameters,
         "metrics": metrics,
         "threshold_selection": threshold_selection,

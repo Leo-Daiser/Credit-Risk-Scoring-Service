@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -29,9 +30,7 @@ def scoring_service() -> ScoringService:
         }
     )
     target = (
-        (frame["INCOME"] < 95_000).astype(int)
-        + (frame["CONTRACT"] == "cash").astype(int)
-        >= 1
+        (frame["INCOME"] < 95_000).astype(int) + (frame["CONTRACT"] == "cash").astype(int) >= 1
     ).astype(int)
     pipeline = build_logistic_regression_pipeline(
         ["INCOME", "AGE_YEARS"],
@@ -110,6 +109,21 @@ def test_model_info_returns_production_metadata(api_client):
     assert response.status_code == 200
     assert response.json()["model_version"] == "test-model-v1"
     assert response.json()["decision_threshold"] == 0.5
+    assert response.json()["confidence_intervals"] == {}
+
+
+def test_feature_schema_returns_machine_readable_input_contract(api_client):
+    client, _ = api_client
+    response = client.get("/feature_schema")
+    assert response.status_code == 200
+    assert response.json() == {
+        "model_version": "test-model-v1",
+        "feature_count": 3,
+        "numeric_features": ["INCOME", "AGE_YEARS"],
+        "categorical_features": ["CONTRACT"],
+        "required_features": [],
+        "min_feature_coverage": 0.0,
+    }
 
 
 def test_readiness_checks_model_and_database(api_client):
@@ -136,6 +150,14 @@ def test_score_persists_request_and_prediction_atomically(api_client):
     assert 0.0 <= body["default_probability"] <= 1.0
     assert body["logging_status"] == "persisted"
     assert body["model_version"] == "test-model-v1"
+    assert body["input_quality"] == {
+        "supplied_feature_count": 3,
+        "supplied_feature_coverage": 1.0,
+        "missing_feature_count": 0,
+        "out_of_range_features": [],
+        "unseen_categorical_features": [],
+        "warnings": [],
+    }
 
     with TestingSession() as session:
         assert len(session.scalars(select(ScoringRequest)).all()) == 1
@@ -144,9 +166,7 @@ def test_score_persists_request_and_prediction_atomically(api_client):
 
 def test_distinct_requests_register_model_once(api_client):
     client, TestingSession = api_client
-    first = client.post(
-        "/score", json={"request_id": "registry-1", "features": {"INCOME": 90_000}}
-    )
+    first = client.post("/score", json={"request_id": "registry-1", "features": {"INCOME": 90_000}})
     second = client.post(
         "/score", json={"request_id": "registry-2", "features": {"INCOME": 110_000}}
     )
@@ -172,11 +192,63 @@ def test_score_rejects_nested_feature_values(api_client):
     assert response.status_code == 422
 
 
+def test_score_requires_configured_api_key(api_client):
+    client, _ = api_client
+    original_api_key = settings.api_key
+    settings.api_key = SecretStr("test-secret")
+    try:
+        payload = {"features": {"INCOME": 70_000, "AGE_YEARS": 31, "CONTRACT": "cash"}}
+        assert client.post("/score", json=payload).status_code == 401
+        response = client.post(
+            "/score",
+            json=payload,
+            headers={"X-API-Key": "test-secret"},
+        )
+        assert response.status_code == 200
+    finally:
+        settings.api_key = original_api_key
+
+
 def test_score_rejects_invalid_numeric_feature(api_client):
     client, _ = api_client
     response = client.post("/score", json={"features": {"INCOME": "not-a-number"}})
     assert response.status_code == 422
     assert "finite numbers" in response.json()["detail"]
+
+
+def test_scoring_service_enforces_required_features_and_coverage(scoring_service):
+    strict = ScoringService(
+        scoring_service.bundle,
+        min_feature_coverage=0.75,
+        required_features=["INCOME"],
+    )
+    with pytest.raises(ValueError, match="Required model features"):
+        strict.score({"AGE_YEARS": 31, "CONTRACT": "cash"})
+    with pytest.raises(ValueError, match="Insufficient feature coverage"):
+        strict.score({"INCOME": 70_000})
+
+
+def test_input_quality_reports_domain_deviations(scoring_service):
+    scoring_service.bundle.reference_stats = {
+        "numeric": {"INCOME": {"min": 50_000, "max": 200_000}},
+        "categorical": {"CONTRACT": {"allowed_values": ["cash", "revolving"]}},
+    }
+    result = scoring_service.score({"INCOME": 300_000, "AGE_YEARS": 31, "CONTRACT": "unknown"})
+    quality = result["input_quality"]
+    assert quality["out_of_range_features"] == ["INCOME"]
+    assert quality["unseen_categorical_features"] == ["CONTRACT"]
+    assert set(quality["warnings"]) == {
+        "numeric_values_outside_training_range",
+        "categorical_values_not_seen_in_training",
+    }
+
+
+def test_metrics_endpoint_exposes_service_metrics(api_client):
+    client, _ = api_client
+    assert client.get("/health").status_code == 200
+    response = client.get("/metrics")
+    assert response.status_code == 200
+    assert "credit_risk_http_requests_total" in response.text
 
 
 def test_score_bounds_identifiers_and_categorical_values(api_client):

@@ -9,6 +9,7 @@ import yaml
 from sklearn.pipeline import Pipeline
 
 from src.models.train_baseline import (
+    MemoryEfficientNumericTransformer,
     build_feature_schema,
     build_logistic_regression_pipeline,
     evaluate_binary_classifier,
@@ -116,6 +117,20 @@ def test_build_logistic_regression_pipeline_returns_pipeline():
     classifier = pipeline.named_steps["classifier"]
     assert classifier.max_iter == 500
     assert classifier.class_weight == "balanced"
+
+
+def test_memory_efficient_numeric_transformer_imputes_and_scales():
+    frame = pd.DataFrame({"A": [1.0, np.nan, 3.0], "B": [5.0, 5.0, 5.0]})
+    transformer = MemoryEfficientNumericTransformer().fit(frame)
+
+    transformed = transformer.transform(frame)
+
+    assert transformed.dtype == np.float32
+    assert transformed.shape == (3, 2)
+    assert np.isfinite(transformed).all()
+    assert transformed[:, 0].mean() == pytest.approx(0.0, abs=1e-6)
+    assert transformed[:, 1].tolist() == [0.0, 0.0, 0.0]
+    assert transformer.get_feature_names_out().tolist() == ["A", "B"]
 
 
 # ---------------------------------------------------------------------------
@@ -317,9 +332,7 @@ def test_train_logistic_regression_baseline_summary_contains_hardening_fields(
             "model_output_path": str(tmp_path / "models" / "logreg.joblib"),
             "metrics_output_path": str(tmp_path / "metrics" / "metrics.json"),
             "feature_schema_output_path": str(tmp_path / "reports" / "schema.json"),
-            "evaluation_report_output_path": str(
-                tmp_path / "reports" / "evaluation_report.json"
-            ),
+            "evaluation_report_output_path": str(tmp_path / "reports" / "evaluation_report.json"),
         }
     }
     config_path = tmp_path / "train.yaml"

@@ -3,8 +3,10 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from src.api.dependencies import get_scoring_service
+from src.api.dependencies import get_scoring_service, require_api_key
+from src.api.metrics import record_scoring_result
 from src.api.schemas import (
+    FeatureSchemaResponse,
     HealthResponse,
     ModelInfoResponse,
     ReadinessResponse,
@@ -21,6 +23,7 @@ from src.services.scoring import (
 
 router = APIRouter()
 
+
 @router.get("/health", response_model=HealthResponse)
 def healthcheck() -> HealthResponse:
     return HealthResponse(status="ok", service="credit-risk-scoring")
@@ -31,6 +34,21 @@ def model_info(
     service: ScoringService = Depends(get_scoring_service),
 ) -> ModelInfoResponse:
     return ModelInfoResponse.model_validate(service.model_info())
+
+
+@router.get("/feature_schema", response_model=FeatureSchemaResponse)
+def feature_schema(
+    service: ScoringService = Depends(get_scoring_service),
+) -> FeatureSchemaResponse:
+    schema = service.bundle.feature_schema
+    return FeatureSchemaResponse(
+        model_version=service.bundle.metadata["model_version"],
+        feature_count=len(service.bundle.feature_names),
+        numeric_features=list(schema.get("numeric_features", [])),
+        categorical_features=list(schema.get("categorical_features", [])),
+        required_features=service.required_features,
+        min_feature_coverage=service.min_feature_coverage,
+    )
 
 
 @router.get("/ready", response_model=ReadinessResponse)
@@ -55,6 +73,7 @@ def readiness(
 @router.post("/score", response_model=ScoreResponse)
 def score(
     payload: ScoreRequest,
+    _: None = Depends(require_api_key),
     service: ScoringService = Depends(get_scoring_service),
     session: Session = Depends(get_db),
 ) -> ScoreResponse:
@@ -65,6 +84,7 @@ def score(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=str(exc),
         ) from exc
+    record_scoring_result(result)
 
     if not settings.inference_logging_enabled:
         result["logging_status"] = "disabled"

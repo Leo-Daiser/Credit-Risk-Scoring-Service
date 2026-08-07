@@ -47,21 +47,28 @@ def _register_model_if_needed(session: Session, result: dict[str, Any]) -> None:
     if dialect == "postgresql":
         from sqlalchemy.dialects.postgresql import insert
 
-        statement = insert(ModelRegistry).values(**values).on_conflict_do_nothing(
-            index_elements=[ModelRegistry.model_version]
+        statement = (
+            insert(ModelRegistry)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=[ModelRegistry.model_version])
         )
         session.execute(statement)
         return
     if dialect == "sqlite":
         from sqlalchemy.dialects.sqlite import insert
 
-        statement = insert(ModelRegistry).values(**values).on_conflict_do_nothing(
-            index_elements=[ModelRegistry.model_version]
+        statement = (
+            insert(ModelRegistry)
+            .values(**values)
+            .on_conflict_do_nothing(index_elements=[ModelRegistry.model_version])
         )
         session.execute(statement)
         return
 
-    if session.query(ModelRegistry).filter_by(model_version=values["model_version"]).first() is None:
+    if (
+        session.query(ModelRegistry).filter_by(model_version=values["model_version"]).first()
+        is None
+    ):
         session.add(ModelRegistry(**values))
 
 
@@ -114,7 +121,9 @@ def linear_reason_codes(
         return []
 
     transformed = preprocessor.transform(frame)
-    row = transformed.toarray()[0] if hasattr(transformed, "toarray") else np.asarray(transformed)[0]
+    row = (
+        transformed.toarray()[0] if hasattr(transformed, "toarray") else np.asarray(transformed)[0]
+    )
     names = np.asarray(preprocessor.get_feature_names_out(), dtype=object)
     contributions = row * np.asarray(coefficients, dtype="float64")[0]
     positive_indices = np.flatnonzero(contributions > 0)
@@ -193,17 +202,36 @@ class ScoringService:
         bundle: ModelBundle,
         top_reason_codes: int = 5,
         artifact_path: str = "in-memory",
+        min_feature_coverage: float = 0.0,
+        required_features: list[str] | None = None,
     ):
         self.bundle = bundle
         self.top_reason_codes = top_reason_codes
         self.artifact_path = artifact_path
+        if not 0.0 <= min_feature_coverage <= 1.0:
+            raise ValueError("min_feature_coverage must be in [0, 1].")
+        self.min_feature_coverage = min_feature_coverage
+        self.required_features = list(required_features or [])
+        unknown_required = sorted(set(self.required_features) - set(bundle.feature_names))
+        if unknown_required:
+            raise ValueError(
+                f"Required features are absent from the model schema: {unknown_required}."
+            )
 
     @classmethod
-    def from_path(cls, path: str | Path, top_reason_codes: int = 5) -> ScoringService:
+    def from_path(
+        cls,
+        path: str | Path,
+        top_reason_codes: int = 5,
+        min_feature_coverage: float = 0.0,
+        required_features: list[str] | None = None,
+    ) -> ScoringService:
         return cls(
             load_model_bundle(path),
             top_reason_codes=top_reason_codes,
             artifact_path=str(path),
+            min_feature_coverage=min_feature_coverage,
+            required_features=required_features,
         )
 
     def model_info(self) -> dict[str, Any]:
@@ -221,11 +249,27 @@ class ScoringService:
                 for key in ("roc_auc", "pr_auc", "brier_score", "expected_calibration_error")
                 if key in calibrated
             },
+            "confidence_intervals": metadata.get("confidence_intervals", {}),
+            "acceptance_status": metadata.get("acceptance", {}).get("status"),
         }
 
     def score(self, features: dict[str, Any], request_id: str | None = None) -> dict[str, Any]:
         started = time.perf_counter()
         frame = self.bundle.prepare_frame([features])
+        input_quality = self.bundle.assess_input_quality(features, frame)
+        missing_required = [
+            feature
+            for feature in self.required_features
+            if feature not in features or features[feature] is None
+        ]
+        if missing_required:
+            raise ValueError(f"Required model features are missing: {missing_required}.")
+        if input_quality["supplied_feature_coverage"] < self.min_feature_coverage:
+            raise ValueError(
+                "Insufficient feature coverage: "
+                f"{input_quality['supplied_feature_coverage']:.4f} < "
+                f"{self.min_feature_coverage:.4f}."
+            )
         probability = float(self.bundle.predict_default_probability(frame)[0])
         threshold = float(self.bundle.metadata["decision_threshold"])
         missing_count = int(frame.iloc[0].isna().sum())
@@ -243,6 +287,7 @@ class ScoringService:
             "_model_metrics": self.bundle.metadata.get("metrics", {}).get("calibrated"),
             "_artifact_path": self.artifact_path,
             "missing_feature_count": missing_count,
+            "input_quality": input_quality,
             "latency_ms": (time.perf_counter() - started) * 1000.0,
         }
         return result
@@ -287,9 +332,7 @@ def persist_scoring_result(
             "scoring_requests_request_id_key",
             "uq_scoring_requests_request_id",
         }:
-            raise DuplicateRequestError(
-                f"request_id '{request_id}' already exists."
-            ) from exc
+            raise DuplicateRequestError(f"request_id '{request_id}' already exists.") from exc
         logger.exception("Integrity error while persisting scoring result %s", request_id)
         raise
     except Exception:
