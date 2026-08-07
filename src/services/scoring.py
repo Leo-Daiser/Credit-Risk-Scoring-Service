@@ -167,7 +167,7 @@ def catboost_reason_codes(
     categorical = list(getattr(preprocessor, "categorical_features", []))
     pool = Pool(transformed, cat_features=categorical)
     shap_values = np.asarray(
-        classifier.get_feature_importance(pool, type="ShapValues"),
+        classifier.get_feature_importance(pool, type="ShapValues", thread_count=1),
         dtype="float64",
     )[0, :-1]
     positive_indices = np.flatnonzero(shap_values > 0)

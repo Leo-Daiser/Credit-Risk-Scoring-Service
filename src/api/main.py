@@ -1,5 +1,7 @@
 import logging
+import re
 import time
+from uuid import uuid4
 
 from fastapi import FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
@@ -7,11 +9,12 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from src.api.metrics import HTTP_LATENCY, HTTP_REQUESTS
 from src.api.routes import router
 from src.core.config import settings
+from src.core.logging import bind_correlation_id, configure_logging, reset_correlation_id
 
-logging.basicConfig(
-    level=getattr(logging, settings.log_level.upper(), logging.INFO),
-    format="%(asctime)s %(levelname)s %(name)s %(message)s",
-)
+configure_logging(settings.log_level, settings.log_format)
+logger = logging.getLogger(__name__)
+CORRELATION_HEADER = "X-Correlation-ID"
+CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 app = FastAPI(
     title=settings.app_name,
@@ -25,15 +28,34 @@ app.include_router(router)
 async def observe_http_request(request: Request, call_next):
     started = time.perf_counter()
     status_code = 500
+    supplied_correlation_id = request.headers.get(CORRELATION_HEADER, "").strip()
+    correlation_id = (
+        supplied_correlation_id
+        if CORRELATION_ID_PATTERN.fullmatch(supplied_correlation_id)
+        else str(uuid4())
+    )
+    token = bind_correlation_id(correlation_id)
     try:
         response = await call_next(request)
         status_code = response.status_code
+        response.headers[CORRELATION_HEADER] = correlation_id
         return response
     finally:
+        duration_seconds = time.perf_counter() - started
         route = request.scope.get("route")
         path = getattr(route, "path", "unmatched")
         HTTP_REQUESTS.labels(request.method, path, str(status_code)).inc()
-        HTTP_LATENCY.labels(request.method, path).observe(time.perf_counter() - started)
+        HTTP_LATENCY.labels(request.method, path).observe(duration_seconds)
+        logger.info(
+            "http_request_completed",
+            extra={
+                "method": request.method,
+                "path": path,
+                "status_code": status_code,
+                "duration_ms": round(duration_seconds * 1000.0, 3),
+            },
+        )
+        reset_correlation_id(token)
 
 
 @app.get("/metrics", include_in_schema=False)

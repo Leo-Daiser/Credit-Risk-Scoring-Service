@@ -11,9 +11,9 @@ Production-like ML-сервис оценки вероятности дефолт
 - online API и batch scoring через один immutable model bundle;
 - локальные SHAP reason codes;
 - PostgreSQL audit log и model registry;
-- input-quality diagnostics, API-key authentication и Prometheus metrics;
+- input-quality diagnostics, API-key authentication, Prometheus metrics и JSON logs;
 - bootstrap confidence intervals, subgroup report и offline drift monitoring;
-- Docker Compose, Alembic migrations, CI и тесты.
+- Docker Compose, Alembic migrations, CI, тесты и воспроизводимый load smoke.
 
 ## Статус проекта
 
@@ -32,6 +32,7 @@ Production-like ML-сервис оценки вероятности дефолт
 | 5 | Калибровка, business-cost threshold, CI, quality gates, subgroup report | ✅ |
 | 6 | `/score`, input contract, API key, metrics, DB logging, model registry | ✅ |
 | 7 | Batch scoring, PSI drift report, Alembic, CI | ✅ |
+| 8 | Correlation-safe JSON logs, local SLO и concurrent load smoke | ✅ |
 
 Финальный локальный production bundle:
 
@@ -75,6 +76,7 @@ FastAPI /score
   -> calibrated probability
   -> decision + risk band + local SHAP reasons
   -> atomic PostgreSQL request/prediction log
+  -> Prometheus metrics + payload-free correlated JSON events
 ```
 
 Train/calibration/evaluation разделены. Source model обучается на train-части. Половина исходного holdout используется только для calibration и выбора threshold, вторая половина — только для итоговой оценки. Перед сборкой bundle split contract сверяется с metrics-манифестами source model и baseline: `random_seed`, holdout fraction и feature count обязаны совпадать. Candidate и baseline сравниваются на одних evaluation-строках, а положительное улучшение подтверждается парным bootstrap CI. Bundle сохраняется только после прохождения gates по ROC-AUC, нижней границе bootstrap CI, PR-AUC, Brier, ECE, улучшению относительно baseline и эффекту калибровки. Drift reference statistics строятся только по train-части.
@@ -86,7 +88,7 @@ credit-risk-scoring/
 ├── .github/workflows/ci.yml
 ├── migrations/
 │   ├── env.py
-│   └── versions/20260806_01_initial_schema.py
+│   └── versions/
 ├── configs/
 │   ├── data.yaml
 │   ├── features.yaml
@@ -112,6 +114,10 @@ credit-risk-scoring/
 │   │   ├── monitoring.py
 │   │   └── scoring.py
 │   └── cli.py
+├── scripts/load_smoke.py
+├── docs/
+│   ├── adr/001-model-artifact-contract.md
+│   └── operations.md
 ├── tests/
 ├── alembic.ini
 ├── Dockerfile
@@ -149,11 +155,11 @@ Copy-Item .env.example .env
 python --version
 python -m pip check
 pip-audit -r requirements.txt
-ruff check src tests migrations
+ruff check src tests migrations scripts
 pytest -q
 ```
 
-Результат последнего локального запуска на этой ветке: `132 passed`. Это число
+Результат последнего локального запуска на этой ветке: `138 passed`. Это число
 относится к конкретному checkout и может измениться при добавлении или удалении тестов.
 
 ## Данные
@@ -349,6 +355,10 @@ IDs и чрезмерно длинные categorical values отклоняютс
 пустом `API_KEY` проверка отключена; перед production-развёртыванием оператор обязан
 задать сильный случайный ключ.
 
+Опциональный `X-Correlation-ID` возвращается в response и попадает в operational
+logs. Небезопасное или отсутствующее значение заменяется UUID. Feature payload и
+API key в логи не пишутся.
+
 Response:
 
 ```json
@@ -442,7 +452,7 @@ python -m src.cli monitor-drift
 - `configs/features.yaml` — feature builders и processed outputs;
 - `configs/train.yaml` — baseline, CatBoost, calibration, input contract, threshold policy, quality gates и risk bands;
 - `configs/service.yaml` — model bundle, batch и monitoring paths;
-- `.env` — DB, deployment override model path, logging policy и API key.
+- `.env` — DB, deployment override model path, logging policy/format и API key.
 
 Основные env-параметры перечислены в `.env.example`. `DATABASE_URL` при наличии
 имеет приоритет над отдельными `POSTGRES_*`. `MODEL_BUNDLE_PATH` при наличии
@@ -459,7 +469,11 @@ input contract берётся только из загруженного bundle.
 docker compose config --quiet
 ```
 
-Тесты покрывают data contracts, все feature builders, pruning, baseline, CatBoost, cost-sensitive threshold, bootstrap CI, acceptance gates, calibration, subgroup report, model bundle, input quality, API key, Prometheus endpoint, local explanations, transactional persistence, batch scoring, PSI monitoring и CLI dispatch.
+Тесты покрывают data contracts, все feature builders, pruning, baseline, CatBoost,
+cost-sensitive threshold, bootstrap CI, acceptance gates, calibration, subgroup
+report, model bundle, input quality, API key, Prometheus endpoint, безопасный logging
+contract, local explanations, transactional persistence, batch scoring, PSI
+monitoring, load-smoke helpers и CLI dispatch.
 
 GitHub Actions:
 
@@ -471,6 +485,20 @@ GitHub Actions:
 - запускает весь test suite;
 - валидирует Compose config.
 - собирает production Docker image.
+
+## Operational readiness
+
+После запуска Compose concurrent smoke проверяет readiness, live input contract,
+model-version stability, сохранение audit log, error rate и p95 latency:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\load_smoke.py --requests 50 --concurrency 2
+```
+
+Цели, ограничения и triage runbook описаны в
+[`docs/operations.md`](docs/operations.md). Результаты load smoke зависят от хоста,
+поэтому фиксируются как параметры конкретного локального запуска, а не как
+гарантированные свойства сервиса.
 
 ## Что намеренно не входит в MVP
 
