@@ -11,6 +11,8 @@ Production-like ML-сервис оценки вероятности дефолт
 - online API и batch scoring через один immutable model bundle;
 - локальные SHAP reason codes;
 - PostgreSQL audit log и model registry;
+- оригинальный fintech web-кабинет с server-side BFF;
+- durable очередь загрузок и отдельный batch worker;
 - input-quality diagnostics, API-key authentication, Prometheus metrics и JSON logs;
 - bootstrap confidence intervals, subgroup report и offline drift monitoring;
 - Docker Compose, Alembic migrations, CI, тесты и воспроизводимый load smoke.
@@ -33,6 +35,7 @@ Production-like ML-сервис оценки вероятности дефолт
 | 6 | `/score`, input contract, API key, metrics, DB logging, model registry | ✅ |
 | 7 | Batch scoring, PSI drift report, Alembic, CI | ✅ |
 | 8 | Correlation-safe JSON logs, local SLO и concurrent load smoke | ✅ |
+| 9 | Web/BFF, upload workflow, durable batch jobs и отдельный worker | ✅ |
 
 Финальный локальный production bundle:
 
@@ -77,7 +80,22 @@ FastAPI /score
   -> decision + risk band + local SHAP reasons
   -> atomic PostgreSQL request/prediction log
   -> Prometheus metrics + payload-free correlated JSON events
+
+Browser
+  -> identity-aware gateway in a public deployment
+  -> Riskline web cabinet (single-tenant operator surface)
+  -> server-side BFF adds API key
+  -> FastAPI: online scoring, dashboard, history, upload/job contracts
+       |-> PostgreSQL: audit log + durable batch queue
+       |-> artifact volume: transient uploads + prediction-only results
+       `-> batch worker: claims queued jobs and uses the same model bundle
 ```
+
+Runtime разделён на три независимо запускаемых процесса: `frontend`, `api` и
+`worker`. Это осмысленная сервисная граница, а не искусственное дробление ML-кода:
+online API и batch worker импортируют одну inference-библиотеку и валидируют один
+production bundle. Подробное решение и trade-offs зафиксированы в
+[`docs/adr/002-operator-platform-architecture.md`](docs/adr/002-operator-platform-architecture.md).
 
 Train/calibration/evaluation разделены. Source model обучается на train-части. Половина исходного holdout используется только для calibration и выбора threshold, вторая половина — только для итоговой оценки. Перед сборкой bundle split contract сверяется с metrics-манифестами source model и baseline: `random_seed`, holdout fraction и feature count обязаны совпадать. Candidate и baseline сравниваются на одних evaluation-строках, а положительное улучшение подтверждается парным bootstrap CI. Bundle сохраняется только после прохождения gates по ROC-AUC, нижней границе bootstrap CI, PR-AUC, Brier, ECE, улучшению относительно baseline и эффекту калибровки. Drift reference statistics строятся только по train-части.
 
@@ -111,9 +129,16 @@ credit-risk-scoring/
 │   │   └── train_catboost.py
 │   ├── services/
 │   │   ├── batch.py
+│   │   ├── batch_jobs.py
 │   │   ├── monitoring.py
 │   │   └── scoring.py
+│   ├── worker/main.py
 │   └── cli.py
+├── frontend/
+│   ├── app/
+│   ├── worker/
+│   ├── Dockerfile
+│   └── package.json
 ├── scripts/load_smoke.py
 ├── docs/
 │   ├── adr/001-model-artifact-contract.md
@@ -131,6 +156,7 @@ Raw data, processed parquet, trained models, reports and predictions не ком
 ## Требования
 
 - Python 3.11;
+- Node.js 22 для отдельной разработки web-кабинета;
 - PostgreSQL 16 для production-like запуска;
 - Docker Desktop с Compose — опционально;
 - полный Home Credit Default Risk dataset для повторной сборки features и обучения.
@@ -145,6 +171,9 @@ python -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements-dev.txt
 Copy-Item .env.example .env
+Set-Location frontend
+npm ci
+Set-Location ..
 ```
 
 Замените `POSTGRES_PASSWORD=change-me` в `.env`.
@@ -159,7 +188,7 @@ ruff check src tests migrations scripts
 pytest -q
 ```
 
-Результат последнего локального запуска на этой ветке: `143 passed`. Это число
+Результат последнего локального запуска на этой ветке: `147 passed`. Это число
 относится к конкретному checkout и может измениться при добавлении или удалении тестов.
 
 ## Данные
@@ -239,6 +268,28 @@ python -m src.cli monitor-drift
 python -m src.db.migrate
 ```
 
+## Web-кабинет Riskline
+
+Web-интерфейс реализует пять операторских сценариев:
+
+- dashboard с фактической историей решений и состоянием batch queue;
+- одиночный скоринг versioned JSON payload;
+- загрузка model-ready CSV/parquet до настроенного лимита;
+- история решений без вывода исходных чувствительных признаков;
+- просмотр metadata модели, локальных metrics и input contract.
+
+Браузер обращается не к FastAPI напрямую, а к server-side BFF в `frontend`.
+`API_KEY` добавляется только при запросе BFF к backend и не включается в клиентский
+JavaScript. Frontend не использует browser storage как источник продуктовых данных.
+Сам кабинет не реализует пользовательские аккаунты или RBAC: локально он доступен
+напрямую, а публичный deployment обязан закрывать его platform SSO или
+identity-aware reverse proxy. Backend API key не заменяет аутентификацию пользователя.
+
+Важно: загрузка произвольного банковского экспорта не поддерживается. Реестр должен
+быть подготовлен существующим `build-full-features` pipeline и соответствовать
+`/feature_schema`. CSV-заголовок текущего bundle можно скачать в интерфейсе или через
+`GET /v1/batch/template.csv`.
+
 ## Локальный запуск API
 
 Сначала PostgreSQL должен быть доступен по настройкам `.env`, а migration — применена:
@@ -275,8 +326,10 @@ Compose:
 - ждёт его healthcheck;
 - выполняет безопасный migration bridge и `alembic upgrade head`;
 - запускает API без development `--reload`;
-- монтирует `./artifacts` в read-only режиме;
-- проверяет `/ready`.
+- запускает отдельный worker для durable batch queue;
+- запускает Riskline frontend/BFF на `http://localhost:3000`;
+- монтирует model bundle read-only, а временные uploads и results — отдельно на запись;
+- проверяет health API и frontend.
 
 Остановка без удаления данных:
 
@@ -316,6 +369,20 @@ docker compose down
 ### `GET /feature_schema`
 
 Возвращает numeric/categorical feature names, обязательные поля и минимальное покрытие входа для текущей версии модели. Endpoint нужен клиентам для генерации и проверки scoring payload; estimator и reference distributions не раскрываются.
+
+### Operator API (`/v1`)
+
+- `GET /v1/dashboard` — агрегаты аудита, batch queue и metadata текущей модели;
+- `GET /v1/scoring/history` — пагинируемая история с фильтрами по решению и риску;
+- `POST /v1/batch/jobs` — multipart upload CSV/parquet и постановка durable job;
+- `GET /v1/batch/jobs` и `GET /v1/batch/jobs/{job_id}` — очередь и статус;
+- `GET /v1/batch/jobs/{job_id}/result` — prediction-only CSV после завершения;
+- `GET /v1/batch/template.csv` — заголовок model-ready реестра.
+
+Upload ограничен размером и количеством строк. Файл хранится вне PostgreSQL и
+удаляется после успешного скоринга, если `BATCH_RETAIN_INPUTS=false`. В базе остаются
+только состояние job, summary и пути artifact storage. Ошибка worker сохраняется в
+job для диагностики; входной файл при ошибке сохраняется для контролируемого разбора.
 
 ### `POST /score`
 

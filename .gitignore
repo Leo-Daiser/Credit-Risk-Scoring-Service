@@ -9,6 +9,7 @@ artifacts/models/*
 artifacts/metrics/*
 artifacts/reports/*
 artifacts/predictions/*
+artifacts/uploads/*
 
 data/raw/*
 data/interim/*
@@ -21,3 +22,4 @@ data/processed/*
 !artifacts/metrics/.gitkeep
 !artifacts/reports/.gitkeep
 !artifacts/predictions/.gitkeep
+!artifacts/uploads/.gitkeep

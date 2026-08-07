@@ -2,7 +2,6 @@
 
 from functools import lru_cache
 from secrets import compare_digest
-from typing import Annotated
 
 from fastapi import Header, HTTPException, status
 
@@ -29,7 +28,7 @@ def get_scoring_service() -> ScoringService:
 
 
 def require_api_key(
-    x_api_key: Annotated[str | None, Header(alias="X-API-Key")] = None,
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> None:
     """Require an API key when one is configured for the deployment."""
     configured = settings.api_key

@@ -7,6 +7,7 @@ from fastapi import FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from src.api.metrics import HTTP_LATENCY, HTTP_REQUESTS
+from src.api.portal_routes import router as portal_router
 from src.api.routes import router
 from src.core.config import settings
 from src.core.logging import bind_correlation_id, configure_logging, reset_correlation_id
@@ -22,6 +23,7 @@ app = FastAPI(
     description="Calibrated credit-default risk scoring with explainability and audit logging.",
 )
 app.include_router(router)
+app.include_router(portal_router)
 
 
 @app.middleware("http")

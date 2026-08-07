@@ -24,6 +24,12 @@ class Settings(BaseSettings):
     database_required: bool = True
     top_reason_codes: int = 5
     max_batch_size: int = 1000
+    batch_storage_dir: str = "artifacts/uploads"
+    batch_output_dir: str = "artifacts/predictions"
+    batch_max_upload_bytes: int = 50_000_000
+    batch_max_rows: int = 100_000
+    batch_worker_poll_seconds: float = 2.0
+    batch_retain_inputs: bool = False
     api_key: SecretStr | None = None
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "json"
