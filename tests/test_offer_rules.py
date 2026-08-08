@@ -5,8 +5,7 @@ from src.db.base import Base
 from src.db.models import BankOffer
 from src.offers.eligibility import evaluate_offer_eligibility
 from src.offers.ranking import rank_offers
-from src.offers.schemas import CreditProfileInput
-from src.offers.service import build_profile_result
+from src.offers.schemas import CreditProfileInput, CreditProfileResult
 
 
 def make_offer(**overrides):
@@ -55,7 +54,36 @@ def make_profile():
             "consent_to_process": True,
         }
     )
-    return build_profile_result(payload)
+    return CreditProfileResult.model_validate(
+        {
+            "anonymous_profile_id": "test-profile",
+            "risk_band": "unknown",
+            "risk_score_available": False,
+            "risk_score": None,
+            "risk_model_version": None,
+            "affordability_band": "comfortable",
+            "estimated_monthly_payment": 10_000,
+            "pti_value": 0.15,
+            "pti_band": "low",
+            "data_coverage": 0.8,
+            "confidence_level": "medium",
+            "warnings": [],
+            "disclaimers": [],
+            "profile_bands": {
+                "age_band": payload.age_band,
+                "region": payload.region,
+                "income_band": payload.income_band,
+                "employment_type": payload.employment_type,
+                "requested_amount_band": payload.requested_amount_band,
+                "term_months": payload.term_months,
+                "existing_monthly_payments_band": (
+                    payload.existing_monthly_payments_band
+                ),
+                "credit_history_band": payload.credit_history_band,
+                "loan_purpose": payload.loan_purpose,
+            },
+        }
+    )
 
 
 def test_eligibility_reports_machine_readable_blocking_reasons():
