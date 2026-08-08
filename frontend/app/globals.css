@@ -872,6 +872,38 @@ textarea:focus-visible,
 .boundary-grid strong { font-size: 10px; }
 .boundary-grid span { margin-top: 5px; color: var(--muted); font-size: 8px; line-height: 1.45; }
 
+.offers-page { display: flex; flex-direction: column; gap: 23px; }
+.offers-intro { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+.offers-intro h2 { max-width: 780px; margin: 8px 0 0; font-size: 46px; letter-spacing: -2.4px; }
+.offers-intro p { max-width: 720px; color: var(--muted); font-size: 11px; line-height: 1.65; }
+.privacy-chip { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; padding: 12px 15px; border-radius: 999px; background: #e8f4d4; color: #36531e; font-size: 9px; font-weight: 700; }
+.offers-layout { display: grid; grid-template-columns: minmax(420px, 0.9fr) minmax(430px, 1.1fr); align-items: start; gap: 20px; }
+.offer-profile-form { padding: 28px; }
+.offer-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px; margin: 23px 0; }
+.secondary-consent { margin-top: 9px; opacity: 0.72; }
+.offer-results { display: flex; flex-direction: column; gap: 12px; }
+.profile-summary-card { padding: 25px; border-radius: 20px; background: var(--ink); color: #fff; }
+.profile-summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1px; margin-top: 19px; overflow: hidden; border-radius: 13px; background: #3a4042; }
+.profile-summary-grid > div { padding: 14px; background: #24292b; }
+.profile-summary-grid span,
+.profile-summary-grid strong,
+.profile-summary-grid small { display: block; }
+.profile-summary-grid span { color: #92999b; font-size: 8px; }
+.profile-summary-grid strong { margin-top: 7px; font-size: 15px; }
+.profile-summary-grid small { margin-top: 4px; color: var(--lime); font-size: 7px; }
+.profile-warning { margin: 12px 0 0; color: #c5cbcc; font-size: 8px; }
+.offer-card { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 17px; padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: rgba(255, 255, 255, 0.72); }
+.offer-rank { display: grid; width: 42px; height: 42px; place-items: center; border-radius: 13px; background: var(--lime); font-size: 12px; font-weight: 800; }
+.offer-card-copy > span { color: #7d8384; font-size: 7px; text-transform: uppercase; }
+.offer-card-copy h3 { margin: 6px 0 2px; font-size: 15px; }
+.offer-card-copy p { margin: 0; color: var(--muted); font-size: 9px; }
+.offer-card-copy small { display: block; margin-top: 8px; color: var(--green); font-size: 8px; font-weight: 700; }
+.offer-empty { display: flex; min-height: 150px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 28px; border: 1px dashed #c8cbc6; border-radius: 18px; color: var(--muted); text-align: center; }
+.offer-empty.initial { min-height: 430px; }
+.offer-empty strong { color: var(--ink); font-size: 13px; }
+.offer-empty span { max-width: 360px; font-size: 9px; line-height: 1.5; }
+.ad-boundary { padding: 15px 18px; border-radius: 14px; background: #f0eee5; color: #69685e; font-size: 8px; line-height: 1.55; }
+
 .mobile-nav { display: none; }
 .spin { animation: spin 0.9s linear infinite; }
 
@@ -899,7 +931,7 @@ textarea:focus-visible,
   .sidebar { display: none; }
   .topbar { min-height: 84px; }
   .workspace { padding-bottom: 105px; }
-  .mobile-nav { position: fixed; right: 14px; bottom: 14px; left: 14px; z-index: 50; display: grid; grid-template-columns: repeat(4, 1fr); padding: 7px; border: 1px solid #303538; border-radius: 18px; background: rgba(18, 21, 24, 0.96); box-shadow: 0 16px 38px rgba(18, 21, 24, 0.28); backdrop-filter: blur(18px); }
+  .mobile-nav { position: fixed; right: 14px; bottom: 14px; left: 14px; z-index: 50; display: grid; grid-template-columns: repeat(5, 1fr); padding: 7px; border: 1px solid #303538; border-radius: 18px; background: rgba(18, 21, 24, 0.96); box-shadow: 0 16px 38px rgba(18, 21, 24, 0.28); backdrop-filter: blur(18px); }
   .mobile-nav a { display: flex; min-height: 51px; flex-direction: column; align-items: center; justify-content: center; gap: 3px; border-radius: 12px; color: #909698; font-size: 8px; }
   .mobile-nav a.is-active { background: var(--lime); color: var(--ink); }
   .hero-grid { grid-template-columns: 1fr; }
@@ -909,6 +941,8 @@ textarea:focus-visible,
   .batch-layout,
   .score-layout,
   .model-grid { grid-template-columns: 1fr; }
+  .offers-layout { grid-template-columns: 1fr; }
+  .offers-intro { align-items: flex-start; flex-direction: column; }
   .score-result { position: static; }
   .personal-summary { position: static; }
   .model-hero { grid-template-columns: 1fr; }
@@ -968,6 +1002,11 @@ textarea:focus-visible,
   .service-node { min-height: 105px; }
   .service-node strong { margin-top: 18px; }
   .boundary-grid { grid-template-columns: 1fr; }
+  .offers-intro h2 { font-size: 38px; }
+  .offer-fields { grid-template-columns: 1fr; }
+  .profile-summary-grid { grid-template-columns: repeat(2, 1fr); }
+  .offer-card { grid-template-columns: auto 1fr; }
+  .offer-card .button { grid-column: 1 / -1; width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

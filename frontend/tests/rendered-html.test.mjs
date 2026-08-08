@@ -44,6 +44,7 @@ test("server-renders the product dashboard without starter metadata", async () =
 test("all primary operator routes render their product-specific first view", async () => {
   const cases = [
     ["/score", /Оцените кредитную нагрузку до заявки/],
+    ["/offers", /Сначала допустимость\. Затем рейтинг/],
     ["/batches", /Реестр вошёл\. Решения вышли/],
     ["/history", /Каждое решение можно восстановить/],
     ["/model", /Версия модели — часть каждого решения/],
@@ -77,6 +78,17 @@ test("credit calculator handles zero and non-zero rates consistently", () => {
   assert.ok(Math.abs(calculatePrincipal(payment, 12, 24) - 1_000_000) < 0.01);
   assert.equal(calculateAnnuity(0, 12, 24), 0);
   assert.equal(calculatePrincipal(-1, 12, 24), 0);
+});
+
+test("privacy-light offer matching exposes consent and advertising boundaries", async () => {
+  const response = await render("/offers");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Паспорт, телефон, адрес и данные БКИ не нужны/);
+  assert.match(html, /Согласен на обработку диапазонов/);
+  assert.match(html, /не принимает кредитных решений/);
+  assert.match(html, /Точные суммы не сохраняются/);
+  assert.doesNotMatch(html, /localStorage|sessionStorage/);
 });
 
 test("numeric inputs clear a displayed zero without coercing an empty edit", () => {
