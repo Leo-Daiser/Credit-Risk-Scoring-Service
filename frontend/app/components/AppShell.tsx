@@ -7,15 +7,17 @@ import {
   Clock3,
   Files,
   LayoutDashboard,
+  BadgePercent,
   ScanLine,
   ShieldCheck,
 } from "lucide-react";
 
-type NavKey = "overview" | "score" | "batches" | "history" | "model";
+type NavKey = "overview" | "score" | "offers" | "batches" | "history" | "model";
 
 const navigation = [
   { key: "overview", href: "/", label: "Обзор", icon: LayoutDashboard },
   { key: "score", href: "/score", label: "Калькулятор", icon: ScanLine },
+  { key: "offers", href: "/offers", label: "Подбор предложений", icon: BadgePercent },
   { key: "batches", href: "/batches", label: "Пакетный скоринг", icon: Files },
   { key: "history", href: "/history", label: "История", icon: Clock3 },
   { key: "model", href: "/model", label: "Модель и контур", icon: ShieldCheck },
@@ -94,7 +96,7 @@ export function AppShell({ active, eyebrow, title, children }: AppShellProps) {
         <main className="workspace">{children}</main>
 
         <nav className="mobile-nav" aria-label="Мобильная навигация">
-          {navigation.slice(0, 4).map((item) => {
+          {navigation.slice(0, 5).map((item) => {
             const Icon = item.icon;
             return (
               <Link

@@ -86,6 +86,56 @@ export interface ScoreResult {
   logging_status: "persisted" | "disabled" | "failed";
 }
 
+export interface CreditProfileInput {
+  age_band: "18_21" | "22_30" | "31_45" | "46_60" | "60_plus";
+  region?: string;
+  income_band: "lt_50k" | "50k_100k" | "100k_150k" | "150k_250k" | "gt_250k" | "unknown";
+  employment_type: "employee" | "self_employed" | "individual_entrepreneur" | "pensioner" | "unofficial" | "unemployed" | "unknown";
+  requested_amount_band: "lt_100k" | "100k_300k" | "300k_700k" | "700k_1_5m" | "gt_1_5m";
+  term_months: number;
+  existing_monthly_payments_band: "zero" | "lt_10k" | "10k_30k" | "30k_60k" | "gt_60k" | "unknown";
+  credit_history_band: "good" | "average" | "minor_overdues" | "serious_overdues" | "no_history" | "unknown";
+  loan_purpose: "cash" | "refinance" | "car" | "repair" | "education" | "medical" | "other";
+  consent_to_process: boolean;
+  consent_to_ad_personalization: boolean;
+}
+
+export interface CreditProfileResult {
+  anonymous_profile_id: string;
+  risk_band: string;
+  risk_score_available: boolean;
+  risk_score: number | null;
+  affordability_band: string;
+  estimated_monthly_payment: number | null;
+  pti_value: number | null;
+  pti_band: string;
+  data_coverage: number;
+  confidence_level: string;
+  warnings: string[];
+  disclaimers: string[];
+}
+
+export interface RankedOffer {
+  offer_id: number;
+  rank: number;
+  bank_id: string;
+  product_name: string;
+  advertiser_name: string;
+  final_score: number;
+  score_breakdown: Record<string, number>;
+  match_reasons: string[];
+  warnings: string[];
+  ad_disclosure: string;
+  redirect_url: string;
+}
+
+export interface OfferMatchResult {
+  profile_result: CreditProfileResult;
+  offers: RankedOffer[];
+  disclaimers: string[];
+  ad_disclosure_required: boolean;
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/backend/${path.replace(/^\//, "")}`, {
     ...init,
