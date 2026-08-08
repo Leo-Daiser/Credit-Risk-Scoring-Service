@@ -153,3 +153,4 @@ def test_demo_offer_list_is_operator_protected_and_does_not_leak_internals(comme
     item = response.json()[0]
     assert "commission_amount" not in item
     assert "affiliate_url_template" not in item
+    assert "affiliate_url_template_key" not in item

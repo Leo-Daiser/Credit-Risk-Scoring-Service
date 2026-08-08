@@ -279,3 +279,16 @@ Quality report отмечает demo URL, disclosure gaps, stale offers и сл�
 из environment. Несколько быстрых запросов сверх threshold возвращают `429` и
 `Retry-After`. In-memory limiter подходит одному process; публичному multi-instance
 deployment нужны WAF/reverse-proxy или Redis-backed limits.
+
+## 19. Safe offer import
+
+Используйте только синтетический файл без URL и токенов. Покажите, что dry-run не
+изменяет БД, а export содержит имя environment variable вместо приватного template:
+
+```powershell
+python -m src.cli import-offers --path C:\secure\demo-offers.yaml --dry-run
+python -m src.cli export-offers --path artifacts/reports/offers_export.csv
+```
+
+Для реального partner значения template и HMAC secret должны существовать только в
+environment или ignored local configuration. Не показывайте их в терминале демо.

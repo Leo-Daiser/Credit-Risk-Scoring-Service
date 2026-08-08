@@ -7,8 +7,10 @@ from typing import Any
 import yaml
 
 from src.core.config import settings
+from src.db.models import BankOffer
 from src.offers.partners.base import PartnerAdapter
 from src.offers.partners.demo_partner import DemoPartnerAdapter
+from src.offers.partners.env_partner import EnvTemplatePartnerAdapter
 
 
 def load_partner_config(path: str | Path | None = None) -> dict[str, Any]:
@@ -42,4 +44,16 @@ def get_partner_adapter(
         return DemoPartnerAdapter(configured_secret)
     if not configured_secret:
         raise ValueError(f"Enabled partner {partner_id} requires secret env {secret_env}")
+    if adapter_name == "env_template":
+        return EnvTemplatePartnerAdapter(partner_id, configured_secret)
     raise ValueError(f"Partner adapter is not implemented: {adapter_name}")
+
+
+def resolve_affiliate_template(offer: BankOffer) -> str:
+    """Resolve a template at click time without persisting or logging its value."""
+    if offer.affiliate_url_template_key:
+        template = os.getenv(offer.affiliate_url_template_key)
+        if not template:
+            raise ValueError("Affiliate template environment value is not configured")
+        return template
+    return offer.affiliate_url_template

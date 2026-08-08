@@ -130,6 +130,7 @@ class BatchScoringJob(Base):
 class BankOffer(Base):
     __tablename__ = "bank_offers"
     __table_args__ = (
+        UniqueConstraint("bank_id", "product_name", name="uq_bank_offers_bank_product"),
         CheckConstraint("min_amount > 0 AND max_amount >= min_amount", name="ck_bank_offers_amount"),
         CheckConstraint(
             "min_term_months >= 3 AND max_term_months >= min_term_months",
@@ -160,6 +161,7 @@ class BankOffer(Base):
     max_pti_band: Mapped[str] = mapped_column(String(32), nullable=False)
     risk_band_policy: Mapped[list[str]] = mapped_column(JSON_TYPE, nullable=False)
     affiliate_url_template: Mapped[str] = mapped_column(Text, nullable=False)
+    affiliate_url_template_key: Mapped[str | None] = mapped_column(String(128), nullable=True)
     advertiser_name: Mapped[str] = mapped_column(String(255), nullable=False)
     erid: Mapped[str | None] = mapped_column(String(128), nullable=True)
     ad_label_text: Mapped[str] = mapped_column(String(255), nullable=False)

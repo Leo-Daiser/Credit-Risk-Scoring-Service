@@ -19,8 +19,11 @@ Supported commands:
     build-offer-ranking-dataset
     train-offer-ranker
     evaluate-offer-ranker
+    import-offers
+    export-offers
 """
 
+import argparse
 import sys
 
 from src.data.validate_schema import validate_configured_raw_data
@@ -33,6 +36,7 @@ from src.features.feature_dataset import run_build_full_feature_dataset
 from src.models.prepare_production_model import prepare_production_model
 from src.models.train_baseline import train_logistic_regression_baseline
 from src.models.train_catboost import train_catboost_challenger
+from src.offers.importer import OfferImportValidationError, export_offers, import_offers
 from src.offers.repository import OfferRepository
 from src.offers.train_offer_ranker import evaluate_offer_ranker, train_offer_ranker
 from src.offers.training_dataset import build_offer_ranking_dataset
@@ -60,6 +64,8 @@ AVAILABLE_COMMANDS = (
     "build-offer-ranking-dataset",
     "train-offer-ranker",
     "evaluate-offer-ranker",
+    "import-offers",
+    "export-offers",
 )
 
 
@@ -253,6 +259,31 @@ def cmd_evaluate_offer_ranker() -> None:
     print(f"Offer ranker evaluation status: {report['status']}")
 
 
+def cmd_import_offers(path: str, *, apply: bool) -> None:
+    """Validate or atomically upsert a secret-free offer catalog file."""
+    try:
+        with SessionLocal() as session:
+            report = import_offers(session, path, apply=apply)
+    except OfferImportValidationError as exc:
+        raise SystemExit(f"Offer import rejected: {exc}") from None
+    print(f"Offer import mode: {report.mode}")
+    print(f"Rows validated: {report.rows}")
+    print(
+        f"Created: {report.created}; updated: {report.updated}; "
+        f"unchanged: {report.unchanged}"
+    )
+    for warning in report.warnings:
+        print(f"Warning: {warning}")
+
+
+def cmd_export_offers(path: str) -> None:
+    """Export only non-secret catalog fields and environment key references."""
+    with SessionLocal() as session:
+        rows = export_offers(session, path)
+    print(f"Offers exported: {rows}")
+    print(f"Output path: {path}")
+
+
 COMMANDS = {
     "init-db": cmd_init_db,
     "validate-raw": cmd_validate_raw,
@@ -282,6 +313,21 @@ def main(argv: list[str] | None = None) -> None:
         )
 
     command = args[0]
+    if command == "import-offers":
+        parser = argparse.ArgumentParser(prog="python -m src.cli import-offers")
+        parser.add_argument("--path", required=True)
+        mode = parser.add_mutually_exclusive_group(required=True)
+        mode.add_argument("--dry-run", action="store_true")
+        mode.add_argument("--apply", action="store_true")
+        parsed = parser.parse_args(args[1:])
+        cmd_import_offers(parsed.path, apply=parsed.apply)
+        return
+    if command == "export-offers":
+        parser = argparse.ArgumentParser(prog="python -m src.cli export-offers")
+        parser.add_argument("--path", required=True)
+        parsed = parser.parse_args(args[1:])
+        cmd_export_offers(parsed.path)
+        return
     handler = COMMANDS.get(command)
     if handler is None:
         raise SystemExit(

@@ -114,6 +114,21 @@ Do not attach uploaded feature rows to tickets or logs. Result files contain onl
 the configured ID, probability, decision, risk band, model version and missing
 feature count.
 
+## Offer catalog operations
+
+Каталог реальных офферов храните вне репозитория. Сначала выполните безопасный
+dry-run, затем примените тот же файл:
+
+```powershell
+python -m src.cli import-offers --path C:\secure\offers.yaml --dry-run
+python -m src.cli import-offers --path C:\secure\offers.yaml --apply
+python -m src.cli export-offers --path artifacts/reports/offers_export.csv
+```
+
+Перед `--apply` должны быть заданы partner HMAC secret и каждый affiliate template,
+на который ссылается активный реальный оффер. CLI выводит только счётчики и безопасные
+идентификаторы, но не значения environment variables. Подробности: [offer_import.md](offer_import.md).
+
 ## Known deployment limits
 
 - One API container, one batch worker, one frontend/BFF and one PostgreSQL instance

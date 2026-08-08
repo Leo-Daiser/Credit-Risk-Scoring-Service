@@ -156,4 +156,8 @@ def test_commercial_tables_have_idempotency_and_query_indexes(audit_engine):
     offer_columns = {item["name"] for item in inspector.get_columns("bank_offers")}
     assert "experiment_variant" in impression_columns
     assert "experiment_variant" in click_columns
-    assert {"partner_id", "expires_at"} <= offer_columns
+    assert {"partner_id", "expires_at", "affiliate_url_template_key"} <= offer_columns
+    offer_uniques = inspector.get_unique_constraints(BankOffer.__tablename__)
+    assert any(
+        item["column_names"] == ["bank_id", "product_name"] for item in offer_uniques
+    )

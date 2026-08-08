@@ -259,6 +259,7 @@ python -m src.cli monitor-drift
 - [Operations](docs/operations.md) — local SLO и triage runbook;
 - [Model artifact ADR](docs/adr/001-model-artifact-contract.md) — versioning и trust boundary.
 - [Commercial matching](docs/commercial_matching.md) — product/ML/event architecture;
+- [Safe offer import](docs/offer_import.md) — YAML/CSV validation, env-only affiliate templates и export;
 - [Commercial analytics loop](docs/commercial_matching.md#analytics-и-experiment-loop) — funnel, experiments, revenue proxy и operator boundary;
 - [Privacy-light contract](docs/privacy_light_data_contract.md) — collected/stored data;
 - [Offer ranker model card](docs/offer_ranking_model_card.md) — targets, gates и metrics;

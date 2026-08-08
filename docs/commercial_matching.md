@@ -92,6 +92,15 @@ Demo catalog содержит только `Demo Bank A/B/C` и домен `exam
 calibration, top-k/segment metrics и bias/compliance review. Synthetic data подходит
 для теста pipeline, но не для заявления о production-качестве.
 
+## Безопасный импорт каталога
+
+Оператор импортирует YAML/CSV через `python -m src.cli import-offers`. Dry-run
+выполняет полную валидацию без записи, `--apply` делает детерминированный upsert по
+`(bank_id, product_name)`. В Git и БД сохраняется только
+`affiliate_url_template_key`; приватный template разрешается из environment во
+время tracked click. Export также не содержит разрешённые URL или secrets. Полный
+формат и операционный порядок описаны в [offer_import.md](offer_import.md).
+
 ## Analytics и experiment loop
 
 Request-level `commercial_funnel_events` хранит только event type, band dimensions,

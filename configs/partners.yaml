@@ -5,7 +5,7 @@ partners:
     secret_env: PARTNER_POSTBACK_SECRET
     demo_only: true
   future_partner:
-    adapter: future
+    adapter: env_template
     enabled: false
     secret_env: FUTURE_PARTNER_POSTBACK_SECRET
     demo_only: false

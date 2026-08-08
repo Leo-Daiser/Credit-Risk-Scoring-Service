@@ -22,10 +22,11 @@ STABLE_STATUSES = {
 }
 
 
-class DemoPartnerAdapter(PartnerAdapter):
-    partner_id = "demo"
+class EnvTemplatePartnerAdapter(PartnerAdapter):
+    """Generic URL/HMAC adapter whose sensitive values remain in environment variables."""
 
-    def __init__(self, secret: str | None = None):
+    def __init__(self, partner_id: str, secret: str):
+        self.partner_id = partner_id
         self._secret = secret
 
     def build_affiliate_url(
@@ -39,7 +40,7 @@ class DemoPartnerAdapter(PartnerAdapter):
         rendered = resolve_affiliate_template(offer).format(click_id=click_id)
         parsed = urlsplit(rendered)
         if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise ValueError("Demo affiliate URL must be an absolute HTTP(S) URL")
+            raise ValueError("Affiliate URL must be an absolute HTTP(S) URL")
         query = dict(parse_qsl(parsed.query, keep_blank_values=True))
         query["click_id"] = click_id
         for key in ("utm_source", "utm_medium", "utm_campaign"):
@@ -54,7 +55,7 @@ class DemoPartnerAdapter(PartnerAdapter):
     def normalize_postback(self, payload: dict[str, Any]) -> PartnerPostbackNormalized:
         status = str(payload.get("status", "")).lower()
         if status not in STABLE_STATUSES:
-            raise ValueError(f"Unsupported demo postback status: {status or '<missing>'}")
+            raise ValueError(f"Unsupported partner postback status: {status or '<missing>'}")
         return PartnerPostbackNormalized(
             postback_id=str(payload["postback_id"]),
             click_id=str(payload["click_id"]),
@@ -73,5 +74,5 @@ class DemoPartnerAdapter(PartnerAdapter):
             advertiser_name=offer.advertiser_name,
             label=offer.ad_label_text,
             disclaimer=offer.legal_disclaimer,
-            demo_only=True,
+            demo_only=False,
         )

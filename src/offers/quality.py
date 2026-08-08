@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 
 from sqlalchemy import select
@@ -45,6 +46,8 @@ def _recommendation(flags: list[str], offer: BankOffer) -> QualityRecommendation
         return "review_copy"
     if offer.partner_id == "demo" or "placeholder_affiliate_url" in flags:
         return "needs_real_partner_data"
+    if "missing_affiliate_template_key" in flags or "affiliate_template_env_missing" in flags:
+        return "needs_real_partner_data"
     return "keep"
 
 
@@ -61,6 +64,10 @@ def build_offer_quality_report(session: Session, *, days: int) -> OfferQualityRe
             flags.append("missing_disclosure")
         if not offer.advertiser_name.strip():
             flags.append("missing_advertiser_name")
+        if offer.partner_id != "demo" and not offer.affiliate_url_template_key:
+            flags.append("missing_affiliate_template_key")
+        if offer.affiliate_url_template_key and not os.getenv(offer.affiliate_url_template_key):
+            flags.append("affiliate_template_env_missing")
         lowered_url = offer.affiliate_url_template.lower()
         if "example.invalid" in lowered_url or "placeholder" in lowered_url:
             flags.append("placeholder_affiliate_url")
