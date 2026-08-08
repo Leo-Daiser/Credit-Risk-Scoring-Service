@@ -37,13 +37,17 @@ batch workloads to scale independently.
 ### Online scoring
 
 ```text
-browser -> frontend BFF -> POST /score -> ModelBundle
-                                      -> PostgreSQL audit transaction
+browser calculator (no network request)
+
+browser short form / expert JSON -> frontend BFF -> POST /score -> ModelBundle
+                                                            -> PostgreSQL audit transaction
 ```
 
 The BFF injects `X-API-Key` server-side. The browser never receives the deployment
 secret. A successful response contains the persisted logging status when database
-logging is required.
+logging is required. The personal calculator sends only feature names present in
+the current model schema and is explicitly labelled as a preliminary estimate; the
+expert flow remains available for a complete prepared feature payload.
 
 ### Batch scoring
 

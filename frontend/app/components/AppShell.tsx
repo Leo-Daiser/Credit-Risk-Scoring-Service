@@ -15,7 +15,7 @@ type NavKey = "overview" | "score" | "batches" | "history" | "model";
 
 const navigation = [
   { key: "overview", href: "/", label: "Обзор", icon: LayoutDashboard },
-  { key: "score", href: "/score", label: "Новая оценка", icon: ScanLine },
+  { key: "score", href: "/score", label: "Калькулятор", icon: ScanLine },
   { key: "batches", href: "/batches", label: "Пакетный скоринг", icon: Files },
   { key: "history", href: "/history", label: "История", icon: Clock3 },
   { key: "model", href: "/model", label: "Модель и контур", icon: ShieldCheck },

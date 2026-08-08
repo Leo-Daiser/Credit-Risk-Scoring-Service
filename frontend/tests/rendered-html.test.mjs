@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import {
+  calculateAnnuity,
+  calculatePrincipal,
+} from "../app/lib/credit-calculator.mjs";
 
 async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -30,7 +34,7 @@ test("server-renders the product dashboard without starter metadata", async () =
 
 test("all primary operator routes render their product-specific first view", async () => {
   const cases = [
-    ["/score", /Проверьте риск до принятия решения/],
+    ["/score", /Оцените кредитную нагрузку до заявки/],
     ["/batches", /Реестр вошёл\. Решения вышли/],
     ["/history", /Каждое решение можно восстановить/],
     ["/model", /Версия модели — часть каждого решения/],
@@ -41,6 +45,29 @@ test("all primary operator routes render their product-specific first view", asy
     assert.equal(response.status, 200, path);
     assert.match(await response.text(), expected, path);
   }
+});
+
+test("personal score route starts with a questionnaire and keeps JSON in expert mode", async () => {
+  const response = await render("/score");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Для себя/);
+  assert.match(html, /Сумма кредита/);
+  assert.match(html, /Доход в месяц/);
+  assert.match(html, /Комфортная сумма кредита/);
+  assert.match(html, /Экспертный JSON/);
+  assert.match(html, /не является офертой, кредитным решением/);
+});
+
+test("credit calculator handles zero and non-zero rates consistently", () => {
+  assert.equal(calculateAnnuity(120_000, 0, 12), 10_000);
+  assert.equal(calculatePrincipal(10_000, 0, 12), 120_000);
+
+  const payment = calculateAnnuity(1_000_000, 12, 24);
+  assert.ok(Math.abs(payment - 47_073.47) < 0.01);
+  assert.ok(Math.abs(calculatePrincipal(payment, 12, 24) - 1_000_000) < 0.01);
+  assert.equal(calculateAnnuity(0, 12, 24), 0);
+  assert.equal(calculatePrincipal(-1, 12, 24), 0);
 });
 
 test("starter preview and unused persistence dependencies are removed", async () => {
