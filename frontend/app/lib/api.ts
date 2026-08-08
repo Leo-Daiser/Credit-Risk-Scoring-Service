@@ -121,11 +121,11 @@ export interface RankedOffer {
   bank_id: string;
   product_name: string;
   advertiser_name: string;
-  final_score: number;
-  score_breakdown: Record<string, number>;
-  match_reasons: string[];
+  positive_reasons: string[];
   warnings: string[];
+  disclosure: string;
   ad_disclosure: string;
+  confidence_level: string;
   redirect_url: string;
 }
 
@@ -134,6 +134,59 @@ export interface OfferMatchResult {
   offers: RankedOffer[];
   disclaimers: string[];
   ad_disclosure_required: boolean;
+  no_eligible_offers: boolean;
+  user_explanation: string | null;
+  suggestions: string[];
+  why_not_reasons: string[];
+}
+
+export interface CommercialAnalytics {
+  summary: {
+    total_profile_scores: number; total_match_requests: number;
+    total_offer_impressions: number; total_offer_clicks: number;
+    ctr_overall: number; no_eligible_offers_rate: number;
+    postback_conversion_rate: number; approval_rate: number; issued_rate: number;
+    estimated_revenue: number;
+  };
+  offer_metrics: Array<{
+    offer_id: number; product_name: string; impressions: number; clicks: number;
+    ctr: number; approvals: number; issued: number; estimated_revenue: number;
+    expected_revenue_proxy: number; revenue_estimate_source: string;
+  }>;
+  experiment_metrics: Array<{
+    variant: string; impressions: number; clicks: number; ctr: number;
+    approvals: number; issued: number;
+  }>;
+  warnings: string[];
+}
+
+export interface OfferQualityReport {
+  summary: {
+    active_offers: number; inactive_offers: number;
+    zero_impression_offers: number; impressions_without_clicks: number;
+  };
+  offers: Array<{
+    offer_id: number; product_name: string; bank_id: string; status: string;
+    quality_flags: string[]; impressions: number; clicks: number; ctr: number;
+    postback_approval_rate: number; estimated_revenue: number; recommendation: string;
+  }>;
+}
+
+export interface SegmentOpportunityReport {
+  opportunities: Array<{
+    segment_key: string; segment_value: string; requests: number;
+    eligible_offer_rate: number; click_rate: number; approval_rate: number | null;
+    estimated_lost_clicks: number; recommendation: string;
+  }>;
+}
+
+export interface EventDebugReport {
+  events: Array<{
+    event_type: string; click_id: string | null; offer_id: number | null;
+    status: string | null; hmac_validation_status: string | null;
+    experiment_variant: string; occurred_at: string;
+  }>;
+  raw_payloads_exposed: false;
 }
 
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {

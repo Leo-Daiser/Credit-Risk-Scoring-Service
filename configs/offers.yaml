@@ -1,11 +1,13 @@
 ranking:
   mode: rules
+  commercial_fit_floor: 0.55
   weights:
-    user_fit_score: 0.30
-    affordability_fit_score: 0.25
-    risk_compatibility_score: 0.20
-    product_match_score: 0.15
+    fit_score: 0.28
+    affordability_score: 0.22
+    risk_compatibility_score: 0.18
+    product_match_score: 0.14
     commercial_score: 0.10
+    expected_revenue_proxy: 0.08
   confidence_penalties:
     low: 0.70
     basic: 0.82
@@ -14,6 +16,7 @@ ranking:
 
 demo_offers:
   - bank_id: demo-a
+    partner_id: demo
     product_name: Demo Flex Loan
     product_type: cash
     priority: 60
@@ -35,6 +38,7 @@ demo_offers:
     commission_type: fixed
     commission_amount: 1000
   - bank_id: demo-b
+    partner_id: demo
     product_name: Demo Conservative Credit
     product_type: cash
     priority: 50
@@ -56,6 +60,7 @@ demo_offers:
     commission_type: fixed
     commission_amount: 800
   - bank_id: demo-c
+    partner_id: demo
     product_name: Demo Refinance
     product_type: refinance
     priority: 40

@@ -239,3 +239,43 @@ python -m src.cli evaluate-offer-ranker
 
 Без достаточного числа реальных events ожидается `insufficient_data`. Это корректный
 promotion gate: production default остаётся `OFFER_RANKER_MODE=rules`.
+
+## 15. Operator commercial analytics
+
+Откройте server-side protected страницу:
+
+```powershell
+Start-Process http://localhost:3000/commercial
+```
+
+Покажите profile/match/impression/click funnel, CTR, no-offer rate, postback outcomes и
+recorded revenue. Объясните, что BFF добавляет `X-API-Key`; browser bundle ключ не
+получает. В агрегатах нет исходной анкеты или raw postback body.
+
+## 16. Offer Quality и Segment Opportunities
+
+```powershell
+$headers = @{ "X-API-Key" = $env:API_KEY }
+Invoke-RestMethod http://localhost:8000/v1/offers/quality-report?days=30 -Headers $headers
+Invoke-RestMethod http://localhost:8000/v1/analytics/segment-opportunities?days=30 -Headers $headers
+```
+
+Quality report отмечает demo URL, disclosure gaps, stale offers и слишком широкие или
+узкие rules. Segment report ранжирует band-only сегменты по спросу и lost-click proxy.
+Ни один отчёт не является автоматическим решением отключить продукт или обещанием
+одобрения.
+
+## 17. A/B ranking demo
+
+По умолчанию experiment выключен. Для локальной демонстрации временно включите
+`enabled: true` в `configs/experiments.yaml` и задайте split только между известными
+вариантами. Один `anonymous_session_id` всегда получает тот же variant; variant
+сохраняется в impression/click. После демо верните `enabled: false`. Эти метрики
+измеряют продуктовую воронку, а не банковское решение.
+
+## 18. Rate-limit и partner boundary
+
+Покажите `configs/partners.yaml`: активен только demo adapter, secrets читаются только
+из environment. Несколько быстрых запросов сверх threshold возвращают `429` и
+`Retry-After`. In-memory limiter подходит одному process; публичному multi-instance
+deployment нужны WAF/reverse-proxy или Redis-backed limits.

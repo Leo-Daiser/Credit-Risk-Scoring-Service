@@ -6,6 +6,11 @@ Optional offer ranker ранжирует уже допустимые предл�
 кредитоспособность, не принимает решение банка и не заменяет eligibility rules.
 Production default — deterministic rules.
 
+Rules-first pipeline сначала применяет hard eligibility, затем fit-heavy score.
+Expected revenue proxy имеет ограниченный вес и не способен вернуть заблокированное
+или существенно несовместимое предложение. Demo estimates помечаются `demo_only` и
+`low` confidence; public API не показывает commission/revenue internals.
+
 ## Данные и labels
 
 Одна строка датасета соответствует одному `offer_impression`. Profile features —
@@ -38,3 +43,12 @@ policy. Revenue metric не должна быть единственным promo
 
 Synthetic fixtures подтверждают только работоспособность pipeline. Они не являются
 реальными outcome data и не дают основания включать ML mode в production.
+
+## Gate перед включением ML mode
+
+До `OFFER_RANKER_MODE=ml` нужны реальные и point-in-time корректные partner labels,
+достаточный sample для обоих классов и out-of-time evaluation. Минимальный набор
+сравнений: PR-AUC/log loss/calibration, CTR/approval/issued@k, expected revenue@k,
+no-offer rate, segment stability и rules baseline. Дополнительно обязательны delayed
+label policy, partner-quality monitoring, bias/compliance review, rollback и ручное
+promotion approval. Пока эти условия не выполнены, rules остаются production default.

@@ -1,0 +1,14 @@
+enabled: false
+salt: local-demo-ranking
+traffic_split:
+  rules_v1: 1.0
+strategies:
+  rules_v1:
+    fit_multiplier: 1.0
+    revenue_multiplier: 1.0
+  rules_revenue_weighted_v1:
+    fit_multiplier: 1.0
+    revenue_multiplier: 1.5
+  rules_fit_heavy_v1:
+    fit_multiplier: 1.25
+    revenue_multiplier: 0.5

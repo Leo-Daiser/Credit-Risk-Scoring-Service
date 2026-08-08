@@ -25,6 +25,10 @@ services:
     restart: unless-stopped
     env_file:
       - .env
+    environment:
+      API_KEY: ${API_KEY:-}
+      PARTNER_POSTBACK_SECRET: ${PARTNER_POSTBACK_SECRET:-}
+      REAL_PARTNER_SECRET: ${REAL_PARTNER_SECRET:-}
     depends_on:
       db:
         condition: service_healthy

@@ -208,6 +208,23 @@ class RankedOffer(BaseModel):
     warnings: list[str]
     ad_disclosure: str
     redirect_url: str
+    revenue_estimate_source: str
+    revenue_estimate_confidence: str
+    experiment_variant: str = "rules_v1"
+
+
+class RankedOfferPublic(BaseModel):
+    offer_id: int
+    rank: int
+    bank_id: str
+    product_name: str
+    advertiser_name: str
+    positive_reasons: list[str]
+    warnings: list[str]
+    disclosure: str
+    ad_disclosure: str
+    confidence_level: ConfidenceLevel
+    redirect_url: str
 
 
 class MatchContext(BaseModel):
@@ -230,9 +247,13 @@ class OfferMatchRequest(BaseModel):
 
 class OfferMatchResponse(BaseModel):
     profile_result: CreditProfileResult
-    offers: list[RankedOffer]
+    offers: list[RankedOfferPublic]
     disclaimers: list[str]
     ad_disclosure_required: bool = True
+    no_eligible_offers: bool = False
+    user_explanation: str | None = None
+    suggestions: list[str] = Field(default_factory=list)
+    why_not_reasons: list[str] = Field(default_factory=list)
 
 
 class ClickRequest(BaseModel):
@@ -265,6 +286,7 @@ class PartnerPostbackRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     postback_id: str = Field(min_length=1, max_length=128)
+    partner_id: str = Field(default="demo", min_length=1, max_length=64)
     click_id: str = Field(min_length=1, max_length=36)
     status: PostbackStatus
     approved_amount_band: AmountBand | None = None

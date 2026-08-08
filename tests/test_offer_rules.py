@@ -5,6 +5,7 @@ from src.db.base import Base
 from src.db.models import BankOffer
 from src.offers.eligibility import evaluate_offer_eligibility
 from src.offers.ranking import rank_offers
+from src.offers.revenue import RevenueEstimate, conservative_revenue_estimate
 from src.offers.schemas import CreditProfileInput, CreditProfileResult
 
 
@@ -129,3 +130,83 @@ def test_bank_offer_constraints_are_enforced_by_sqlite():
             session.rollback()
         else:
             raise AssertionError("Invalid priority must violate the DB constraint")
+
+
+def revenue_estimate(expected_revenue_proxy: float) -> RevenueEstimate:
+    return RevenueEstimate(
+        click_probability=0.2,
+        approval_probability=0.2,
+        issue_probability=0.5,
+        commission_proxy=1.0,
+        expected_revenue_proxy=expected_revenue_proxy,
+        estimated_revenue_per_impression=10.0,
+        source="historical",
+        confidence="medium",
+    )
+
+
+def test_high_revenue_cannot_rank_an_ineligible_offer():
+    profile = make_profile()
+    blocked = make_offer(id=99, max_amount=100_000, commission_amount=1_000_000)
+    ranked = rank_offers(
+        profile,
+        [(blocked, evaluate_offer_eligibility(profile, blocked))],
+        revenue_estimates={99: revenue_estimate(1.0)},
+    )
+    assert ranked == []
+
+
+def test_revenue_cannot_overcome_poor_fit_beyond_floor():
+    profile = make_profile().model_copy(update={"risk_band": "low"})
+    good = make_offer(id=1, product_type="cash", priority=20, risk_band_policy=["low"])
+    poor = make_offer(
+        id=2, product_type="refinance", priority=100, risk_band_policy=["low"]
+    )
+    config = {
+        "ranking": {
+            "commercial_fit_floor": 0.7,
+            "weights": {
+                "fit_score": 0.28,
+                "affordability_score": 0.22,
+                "risk_compatibility_score": 0.18,
+                "product_match_score": 0.14,
+                "commercial_score": 0.10,
+                "expected_revenue_proxy": 0.08,
+            },
+            "confidence_penalties": {
+                "low": 0.7,
+                "basic": 0.82,
+                "medium": 0.92,
+                "high": 1.0,
+            },
+        }
+    }
+    ranked = rank_offers(
+        profile,
+        [
+            (poor, evaluate_offer_eligibility(profile, poor)),
+            (good, evaluate_offer_eligibility(profile, good)),
+        ],
+        config=config,
+        revenue_estimates={1: revenue_estimate(0.0), 2: revenue_estimate(1.0)},
+    )
+    assert [item.offer_id for item in ranked] == [1, 2]
+    assert ranked[1].score_breakdown["expected_revenue_proxy"] == 0.02
+
+
+def test_historical_signal_improves_ranking_only_for_eligible_equal_fit_offers():
+    profile = make_profile()
+    first = make_offer(id=1, priority=40)
+    second = make_offer(id=2, priority=40)
+    ranked = rank_offers(
+        profile,
+        [
+            (first, evaluate_offer_eligibility(profile, first)),
+            (second, evaluate_offer_eligibility(profile, second)),
+        ],
+        revenue_estimates={1: revenue_estimate(0.001), 2: revenue_estimate(0.02)},
+    )
+    assert [item.offer_id for item in ranked] == [2, 1]
+    prior = conservative_revenue_estimate(first)
+    assert prior.source == "demo_only"
+    assert prior.confidence == "low"

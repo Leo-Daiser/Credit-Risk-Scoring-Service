@@ -140,6 +140,7 @@ class BankOffer(Base):
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    partner_id: Mapped[str] = mapped_column(String(64), nullable=False, default="demo")
     bank_id: Mapped[str] = mapped_column(String(64), nullable=False)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     product_type: Mapped[str] = mapped_column(String(64), nullable=False)
@@ -165,6 +166,7 @@ class BankOffer(Base):
     legal_disclaimer: Mapped[str] = mapped_column(Text, nullable=False)
     commission_type: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
     commission_amount: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, server_default=func.now(), onupdate=func.now(), nullable=False
@@ -212,6 +214,32 @@ class CreditProfileEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
+class CommercialFunnelEvent(Base):
+    """Request-level product event without raw profile or partner payloads."""
+
+    __tablename__ = "commercial_funnel_events"
+    __table_args__ = (
+        Index("ix_commercial_funnel_events_type_created", "event_type", "created_at"),
+        Index("ix_commercial_funnel_events_profile", "profile_id"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    event_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    anonymous_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("anonymous_sessions.id"), nullable=True
+    )
+    profile_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    offer_id: Mapped[int | None] = mapped_column(ForeignKey("bank_offers.id"), nullable=True)
+    click_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    risk_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    pti_band: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    experiment_variant: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="rules_v1"
+    )
+    event_value: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
+
+
 class OfferImpression(Base):
     __tablename__ = "offer_impressions"
     __table_args__ = (
@@ -230,6 +258,9 @@ class OfferImpression(Base):
     rank: Mapped[int] = mapped_column(Integer, nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)
     score_breakdown_json: Mapped[dict[str, Any]] = mapped_column(JSON_TYPE, nullable=False)
+    experiment_variant: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="rules_v1"
+    )
     shown_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now(), nullable=False)
 
 
@@ -255,6 +286,9 @@ class OfferClick(Base):
     utm_source: Mapped[str | None] = mapped_column(String(128), nullable=True)
     utm_medium: Mapped[str | None] = mapped_column(String(128), nullable=True)
     utm_campaign: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    experiment_variant: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="rules_v1"
+    )
 
 
 class PartnerPostback(Base):

@@ -88,8 +88,9 @@ export function OfferWorkspace() {
           <span className="section-kicker">Короткий профиль без документов</span>
           <h2>Сначала допустимость. Затем рейтинг.</h2>
           <p>
-            Укажите только диапазоны. Сервис оценит примерную нагрузку и покажет подходящие
-            демонстрационные предложения. Паспорт, телефон, адрес и данные БКИ не нужны.
+            Укажите только диапазоны. Сервис предварительно оценит платёж и долговую нагрузку,
+            затем выполнит подбор рекламных предложений на основе предоставленных данных.
+            Паспорт, телефон, адрес и данные БКИ не нужны. Финальное решение принимает банк.
           </p>
         </div>
         <div className="privacy-chip"><ShieldCheck size={20} /> Точные суммы не сохраняются</div>
@@ -134,10 +135,10 @@ export function OfferWorkspace() {
               {result.offers.length ? result.offers.map((offer) => (
                 <article className="offer-card" key={offer.offer_id}>
                   <div className="offer-rank">#{offer.rank}</div>
-                  <div className="offer-card-copy"><span>{offer.ad_disclosure}</span><h3>{offer.product_name}</h3><p>{offer.advertiser_name}</p><small>Соответствие профилю: {formatPercent(offer.final_score, 0)}</small></div>
+                  <div className="offer-card-copy"><span>{offer.ad_disclosure}</span><h3>{offer.product_name}</h3><p>{offer.advertiser_name}</p><small>Уверенность: {offer.confidence_level}</small>{offer.positive_reasons.map((reason) => <em key={reason}>{reason}</em>)}</div>
                   <button className="button button-dark" type="button" onClick={() => openOffer(offer)} disabled={clicking === offer.offer_id}>{clicking === offer.offer_id ? <LoaderCircle className="spin" size={17} /> : <ArrowRight size={17} />} Перейти</button>
                 </article>
-              )) : <div className="offer-empty"><AlertTriangle size={24} /><strong>Подходящих предложений нет</strong><span>Сервис консервативно исключил предложения, не прошедшие правила допустимости.</span></div>}
+              )) : <div className="offer-empty"><AlertTriangle size={24} /><strong>Подходящих предложений нет</strong><span>{result.user_explanation}</span>{result.suggestions.map((suggestion) => <small key={suggestion}>{suggestion}</small>)}</div>}
               <div className="ad-boundary">Сервис не принимает кредитных решений. Финальное решение принимает банк. Предложения могут быть рекламными; сервис может получить вознаграждение за переход.</div>
             </>
           ) : (

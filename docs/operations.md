@@ -119,7 +119,9 @@ feature count.
 - The cabinet is a single-tenant operator surface. A public deployment must put it
   behind an identity-aware reverse proxy or platform SSO; the BFF-held API key is
   service authentication, not end-user authentication or RBAC.
-- TLS termination, a secrets manager, rate limiting and autoscaling belong to the
-  target platform, not this repository.
+- Repository-level in-memory commercial rate limiting protects one local/demo API
+  process. It is not shared between replicas; TLS termination, secrets manager,
+  WAF/reverse-proxy or Redis-backed limits and autoscaling remain target-platform
+  responsibilities.
 - Load-smoke results are host-specific and must not be presented as universal model
   properties.

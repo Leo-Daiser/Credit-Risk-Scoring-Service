@@ -74,7 +74,17 @@ def build_offer_ranking_dataset(
             item for click in matching_clicks for item in outcomes_by_click.get(click.click_id, [])
         ]
         statuses = {item.status for item in postbacks}
-        commission = sum(float(item.commission_amount or 0) for item in postbacks)
+        commission_by_click = {
+            click.click_id: max(
+                (
+                    float(item.commission_amount or 0)
+                    for item in outcomes_by_click.get(click.click_id, [])
+                ),
+                default=0.0,
+            )
+            for click in matching_clicks
+        }
+        commission = sum(commission_by_click.values())
         rows.append(
             {
                 "impression_id": impression.id,
@@ -97,6 +107,7 @@ def build_offer_ranking_dataset(
                 "offer_priority": offer.priority,
                 "rank_shown": impression.rank,
                 "rule_score": impression.score,
+                "experiment_variant": impression.experiment_variant,
                 "clicked_flag": int(bool(matching_clicks)),
                 **{f"{status}_flag": int(status in statuses) for status in OUTCOME_STATUSES},
                 "commission_amount": commission,

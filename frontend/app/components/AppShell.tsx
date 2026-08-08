@@ -10,14 +10,16 @@ import {
   BadgePercent,
   ScanLine,
   ShieldCheck,
+  TrendingUp,
 } from "lucide-react";
 
-type NavKey = "overview" | "score" | "offers" | "batches" | "history" | "model";
+type NavKey = "overview" | "score" | "offers" | "commercial" | "batches" | "history" | "model";
 
 const navigation = [
   { key: "overview", href: "/", label: "Обзор", icon: LayoutDashboard },
   { key: "score", href: "/score", label: "Калькулятор", icon: ScanLine },
   { key: "offers", href: "/offers", label: "Подбор предложений", icon: BadgePercent },
+  { key: "commercial", href: "/commercial", label: "Коммерческая аналитика", icon: TrendingUp },
   { key: "batches", href: "/batches", label: "Пакетный скоринг", icon: Files },
   { key: "history", href: "/history", label: "История", icon: Clock3 },
   { key: "model", href: "/model", label: "Модель и контур", icon: ShieldCheck },

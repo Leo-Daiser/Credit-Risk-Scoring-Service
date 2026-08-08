@@ -138,3 +138,22 @@ Tracked click связывает анонимный profile и offer, signed pos
 commission. Этот loop создаёт датасет для будущего ranker. В репозитории используются
 только Demo Bank и `example.invalid`, поэтому реальная partner economics не заявлена
 как реализованная.
+
+## Product-growth решения
+
+- Я разделил PD scoring от approval и offer matching: это разные targets, populations
+  и контуры ответственности.
+- Я спроектировал privacy-light band-only input без паспорта, телефона, документов,
+  БКИ и точного работодателя.
+- Я построил event loop для будущего supervised ranking: impression, click,
+  application, approval, issued и revenue.
+- Rules — production default, пока нет достаточных реальных postback labels и
+  out-of-time validation.
+- Я не оптимизировал ranking только по commission: eligibility hard-block остаётся
+  первым, fit доминирует, revenue proxy ограничен и скрыт от public response.
+- Я добавил operator analytics, offer-quality и underserved-segment reports, чтобы
+  решать, какие offers, copy, rules и partner integrations улучшать.
+- A/B assignment детерминирован по anonymous session, а его метрики являются product
+  analytics, не вероятностью банковского одобрения.
+- Partner adapter отделяет URL/signature/normalization/disclosure; реализован только
+  demo adapter без real credentials и external calls.

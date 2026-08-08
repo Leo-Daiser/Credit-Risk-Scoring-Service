@@ -45,6 +45,7 @@ test("all primary operator routes render their product-specific first view", asy
   const cases = [
     ["/score", /Оцените кредитную нагрузку до заявки/],
     ["/offers", /Сначала допустимость\. Затем рейтинг/],
+    ["/commercial", /Воронка, качество офферов и неудовлетворённый спрос/],
     ["/batches", /Реестр вошёл\. Решения вышли/],
     ["/history", /Каждое решение можно восстановить/],
     ["/model", /Версия модели — часть каждого решения/],
@@ -88,7 +89,29 @@ test("privacy-light offer matching exposes consent and advertising boundaries", 
   assert.match(html, /Согласен на обработку диапазонов/);
   assert.match(html, /не принимает кредитных решений/);
   assert.match(html, /Точные суммы не сохраняются/);
+  assert.match(html, /Финальное решение принимает банк/);
+  assert.match(html, /предварительно оценит платёж и долговую нагрузку/);
   assert.doesNotMatch(html, /localStorage|sessionStorage/);
+});
+
+test("commercial operator view renders protected analytics sections and safe states", async () => {
+  const response = await render("/commercial");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Commercial Analytics/);
+  assert.match(html, /Offer Quality/);
+  assert.match(html, /Segment Opportunities/);
+  assert.match(html, /Event Debug/);
+  assert.match(html, /Загружаем агрегаты/);
+  assert.match(html, /Пока пусто/);
+  assert.doesNotMatch(html, /X-API-Key|API_KEY=|localStorage|sessionStorage/);
+
+  const source = await readFile(
+    new URL("../app/components/CommercialWorkspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /Коммерческая аналитика недоступна/);
+  assert.match(source, /Raw payload намеренно не отображается/);
 });
 
 test("numeric inputs clear a displayed zero without coercing an empty edit", () => {
