@@ -204,3 +204,38 @@ retraining. Reference statistics взяты только из source-model train
 ```powershell
 docker compose down
 ```
+
+## 13. Privacy-light offer matching
+
+Примените migration, загрузите только синтетический каталог и откройте Riskline:
+
+```powershell
+python -m src.db.migrate
+python -m src.cli seed-demo-offers
+Start-Process http://localhost:3000/offers
+```
+
+Покажите band-only форму, обязательное consent, approximate PTI, coverage/confidence и
+отфильтрованные карточки Demo Bank. Паспорт, телефон, адрес, работодатель, документы и
+данные БКИ не запрашиваются. Точные transient значения не сохраняются в commercial
+event tables и не попадают в structured logs.
+
+Кнопка перехода создаёт идемпотентный `click_id`; demo redirect использует
+`example.invalid`. Это не реальная affiliate integration. Подчеркните маркировку
+рекламы и формулировки: сервис не принимает кредитных решений, финальное решение
+принимает банк.
+
+## 14. Postback-learning loop
+
+Для локальной проверки задайте отдельный `PARTNER_POSTBACK_SECRET`. Partner payload
+подписывается HMAC-SHA256 по canonical JSON и нормализуется в band/status fields.
+Secret и raw payload не показывайте и не коммитьте.
+
+```powershell
+python -m src.cli build-offer-ranking-dataset
+python -m src.cli train-offer-ranker
+python -m src.cli evaluate-offer-ranker
+```
+
+Без достаточного числа реальных events ожидается `insufficient_data`. Это корректный
+promotion gate: production default остаётся `OFFER_RANKER_MODE=rules`.

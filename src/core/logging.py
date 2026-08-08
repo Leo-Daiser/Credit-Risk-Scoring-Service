@@ -19,6 +19,11 @@ SAFE_LOG_FIELDS = (
     "decision",
     "risk_band",
     "logging_status",
+    "profile_id",
+    "offer_id",
+    "click_id",
+    "ranker_mode",
+    "event_type",
 )
 
 

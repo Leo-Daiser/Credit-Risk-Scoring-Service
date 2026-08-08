@@ -5,6 +5,10 @@ Home Credit Default Risk. Репозиторий показывает полны
 и feature engineering до versioned model bundle, FastAPI inference, PostgreSQL
 audit log, batch scoring и drift report.
 
+Поверх ML-ядра работает Riskline web/BFF и privacy-light commercial extension:
+предварительный PTI, объяснимый offer matching, tracked referral events и offline
+контур обучения offer ranker.
+
 Проект не является банковской системой принятия решений. `decision` в API —
 демонстрационный operating rule поверх вероятности и локального threshold, а не
 юридически значимое одобрение кредита.
@@ -21,7 +25,11 @@ audit log, batch scoring и drift report.
 - immutable production bundle с feature schema и deterministic version;
 - FastAPI `/score`, input-quality diagnostics и local reason codes;
 - PostgreSQL audit logging, Alembic, batch scoring и PSI monitoring;
+- Riskline web/BFF, durable batch worker и operator history;
+- privacy-light profile, eligibility/ranking, click/postback learning loop;
 - Docker Compose, CI, unit/integration tests и load-smoke script.
+
+Commercial architecture и privacy-границы: [docs/commercial_matching.md](docs/commercial_matching.md).
 
 ## Результат локального обучения
 
@@ -54,6 +62,12 @@ raw CSV -> validation -> applicant-level features -> train/test parquet
              |-> FastAPI /score -> PostgreSQL audit log
              |-> batch scoring
              `-> reference statistics -> drift monitoring
+
+privacy-light profile -> approximate PTI -> risk coverage/fallback
+        -> offer eligibility -> rules/optional ML ranking
+        -> impression -> click -> signed postback -> ranking dataset
+
+browser -> Riskline server-side BFF -> FastAPI + worker -> PostgreSQL/artifacts
 ```
 
 Подробное описание слоёв: [`docs/architecture.md`](docs/architecture.md).
@@ -61,6 +75,7 @@ raw CSV -> validation -> applicant-level features -> train/test parquet
 ## Требования
 
 - Python 3.11;
+- Node.js 22 для Riskline frontend;
 - PostgreSQL 16 для API с audit logging;
 - Docker Desktop с Compose — для production-like локального запуска;
 - полный Home Credit dataset — только для пересборки features и моделей.
@@ -75,6 +90,9 @@ python -m venv .venv
 python -m pip install --upgrade pip
 pip install -r requirements-dev.txt
 Copy-Item .env.example .env
+Set-Location frontend
+npm ci
+Set-Location ..
 ```
 
 Замените `POSTGRES_PASSWORD=change-me` и задайте `API_KEY` перед использованием
@@ -134,6 +152,10 @@ batch и monitoring кодом. Bundle создаётся локально и н
 | `prepare-production-model` | Калибровать, проверить gates и собрать bundle |
 | `batch-score` | Выполнить offline batch scoring |
 | `monitor-drift` | Построить offline PSI/missingness report |
+| `seed-demo-offers` | Загрузить три синтетических demo offers |
+| `build-offer-ranking-dataset` | Собрать impression-level ranking dataset |
+| `train-offer-ranker` | Обучить optional ranker при прохождении data gates |
+| `evaluate-offer-ranker` | Прочитать сохранённые ranker metrics |
 
 Формат запуска: `python -m src.cli <command>`. `init-db` — совместимый alias для
 того же Alembic runner:
@@ -154,8 +176,8 @@ docker compose ps
 docker compose logs -f api
 ```
 
-Compose поднимает PostgreSQL и один FastAPI container, применяет Alembic migrations,
-монтирует `./artifacts` read-only и проверяет `/ready`.
+Compose поднимает PostgreSQL, FastAPI, отдельный batch worker и Riskline frontend/BFF,
+применяет Alembic migrations, монтирует model bundle read-only и проверяет health.
 
 Endpoints:
 
@@ -164,6 +186,11 @@ Endpoints:
 - `GET /model_info` — metadata текущего bundle;
 - `GET /feature_schema` — machine-readable input contract;
 - `POST /score` — одиночный scoring с audit logging;
+- `POST /v1/profile/score` — предварительный privacy-light профиль;
+- `POST /v1/offers/match` — eligibility и ранжированная выдача;
+- `GET /v1/offers` — безопасные публичные поля активных offers;
+- `POST /v1/offers/{offer_id}/click` — идемпотентный tracked click;
+- `POST /v1/partner/postback` — подписанный и идемпотентный partner outcome;
 - `GET /metrics` — Prometheus exposition;
 - `GET /docs` — OpenAPI UI.
 
@@ -215,6 +242,7 @@ python -m src.cli monitor-drift
 - `data/raw/*`, `data/interim/*`, `data/processed/*`;
 - `artifacts/models/*`, `artifacts/metrics/*`;
 - `artifacts/reports/*`, `artifacts/predictions/*`;
+- `artifacts/uploads/*` и generated offer-ranker artifacts;
 - `.env`, virtual environment и test caches.
 
 ## Документация
@@ -225,6 +253,10 @@ python -m src.cli monitor-drift
 - [Interview notes](docs/interview_notes.md) — короткие ответы по design decisions;
 - [Operations](docs/operations.md) — local SLO и triage runbook;
 - [Model artifact ADR](docs/adr/001-model-artifact-contract.md) — versioning и trust boundary.
+- [Commercial matching](docs/commercial_matching.md) — product/ML/event architecture;
+- [Privacy-light contract](docs/privacy_light_data_contract.md) — collected/stored data;
+- [Offer ranker model card](docs/offer_ranking_model_card.md) — targets, gates и metrics;
+- [Advertising disclosure](docs/ad_disclosure.md) — referral boundary.
 
 ## Ограничения
 
@@ -234,6 +266,9 @@ python -m src.cli monitor-drift
 - нет fairness approval, юридических credit rules и автоматического retraining;
 - shared API key не заменяет user/RBAC, TLS, rate limiting и secrets manager;
 - Compose рассчитан на один API instance и один PostgreSQL instance.
+- demo offers не являются реальными банковскими продуктами;
+- automated commercial-event retention purge пока не реализован;
+- реальный ML offer ranker нельзя включать без достаточных partner outcomes.
 
 Практический сценарий презентации: [`docs/demo_script.md`](docs/demo_script.md).
 

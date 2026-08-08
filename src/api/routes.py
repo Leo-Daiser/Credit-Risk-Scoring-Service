@@ -25,6 +25,7 @@ from src.services.scoring import (
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+HTTP_422_UNPROCESSABLE = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
 
 
 @router.get("/health", response_model=HealthResponse)
@@ -84,7 +85,7 @@ def score(
         result = service.score(payload.features, request_id=payload.request_id)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            status_code=HTTP_422_UNPROCESSABLE,
             detail=str(exc),
         ) from exc
     if not settings.inference_logging_enabled:

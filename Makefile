@@ -28,3 +28,12 @@ load-smoke:
 
 api:
 	uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+worker:
+	python -m src.worker.main
+
+frontend:
+	cd frontend && npm run dev
+
+frontend-test:
+	cd frontend && npm run lint && npx tsc --noEmit && npm test

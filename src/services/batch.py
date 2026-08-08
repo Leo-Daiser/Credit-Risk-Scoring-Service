@@ -49,33 +49,25 @@ def write_table(frame: pd.DataFrame, path: str | Path) -> None:
         raise ValueError("Output table must be CSV or parquet.")
 
 
-def run_batch_scoring(
-    config_path: str | Path = "configs/service.yaml",
-) -> dict[str, Any]:
-    """Score a configured CSV/parquet file and save deterministic outputs."""
-    config = load_service_config(config_path)
-    batch = config.get("batch_scoring")
-    model = config.get("model")
-    if not isinstance(batch, dict) or not isinstance(model, dict):
-        raise ValueError("Service config requires 'model' and 'batch_scoring' sections.")
-
-    frame = read_table(batch["input_path"])
+def score_batch_frame(
+    frame: pd.DataFrame,
+    service: ScoringService,
+    *,
+    id_column: str,
+    max_rows: int,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    """Validate and score one model-ready feature table."""
     if frame.empty:
         raise ValueError("Batch scoring input is empty.")
-    max_rows = int(batch.get("max_rows", 100_000))
     if len(frame) > max_rows:
         raise ValueError(f"Batch input has {len(frame)} rows; configured maximum is {max_rows}.")
-
-    id_column = str(batch.get("id_column", "SK_ID_CURR"))
     if id_column not in frame.columns:
         raise ValueError(f"Batch input is missing id column '{id_column}'.")
+    if frame[id_column].isna().any():
+        raise ValueError(f"Batch id column '{id_column}' must not contain null values.")
     if frame[id_column].duplicated().any():
         raise ValueError(f"Batch id column '{id_column}' must be unique.")
 
-    service = ScoringService.from_path(
-        settings.resolve_model_bundle_path(model.get("bundle_path")),
-        top_reason_codes=int(model.get("top_reason_codes", 5)),
-    )
     raw_features = frame.drop(columns=[id_column]).to_dict(orient="records")
     feature_frame = service.prepare_features(raw_features)
     probabilities = service.bundle.predict_default_probability(feature_frame)
@@ -90,14 +82,58 @@ def run_batch_scoring(
             "missing_feature_count": feature_frame.isna().sum(axis=1).to_numpy(),
         }
     )
-    write_table(output, batch["output_path"])
     summary = {
         "rows_scored": int(len(output)),
         "model_version": service.bundle.metadata["model_version"],
         "mean_default_probability": float(probabilities.mean()),
         "decline_rate": float((probabilities >= threshold).mean()),
-        "output_path": str(batch["output_path"]),
     }
+    return output, summary
+
+
+def score_batch_file(
+    input_path: str | Path,
+    output_path: str | Path,
+    service: ScoringService,
+    *,
+    id_column: str,
+    max_rows: int,
+) -> dict[str, Any]:
+    """Score one uploaded table and write a prediction-only result file."""
+    frame = read_table(input_path)
+    output, summary = score_batch_frame(
+        frame,
+        service,
+        id_column=id_column,
+        max_rows=max_rows,
+    )
+    write_table(output, output_path)
+    return {**summary, "output_path": str(output_path)}
+
+
+def run_batch_scoring(
+    config_path: str | Path = "configs/service.yaml",
+) -> dict[str, Any]:
+    """Score a configured CSV/parquet file and save deterministic outputs."""
+    config = load_service_config(config_path)
+    batch = config.get("batch_scoring")
+    model = config.get("model")
+    if not isinstance(batch, dict) or not isinstance(model, dict):
+        raise ValueError("Service config requires 'model' and 'batch_scoring' sections.")
+
+    max_rows = int(batch.get("max_rows", 100_000))
+    id_column = str(batch.get("id_column", "SK_ID_CURR"))
+    service = ScoringService.from_path(
+        settings.resolve_model_bundle_path(model.get("bundle_path")),
+        top_reason_codes=int(model.get("top_reason_codes", 5)),
+    )
+    summary = score_batch_file(
+        batch["input_path"],
+        batch["output_path"],
+        service,
+        id_column=id_column,
+        max_rows=max_rows,
+    )
     summary_path = batch.get("summary_output_path")
     if summary_path:
         path = Path(summary_path)

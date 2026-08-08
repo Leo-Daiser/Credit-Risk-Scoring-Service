@@ -109,3 +109,32 @@ frequency по bins. Calibration должна повторно проверят�
 
 Главная позиция на интервью: проект демонстрирует инженерные контракты и честные
 границы portfolio MVP, а не имитирует готовность к банковскому production.
+
+## Чем PD model отличается от approval/offer model
+
+Текущий CatBoost оценивает default risk на Home Credit label. Решение конкретного
+банка дополнительно зависит от его policy, fraud/KYC, БКИ, pricing и лимитов. Поэтому
+PD score нельзя называть approval probability. Короткий профиль дополнительно имеет
+ограниченное feature coverage, которое сервис показывает явно.
+
+## Зачем нужны partner postback outcomes
+
+Без impression/click/application/approval/issued данных нельзя обучить ranker под
+реальную partner funnel. Click измеряет интерес, approval — policy fit, issued —
+финальный outcome. Labels имеют разную задержку и selection bias; synthetic fixtures
+подтверждают только работоспособность pipeline.
+
+## Как устроен privacy-light matching
+
+Frontend принимает диапазоны и отдельные consent. БД хранит band snapshot, hashes и
+нормализованные outcomes. Identity, документы и БКИ отсутствуют. Eligibility сначала
+блокирует несовместимые offers, затем rules ranker отдаёт 90% веса fit/affordability/
+risk/product и 10% commercial priority. Commission не может вернуть заблокированный
+offer.
+
+## Как появляется монетизация и обучающие данные
+
+Tracked click связывает анонимный profile и offer, signed postback добавляет outcome и
+commission. Этот loop создаёт датасет для будущего ranker. В репозитории используются
+только Demo Bank и `example.invalid`, поэтому реальная partner economics не заявлена
+как реализованная.

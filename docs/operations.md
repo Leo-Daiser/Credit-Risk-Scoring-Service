@@ -87,9 +87,38 @@ LOG_FORMAT=text
 7. Treat a critical offline drift report as an investigation signal, not as an
    automatic outage or retraining trigger.
 
+## Batch worker
+
+The API only accepts uploads and creates durable jobs. The worker is a separate
+process:
+
+```powershell
+python -m src.worker.main
+```
+
+Inspect it independently from the API:
+
+```powershell
+docker compose ps worker
+docker compose logs --tail 100 worker
+```
+
+Jobs progress through `queued -> running -> completed|failed`. A worker restart
+requeues `running` jobs older than 30 minutes. Successful inputs are deleted when
+`BATCH_RETAIN_INPUTS=false`; failed inputs are retained for controlled diagnosis.
+Do not attach uploaded feature rows to tickets or logs. Result files contain only
+the configured ID, probability, decision, risk band, model version and missing
+feature count.
+
 ## Known deployment limits
 
-- One API container and one PostgreSQL instance are used in Compose.
+- One API container, one batch worker, one frontend/BFF and one PostgreSQL instance
+  are used in Compose.
+- Local artifact storage is single-host. Multi-host scaling requires S3-compatible
+  object storage before API and worker replicas can move independently.
+- The cabinet is a single-tenant operator surface. A public deployment must put it
+  behind an identity-aware reverse proxy or platform SSO; the BFF-held API key is
+  service authentication, not end-user authentication or RBAC.
 - TLS termination, a secrets manager, rate limiting and autoscaling belong to the
   target platform, not this repository.
 - Load-smoke results are host-specific and must not be presented as universal model
