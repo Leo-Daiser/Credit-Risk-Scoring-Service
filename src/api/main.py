@@ -6,6 +6,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request, Response
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
+from src.api.commercial_routes import router as commercial_router
 from src.api.metrics import HTTP_LATENCY, HTTP_REQUESTS
 from src.api.portal_routes import router as portal_router
 from src.api.routes import router
@@ -24,6 +25,7 @@ app = FastAPI(
 )
 app.include_router(router)
 app.include_router(portal_router)
+app.include_router(commercial_router)
 
 
 @app.middleware("http")
