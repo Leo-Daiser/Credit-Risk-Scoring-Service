@@ -17,6 +17,13 @@ Production-like ML-сервис оценки вероятности дефолт
 - bootstrap confidence intervals, subgroup report и offline drift monitoring;
 - Docker Compose, Alembic migrations, CI, тесты и воспроизводимый load smoke.
 
+## Commercial extension: privacy-light credit offer matching
+
+Поверх credit-risk ядра добавлен предварительный профиль, консервативный PTI,
+объяснимый eligibility/ranking, tracked referral flow и offline-контур обучения ranker.
+Архитектура, privacy-границы и ограничения описаны в
+[`docs/commercial_matching.md`](docs/commercial_matching.md).
+
 ## Статус проекта
 
 Полноценный MVP сервиса реализован.
