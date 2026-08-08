@@ -31,6 +31,19 @@ class Settings(BaseSettings):
     batch_worker_poll_seconds: float = 2.0
     batch_retain_inputs: bool = False
     api_key: SecretStr | None = None
+    partner_postback_secret: SecretStr | None = None
+    offer_config_path: str = "configs/offers.yaml"
+    offer_reference_annual_rate: float = 0.24
+    offer_ranker_mode: Literal["rules", "ml"] = "rules"
+    offer_ranker_min_samples: int = 200
+    offer_ranking_dataset_path: str = "data/processed/offer_ranking_train.parquet"
+    offer_ranking_dataset_report_path: str = (
+        "artifacts/reports/offer_ranking_dataset_report.json"
+    )
+    offer_ranker_model_path: str = "artifacts/models/offer_ranker.joblib"
+    offer_ranker_metrics_path: str = "artifacts/metrics/offer_ranker_metrics.json"
+    offer_ranker_report_path: str = "artifacts/reports/offer_ranker_report.json"
+    persist_exact_commercial_values: bool = False
     log_level: str = "INFO"
     log_format: Literal["json", "text"] = "json"
 

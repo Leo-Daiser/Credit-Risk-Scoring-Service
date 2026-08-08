@@ -1,0 +1,78 @@
+ranking:
+  mode: rules
+  weights:
+    user_fit_score: 0.30
+    affordability_fit_score: 0.25
+    risk_compatibility_score: 0.20
+    product_match_score: 0.15
+    commercial_score: 0.10
+  confidence_penalties:
+    low: 0.70
+    basic: 0.82
+    medium: 0.92
+    high: 1.00
+
+demo_offers:
+  - bank_id: demo-a
+    product_name: Demo Flex Loan
+    product_type: cash
+    priority: 60
+    allowed_age_bands: ["22_30", "31_45", "46_60"]
+    allowed_regions: []
+    allowed_employment_types: [employee, self_employed, individual_entrepreneur]
+    allowed_credit_history_bands: [good, average, minor_overdues, no_history]
+    min_amount: 50000
+    max_amount: 700000
+    min_term_months: 6
+    max_term_months: 60
+    min_income_band: 50k_100k
+    max_pti_band: high
+    risk_band_policy: [low, medium, unknown]
+    affiliate_url_template: https://example.invalid/demo-a?click_id={click_id}
+    advertiser_name: Demo Bank A
+    ad_label_text: Advertising. Demo offer.
+    legal_disclaimer: Synthetic offer. Final decision is made by the bank.
+    commission_type: fixed
+    commission_amount: 1000
+  - bank_id: demo-b
+    product_name: Demo Conservative Credit
+    product_type: cash
+    priority: 50
+    allowed_age_bands: ["31_45", "46_60", "60_plus"]
+    allowed_regions: []
+    allowed_employment_types: [employee, pensioner]
+    allowed_credit_history_bands: [good, average, no_history]
+    min_amount: 100000
+    max_amount: 1500000
+    min_term_months: 12
+    max_term_months: 84
+    min_income_band: 50k_100k
+    max_pti_band: moderate
+    risk_band_policy: [low, medium, unknown]
+    affiliate_url_template: https://example.invalid/demo-b?click_id={click_id}
+    advertiser_name: Demo Bank B
+    ad_label_text: Advertising. Demo offer.
+    legal_disclaimer: Synthetic offer. Final decision is made by the bank.
+    commission_type: fixed
+    commission_amount: 800
+  - bank_id: demo-c
+    product_name: Demo Refinance
+    product_type: refinance
+    priority: 40
+    allowed_age_bands: ["22_30", "31_45", "46_60"]
+    allowed_regions: []
+    allowed_employment_types: [employee, self_employed, individual_entrepreneur]
+    allowed_credit_history_bands: [good, average, minor_overdues]
+    min_amount: 300000
+    max_amount: 3000000
+    min_term_months: 12
+    max_term_months: 120
+    min_income_band: 100k_150k
+    max_pti_band: high
+    risk_band_policy: [low, medium, high, unknown]
+    affiliate_url_template: https://example.invalid/demo-c?click_id={click_id}
+    advertiser_name: Demo Bank C
+    ad_label_text: Advertising. Demo offer.
+    legal_disclaimer: Synthetic offer. Final decision is made by the bank.
+    commission_type: fixed
+    commission_amount: 1500

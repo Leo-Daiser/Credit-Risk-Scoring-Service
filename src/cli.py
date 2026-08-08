@@ -15,12 +15,17 @@ Supported commands:
     prepare-production-model
     batch-score
     monitor-drift
+    seed-demo-offers
+    build-offer-ranking-dataset
+    train-offer-ranker
+    evaluate-offer-ranker
 """
 
 import sys
 
 from src.data.validate_schema import validate_configured_raw_data
 from src.db.init_db import init_db
+from src.db.session import SessionLocal
 from src.features.advanced_history_features import run_build_advanced_history_features
 from src.features.application_features import run_build_application_features
 from src.features.bureau_features import run_build_bureau_features
@@ -28,6 +33,9 @@ from src.features.feature_dataset import run_build_full_feature_dataset
 from src.models.prepare_production_model import prepare_production_model
 from src.models.train_baseline import train_logistic_regression_baseline
 from src.models.train_catboost import train_catboost_challenger
+from src.offers.repository import OfferRepository
+from src.offers.train_offer_ranker import evaluate_offer_ranker, train_offer_ranker
+from src.offers.training_dataset import build_offer_ranking_dataset
 from src.services.batch import run_batch_scoring
 from src.services.monitoring import run_drift_monitoring
 
@@ -48,6 +56,10 @@ AVAILABLE_COMMANDS = (
     "prepare-production-model",
     "batch-score",
     "monitor-drift",
+    "seed-demo-offers",
+    "build-offer-ranking-dataset",
+    "train-offer-ranker",
+    "evaluate-offer-ranker",
 )
 
 
@@ -211,6 +223,36 @@ def cmd_monitor_drift() -> None:
     print(f"Report saved to: {report['output_path']}")
 
 
+def cmd_seed_demo_offers() -> None:
+    """Seed deterministic synthetic offers without real partner claims."""
+    with SessionLocal() as session:
+        created = OfferRepository(session).seed_demo()
+    print(f"Demo offers seeded. Created: {created}")
+
+
+def cmd_build_offer_ranking_dataset() -> None:
+    """Build a point-in-time commercial ranking dataset from normalized events."""
+    with SessionLocal() as session:
+        report = build_offer_ranking_dataset(session)
+    print(f"Offer ranking dataset status: {report['status']}")
+    print(f"Rows: {report['rows']}")
+    print(f"Output: {report['output_path']}")
+
+
+def cmd_train_offer_ranker() -> None:
+    """Train the optional offer ranker only when the data gate is satisfied."""
+    report = train_offer_ranker()
+    print(f"Offer ranker status: {report['status']}")
+    if report.get("reason"):
+        print(f"Reason: {report['reason']}")
+
+
+def cmd_evaluate_offer_ranker() -> None:
+    """Read the latest persisted offer ranker evaluation artifact."""
+    report = evaluate_offer_ranker()
+    print(f"Offer ranker evaluation status: {report['status']}")
+
+
 COMMANDS = {
     "init-db": cmd_init_db,
     "validate-raw": cmd_validate_raw,
@@ -223,6 +265,10 @@ COMMANDS = {
     "prepare-production-model": cmd_prepare_production_model,
     "batch-score": cmd_batch_score,
     "monitor-drift": cmd_monitor_drift,
+    "seed-demo-offers": cmd_seed_demo_offers,
+    "build-offer-ranking-dataset": cmd_build_offer_ranking_dataset,
+    "train-offer-ranker": cmd_train_offer_ranker,
+    "evaluate-offer-ranker": cmd_evaluate_offer_ranker,
 }
 
 

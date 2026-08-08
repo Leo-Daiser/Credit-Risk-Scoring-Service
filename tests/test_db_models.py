@@ -4,7 +4,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.db.base import Base
-from src.db.models import BatchScoringJob, ModelRegistry, ScoringPrediction, ScoringRequest
+from src.db.models import (
+    BankOffer,
+    BatchScoringJob,
+    ModelRegistry,
+    OfferClick,
+    PartnerPostback,
+    ScoringPrediction,
+    ScoringRequest,
+)
 
 
 @pytest.fixture()
@@ -112,3 +120,31 @@ def test_batch_job_schema_has_contract_columns_constraints_and_claim_index(audit
         "ck_batch_scoring_jobs_rows_total_nonnegative",
         "ck_batch_scoring_jobs_rows_processed_nonnegative",
     } <= check_names
+
+
+def test_commercial_tables_have_idempotency_and_query_indexes(audit_engine):
+    inspector = inspect(audit_engine)
+    assert {
+        "bank_offers",
+        "anonymous_sessions",
+        "credit_profile_events",
+        "offer_impressions",
+        "offer_clicks",
+        "partner_postbacks",
+    } <= set(inspector.get_table_names())
+    click_uniques = inspector.get_unique_constraints(OfferClick.__tablename__)
+    assert any(item["column_names"] == ["click_id"] for item in click_uniques)
+    postback_uniques = inspector.get_unique_constraints(PartnerPostback.__tablename__)
+    assert any(
+        item["column_names"] == ["click_id", "status"] for item in postback_uniques
+    )
+    offer_checks = {
+        item["name"] for item in inspector.get_check_constraints(BankOffer.__tablename__)
+    }
+    assert {"ck_bank_offers_amount", "ck_bank_offers_term", "ck_bank_offers_priority"} <= (
+        offer_checks
+    )
+    postback_checks = {
+        item["name"] for item in inspector.get_check_constraints(PartnerPostback.__tablename__)
+    }
+    assert "ck_partner_postbacks_status" in postback_checks

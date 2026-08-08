@@ -275,3 +275,29 @@ def test_cli_monitor_drift_command_calls_runner(monkeypatch, capsys):
     )
     cli.main(["monitor-drift"])
     assert "Status: warning" in capsys.readouterr().out
+
+
+def test_cli_offer_dataset_and_ranker_commands_dispatch(monkeypatch, capsys):
+    class SessionContext:
+        def __enter__(self):
+            return object()
+
+        def __exit__(self, exc_type, exc, traceback):
+            return False
+
+    monkeypatch.setattr(cli, "SessionLocal", SessionContext)
+    monkeypatch.setattr(
+        cli,
+        "build_offer_ranking_dataset",
+        lambda session: {"status": "ready", "rows": 10, "output_path": "train.parquet"},
+    )
+    monkeypatch.setattr(cli, "train_offer_ranker", lambda: {"status": "insufficient_data"})
+    monkeypatch.setattr(cli, "evaluate_offer_ranker", lambda: {"status": "ready"})
+
+    cli.main(["build-offer-ranking-dataset"])
+    cli.main(["train-offer-ranker"])
+    cli.main(["evaluate-offer-ranker"])
+    output = capsys.readouterr().out
+    assert "Offer ranking dataset status: ready" in output
+    assert "Offer ranker status: insufficient_data" in output
+    assert "Offer ranker evaluation status: ready" in output

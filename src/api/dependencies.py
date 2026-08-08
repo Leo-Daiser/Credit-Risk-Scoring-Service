@@ -27,6 +27,14 @@ def get_scoring_service() -> ScoringService:
         ) from exc
 
 
+def get_optional_scoring_service() -> ScoringService | None:
+    """Return a model when available without breaking commercial fallback behavior."""
+    try:
+        return _cached_scoring_service()
+    except Exception:
+        return None
+
+
 def require_api_key(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> None:
