@@ -5,6 +5,15 @@ import {
   calculateAnnuity,
   calculatePrincipal,
 } from "../app/lib/credit-calculator.mjs";
+import {
+  clearZeroOnFocusValue,
+  parseNumericInput,
+} from "../app/lib/numeric-input.mjs";
+import {
+  buildPersonalFeatures,
+  initialPersonalForm,
+  parsePersonalFormDraft,
+} from "../app/lib/personal-score.ts";
 
 async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -68,6 +77,45 @@ test("credit calculator handles zero and non-zero rates consistently", () => {
   assert.ok(Math.abs(calculatePrincipal(payment, 12, 24) - 1_000_000) < 0.01);
   assert.equal(calculateAnnuity(0, 12, 24), 0);
   assert.equal(calculatePrincipal(-1, 12, 24), 0);
+});
+
+test("numeric inputs clear a displayed zero without coercing an empty edit", () => {
+  let editedValue = clearZeroOnFocusValue("0");
+  assert.equal(editedValue, "");
+  assert.equal(parseNumericInput(editedValue), null);
+
+  editedValue = "150000";
+  assert.equal(parseNumericInput(editedValue), 150_000);
+  assert.equal(clearZeroOnFocusValue("19.9"), "19.9");
+  assert.equal(parseNumericInput("-0.5"), -0.5);
+});
+
+test("numeric form keeps an intentional zero and builds a numeric model payload", () => {
+  const parsed = parsePersonalFormDraft({
+    ...initialPersonalForm,
+    currentDebtPayment: "0",
+    employmentYears: "0",
+  });
+
+  assert.ok(parsed.form);
+  assert.equal(parsed.form.currentDebtPayment, 0);
+  assert.equal(parsed.form.employmentYears, 0);
+
+  const features = buildPersonalFeatures(parsed.form, 24_000);
+  assert.equal(typeof features.AMT_INCOME_TOTAL, "number");
+  assert.equal(typeof features.AMT_CREDIT, "number");
+  assert.equal(typeof features.AMT_ANNUITY, "number");
+  assert.equal(typeof features.DAYS_EMPLOYED, "number");
+});
+
+test("an empty numeric draft remains invalid instead of silently becoming zero", () => {
+  const parsed = parsePersonalFormDraft({
+    ...initialPersonalForm,
+    monthlyIncome: "",
+  });
+
+  assert.equal(parsed.form, null);
+  assert.match(parsed.error, /Доход в месяц/);
 });
 
 test("starter preview and unused persistence dependencies are removed", async () => {

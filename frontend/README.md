@@ -47,3 +47,11 @@ npm test
 ```
 
 Полный production-like контур проще запускать из корня через Docker Compose.
+
+## Известная граница зависимостей
+
+`npm audit` сообщает о двух high advisory в транзитивном `image-size@2.0.2`
+из `vinext@1.0.0-beta.4`. Исправленной версии в используемой линии Vinext нет;
+`npm audit fix --force` предлагает несовместимый downgrade. Пользовательские изображения
+runtime не обрабатывает. До обновления Vinext публичный reverse proxy должен также
+ограничивать размер HTTP-запроса и закрывать кабинет через SSO/identity-aware policy.

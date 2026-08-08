@@ -27,49 +27,19 @@ import {
   formatPercent,
 } from "../lib/api";
 import { calculateAnnuity, calculatePrincipal } from "../lib/credit-calculator.mjs";
+import {
+  buildPersonalFeatures,
+  initialPersonalForm,
+  numericValue,
+  parsePersonalFormDraft,
+  validatePersonalForm,
+  type FeatureValue,
+  type NumericField,
+  type PersonalFormDraft,
+} from "../lib/personal-score";
+import { NumericInput } from "./NumericInput";
 
 type WorkspaceMode = "personal" | "expert";
-type FeatureValue = string | number | boolean | null;
-
-interface PersonalForm {
-  monthlyIncome: number;
-  creditAmount: number;
-  termMonths: number;
-  annualRate: number;
-  currentDebtPayment: number;
-  comfortableShare: number;
-  age: number;
-  employmentYears: number;
-  children: number;
-  familyMembers: number;
-  contractType: string;
-  incomeType: string;
-  housingType: string;
-  ownsCar: boolean;
-  ownsRealty: boolean;
-}
-
-type NumericField = {
-  [Key in keyof PersonalForm]: PersonalForm[Key] extends number ? Key : never;
-}[keyof PersonalForm];
-
-const initialForm: PersonalForm = {
-  monthlyIncome: 120_000,
-  creditAmount: 800_000,
-  termMonths: 36,
-  annualRate: 19.9,
-  currentDebtPayment: 12_000,
-  comfortableShare: 35,
-  age: 34,
-  employmentYears: 7,
-  children: 1,
-  familyMembers: 3,
-  contractType: "Cash loans",
-  incomeType: "Working",
-  housingType: "House / apartment",
-  ownsCar: false,
-  ownsRealty: true,
-};
 
 const initialPayload = `{
   "AMT_INCOME_TOTAL": 180000,
@@ -91,50 +61,6 @@ function formatMoney(value: number): string {
   return moneyFormatter.format(Number.isFinite(value) ? Math.round(value) : 0);
 }
 
-function validatePersonalForm(form: PersonalForm): string | null {
-  if (form.monthlyIncome < 10_000) return "Укажите ежемесячный доход не менее 10 000 ₽.";
-  if (form.creditAmount < 10_000) return "Укажите сумму кредита не менее 10 000 ₽.";
-  if (form.termMonths < 3 || form.termMonths > 360) return "Срок кредита должен быть от 3 до 360 месяцев.";
-  if (form.annualRate < 0 || form.annualRate > 100) return "Ставка должна быть от 0% до 100%.";
-  if (form.currentDebtPayment < 0) return "Текущие платежи не могут быть отрицательными.";
-  if (form.age < 18 || form.age > 75) return "Возраст должен быть от 18 до 75 лет.";
-  if (form.employmentYears < 0 || form.employmentYears > form.age - 14) {
-    return "Стаж не может быть отрицательным или превышать возраст за вычетом 14 лет.";
-  }
-  if (form.children < 0 || form.familyMembers < 1 || form.familyMembers < form.children + 1) {
-    return "Число членов семьи должно быть больше числа детей.";
-  }
-  return null;
-}
-
-function buildPersonalFeatures(form: PersonalForm, annuity: number): Record<string, FeatureValue> {
-  const annualIncome = form.monthlyIncome * 12;
-  const daysBirth = -Math.round(form.age * 365.25);
-  const daysEmployed = -Math.round(form.employmentYears * 365.25);
-
-  return {
-    AMT_INCOME_TOTAL: annualIncome,
-    AMT_CREDIT: form.creditAmount,
-    AMT_ANNUITY: Math.round(annuity),
-    AGE_YEARS: form.age,
-    DAYS_BIRTH: daysBirth,
-    EMPLOYMENT_YEARS: form.employmentYears,
-    DAYS_EMPLOYED: daysEmployed,
-    CNT_CHILDREN: form.children,
-    CNT_FAM_MEMBERS: form.familyMembers,
-    NAME_CONTRACT_TYPE: form.contractType,
-    NAME_INCOME_TYPE: form.incomeType,
-    NAME_HOUSING_TYPE: form.housingType,
-    FLAG_OWN_CAR: form.ownsCar ? "Y" : "N",
-    FLAG_OWN_REALTY: form.ownsRealty ? "Y" : "N",
-    CREDIT_INCOME_RATIO: form.creditAmount / annualIncome,
-    ANNUITY_INCOME_RATIO: annuity / annualIncome,
-    CREDIT_TERM: annuity / form.creditAmount,
-    DAYS_EMPLOYED_RATIO: daysEmployed / daysBirth,
-    INCOME_PER_FAM_MEMBER: annualIncome / form.familyMembers,
-  };
-}
-
 function filterToSchema(
   features: Record<string, FeatureValue>,
   schema: FeatureSchema,
@@ -148,7 +74,7 @@ export function ScoreWorkspace() {
   const [mode, setMode] = useState<WorkspaceMode>("personal");
   const [schema, setSchema] = useState<FeatureSchema | null>(null);
   const [schemaError, setSchemaError] = useState<string | null>(null);
-  const [form, setForm] = useState<PersonalForm>(initialForm);
+  const [form, setForm] = useState<PersonalFormDraft>(initialPersonalForm);
   const [consent, setConsent] = useState(false);
   const [payload, setPayload] = useState(initialPayload);
   const [requestId, setRequestId] = useState("");
@@ -166,13 +92,19 @@ export function ScoreWorkspace() {
   }, []);
 
   const scenario = useMemo(() => {
-    const newPayment = calculateAnnuity(form.creditAmount, form.annualRate, form.termMonths);
-    const totalPayments = newPayment + form.currentDebtPayment;
-    const recommendedPayment = form.monthlyIncome * form.comfortableShare / 100;
-    const availableForNewLoan = Math.max(0, recommendedPayment - form.currentDebtPayment);
-    const maxPrincipal = calculatePrincipal(availableForNewLoan, form.annualRate, form.termMonths);
-    const monthlyReserve = form.monthlyIncome - totalPayments;
-    const paymentLoad = form.monthlyIncome > 0 ? totalPayments / form.monthlyIncome : 0;
+    const creditAmount = numericValue(form.creditAmount);
+    const annualRate = numericValue(form.annualRate);
+    const termMonths = numericValue(form.termMonths);
+    const currentDebtPayment = numericValue(form.currentDebtPayment);
+    const monthlyIncome = numericValue(form.monthlyIncome);
+    const comfortableShare = numericValue(form.comfortableShare);
+    const newPayment = calculateAnnuity(creditAmount, annualRate, termMonths);
+    const totalPayments = newPayment + currentDebtPayment;
+    const recommendedPayment = monthlyIncome * comfortableShare / 100;
+    const availableForNewLoan = Math.max(0, recommendedPayment - currentDebtPayment);
+    const maxPrincipal = calculatePrincipal(availableForNewLoan, annualRate, termMonths);
+    const monthlyReserve = monthlyIncome - totalPayments;
+    const paymentLoad = monthlyIncome > 0 ? totalPayments / monthlyIncome : 0;
 
     return {
       newPayment,
@@ -186,13 +118,12 @@ export function ScoreWorkspace() {
   }, [form]);
 
   const updateNumber = (field: NumericField, rawValue: string) => {
-    const value = rawValue === "" ? 0 : Number(rawValue);
-    setForm((current) => ({ ...current, [field]: Number.isFinite(value) ? value : 0 }));
+    setForm((current) => ({ ...current, [field]: rawValue }));
     setResult(null);
     setError(null);
   };
 
-  const updateChoice = <Key extends keyof PersonalForm>(field: Key, value: PersonalForm[Key]) => {
+  const updateChoice = <Key extends keyof PersonalFormDraft>(field: Key, value: PersonalFormDraft[Key]) => {
     setForm((current) => ({ ...current, [field]: value }));
     setResult(null);
     setError(null);
@@ -238,7 +169,13 @@ export function ScoreWorkspace() {
   };
 
   const submitPersonal = async () => {
-    const validationError = validatePersonalForm(form);
+    const parsed = parsePersonalFormDraft(form);
+    if (!parsed.form) {
+      setError(parsed.error);
+      return;
+    }
+
+    const validationError = validatePersonalForm(parsed.form);
     if (validationError) {
       setError(validationError);
       return;
@@ -252,7 +189,12 @@ export function ScoreWorkspace() {
       return;
     }
 
-    const features = filterToSchema(buildPersonalFeatures(form, scenario.newPayment), schema);
+    const newPayment = calculateAnnuity(
+      parsed.form.creditAmount,
+      parsed.form.annualRate,
+      parsed.form.termMonths,
+    );
+    const features = filterToSchema(buildPersonalFeatures(parsed.form, newPayment), schema);
     await scoreFeatures(features);
   };
 
@@ -329,15 +271,15 @@ export function ScoreWorkspace() {
             <div className="personal-fields three-columns">
               <label className="field-label" htmlFor="credit-amount">
                 Сумма кредита, ₽
-                <input id="credit-amount" type="number" min="10000" max="100000000" step="10000" value={form.creditAmount} onChange={(event) => updateNumber("creditAmount", event.target.value)} />
+                <NumericInput id="credit-amount" min="10000" max="100000000" step="10000" value={form.creditAmount} onValueChange={(value) => updateNumber("creditAmount", value)} />
               </label>
               <label className="field-label" htmlFor="term-months">
                 Срок, месяцев
-                <input id="term-months" type="number" min="3" max="360" step="1" value={form.termMonths} onChange={(event) => updateNumber("termMonths", event.target.value)} />
+                <NumericInput id="term-months" min="3" max="360" step="1" value={form.termMonths} onValueChange={(value) => updateNumber("termMonths", value)} />
               </label>
               <label className="field-label" htmlFor="annual-rate">
                 Ставка, % годовых
-                <input id="annual-rate" type="number" min="0" max="100" step="0.1" value={form.annualRate} onChange={(event) => updateNumber("annualRate", event.target.value)} />
+                <NumericInput id="annual-rate" min="0" max="100" step="0.1" value={form.annualRate} onValueChange={(value) => updateNumber("annualRate", value)} />
               </label>
             </div>
 
@@ -361,11 +303,11 @@ export function ScoreWorkspace() {
             <div className="personal-fields two-columns">
               <label className="field-label" htmlFor="monthly-income">
                 Доход в месяц, ₽
-                <input id="monthly-income" type="number" min="10000" max="100000000" step="5000" value={form.monthlyIncome} onChange={(event) => updateNumber("monthlyIncome", event.target.value)} />
+                <NumericInput id="monthly-income" min="10000" max="100000000" step="5000" value={form.monthlyIncome} onValueChange={(value) => updateNumber("monthlyIncome", value)} />
               </label>
               <label className="field-label" htmlFor="current-debt">
                 Другие кредитные платежи, ₽ / мес.
-                <input id="current-debt" type="number" min="0" max="100000000" step="1000" value={form.currentDebtPayment} onChange={(event) => updateNumber("currentDebtPayment", event.target.value)} />
+                <NumericInput id="current-debt" min="0" max="100000000" step="1000" value={form.currentDebtPayment} onValueChange={(value) => updateNumber("currentDebtPayment", value)} />
               </label>
             </div>
 
@@ -389,19 +331,19 @@ export function ScoreWorkspace() {
             <div className="personal-fields three-columns">
               <label className="field-label" htmlFor="age">
                 Возраст
-                <input id="age" type="number" min="18" max="75" step="1" value={form.age} onChange={(event) => updateNumber("age", event.target.value)} />
+                <NumericInput id="age" min="18" max="75" step="1" value={form.age} onValueChange={(value) => updateNumber("age", value)} />
               </label>
               <label className="field-label" htmlFor="employment-years">
                 Стаж, лет
-                <input id="employment-years" type="number" min="0" max="60" step="0.5" value={form.employmentYears} onChange={(event) => updateNumber("employmentYears", event.target.value)} />
+                <NumericInput id="employment-years" min="0" max="60" step="0.5" value={form.employmentYears} onValueChange={(value) => updateNumber("employmentYears", value)} />
               </label>
               <label className="field-label" htmlFor="family-members">
                 Членов семьи
-                <input id="family-members" type="number" min="1" max="20" step="1" value={form.familyMembers} onChange={(event) => updateNumber("familyMembers", event.target.value)} />
+                <NumericInput id="family-members" min="1" max="20" step="1" value={form.familyMembers} onValueChange={(value) => updateNumber("familyMembers", value)} />
               </label>
               <label className="field-label" htmlFor="children">
                 Детей
-                <input id="children" type="number" min="0" max="20" step="1" value={form.children} onChange={(event) => updateNumber("children", event.target.value)} />
+                <NumericInput id="children" min="0" max="20" step="1" value={form.children} onValueChange={(value) => updateNumber("children", value)} />
               </label>
               <label className="field-label" htmlFor="income-type">
                 Тип занятости

@@ -21,15 +21,16 @@ async function proxy(request: NextRequest, context: RouteContext): Promise<Respo
   if (apiKey) headers.set("X-API-Key", apiKey);
 
   try {
-    const upstream = await fetch(target, {
+    const hasBody = request.method !== "GET" && request.method !== "HEAD";
+    const upstreamInit: RequestInit & { duplex?: "half" } = {
       method: request.method,
       headers,
-      body:
-        request.method === "GET" || request.method === "HEAD"
-          ? undefined
-          : await request.arrayBuffer(),
+      body: hasBody ? request.body : undefined,
       redirect: "manual",
-    });
+    };
+    if (hasBody && request.body) upstreamInit.duplex = "half";
+
+    const upstream = await fetch(target, upstreamInit);
     const responseHeaders = new Headers(upstream.headers);
     responseHeaders.delete("content-length");
     responseHeaders.delete("transfer-encoding");

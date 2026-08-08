@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.db.base import Base
-from src.db.models import ModelRegistry, ScoringPrediction, ScoringRequest
+from src.db.models import BatchScoringJob, ModelRegistry, ScoringPrediction, ScoringRequest
 
 
 @pytest.fixture()
@@ -74,3 +74,41 @@ def test_audit_schema_has_model_time_index(audit_engine):
         and index["column_names"] == ["model_version", "received_at"]
         for index in indexes
     )
+
+
+def test_batch_job_schema_has_contract_columns_constraints_and_claim_index(audit_engine):
+    inspector = inspect(audit_engine)
+    columns = {column["name"]: column for column in inspector.get_columns("batch_scoring_jobs")}
+    assert {
+        "job_id",
+        "input_path",
+        "output_path",
+        "status",
+        "rows_total",
+        "rows_processed",
+        "model_version",
+        "error_message",
+        "created_at",
+        "started_at",
+        "completed_at",
+    } <= columns.keys()
+    assert columns["job_id"]["nullable"] is False
+    assert columns["status"]["nullable"] is False
+    assert columns["rows_processed"]["nullable"] is False
+
+    indexes = inspector.get_indexes(BatchScoringJob.__tablename__)
+    assert any(
+        index["name"] == "ix_batch_scoring_jobs_status_created_at"
+        and index["column_names"] == ["status", "created_at"]
+        for index in indexes
+    )
+    unique_constraints = inspector.get_unique_constraints(BatchScoringJob.__tablename__)
+    assert any(constraint["column_names"] == ["job_id"] for constraint in unique_constraints)
+    check_names = {
+        constraint["name"] for constraint in inspector.get_check_constraints("batch_scoring_jobs")
+    }
+    assert {
+        "ck_batch_scoring_jobs_status",
+        "ck_batch_scoring_jobs_rows_total_nonnegative",
+        "ck_batch_scoring_jobs_rows_processed_nonnegative",
+    } <= check_names
