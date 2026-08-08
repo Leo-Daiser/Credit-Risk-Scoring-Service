@@ -339,6 +339,8 @@ def persist_scoring_result(
                 request_id=request_id,
                 default_probability=result["default_probability"],
                 risk_band=result["risk_band"],
+                decision=result["decision"],
+                decision_threshold=result["decision_threshold"],
                 top_reason_codes=result["reason_codes"],
             )
         )

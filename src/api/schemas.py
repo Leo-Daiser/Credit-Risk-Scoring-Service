@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints
@@ -78,3 +79,65 @@ class ReadinessResponse(BaseModel):
     status: Literal["ready"]
     model_version: str
     database: Literal["ok"]
+
+
+class BatchJobResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    job_id: str
+    original_filename: str
+    input_format: Literal["csv", "parquet"]
+    id_column: str
+    file_size_bytes: int = Field(ge=1)
+    status: Literal["queued", "running", "completed", "failed"]
+    rows_total: int | None = Field(default=None, ge=0)
+    rows_processed: int = Field(ge=0)
+    model_version: str | None
+    summary_json: dict[str, Any] | None
+    error_message: str | None
+    created_at: datetime
+    started_at: datetime | None
+    completed_at: datetime | None
+
+
+class BatchJobListResponse(BaseModel):
+    items: list[BatchJobResponse]
+    total: int = Field(ge=0)
+
+
+class ScoringHistoryItem(BaseModel):
+    request_id: str
+    received_at: datetime
+    default_probability: float = Field(ge=0.0, le=1.0)
+    decision: Literal["approve", "decline"] | None
+    decision_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    risk_band: str
+    model_version: str
+
+
+class ScoringHistoryResponse(BaseModel):
+    items: list[ScoringHistoryItem]
+    total: int = Field(ge=0)
+
+
+class DashboardScoringSummary(BaseModel):
+    total: int = Field(ge=0)
+    last_24h: int = Field(ge=0)
+    approval_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    mean_default_probability: float | None = Field(default=None, ge=0.0, le=1.0)
+    risk_bands: dict[str, int]
+
+
+class DashboardBatchSummary(BaseModel):
+    queued: int = Field(ge=0)
+    running: int = Field(ge=0)
+    completed: int = Field(ge=0)
+    failed: int = Field(ge=0)
+
+
+class DashboardResponse(BaseModel):
+    generated_at: datetime
+    model: ModelInfoResponse
+    scoring: DashboardScoringSummary
+    batches: DashboardBatchSummary
+    recent_decisions: list[ScoringHistoryItem]

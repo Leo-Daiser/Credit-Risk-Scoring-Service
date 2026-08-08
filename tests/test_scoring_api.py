@@ -1,3 +1,5 @@
+import io
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -21,6 +23,7 @@ from src.models.model_bundle import (
 )
 from src.models.train_baseline import build_logistic_regression_pipeline
 from src.models.train_catboost import build_catboost_pipeline
+from src.services.batch_jobs import claim_next_job, process_claimed_job
 from src.services.scoring import ScoringService, catboost_reason_codes, linear_reason_codes
 
 TEST_ARTIFACT_INPUTS = {name: "0" * 64 for name in REQUIRED_ARTIFACT_INPUTS}
@@ -351,3 +354,142 @@ def test_catboost_reason_codes_are_local_positive_contributions():
     reasons = catboost_reason_codes(pipeline, frame.iloc[[0]], limit=2)
     assert reasons
     assert all(reason["contribution"] > 0 for reason in reasons)
+
+
+def test_portal_dashboard_and_history_use_persisted_decisions(api_client):
+    client, _ = api_client
+    response = client.post(
+        "/score",
+        json={
+            "request_id": "portal-history-1",
+            "features": {"INCOME": 70_000, "AGE_YEARS": 31, "CONTRACT": "cash"},
+        },
+    )
+    assert response.status_code == 200
+
+    history = client.get("/v1/scoring/history").json()
+    assert history["total"] == 1
+    assert history["items"][0]["request_id"] == "portal-history-1"
+    assert history["items"][0]["decision"] == response.json()["decision"]
+
+    dashboard = client.get("/v1/dashboard").json()
+    assert dashboard["scoring"]["total"] == 1
+    assert dashboard["scoring"]["last_24h"] == 1
+    assert dashboard["recent_decisions"][0]["request_id"] == "portal-history-1"
+
+
+def test_batch_upload_worker_and_result_download(
+    api_client,
+    scoring_service,
+    tmp_path,
+    monkeypatch,
+):
+    client, TestingSession = api_client
+    upload_root = tmp_path / "uploads"
+    output_root = tmp_path / "predictions"
+    monkeypatch.setattr(settings, "batch_storage_dir", str(upload_root))
+    monkeypatch.setattr(settings, "batch_output_dir", str(output_root))
+    monkeypatch.setattr(settings, "batch_retain_inputs", False)
+
+    csv_payload = (
+        "SK_ID_CURR,INCOME,AGE_YEARS,CONTRACT\n"
+        "101,70000,31,cash\n"
+        "102,130000,52,revolving\n"
+    )
+    response = client.post(
+        "/v1/batch/jobs",
+        files={"file": ("applicants.csv", csv_payload, "text/csv")},
+        data={"id_column": "SK_ID_CURR"},
+    )
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    input_path = upload_root / f"{job_id}.csv"
+    assert input_path.is_file()
+
+    with TestingSession() as session:
+        assert claim_next_job(session) == job_id
+    process_claimed_job(TestingSession, job_id, scoring_service)
+
+    job = client.get(f"/v1/batch/jobs/{job_id}")
+    assert job.status_code == 200
+    assert job.json()["status"] == "completed"
+    assert job.json()["rows_processed"] == 2
+    assert not input_path.exists()
+
+    result = client.get(f"/v1/batch/jobs/{job_id}/result")
+    assert result.status_code == 200
+    scored = pd.read_csv(io.BytesIO(result.content))
+    assert list(scored.columns) == [
+        "SK_ID_CURR",
+        "default_probability",
+        "decision",
+        "risk_band",
+        "model_version",
+        "missing_feature_count",
+    ]
+    assert len(scored) == 2
+
+    template = client.get("/v1/batch/template.csv")
+    assert template.status_code == 200
+    assert template.text.startswith("SK_ID_CURR,INCOME,AGE_YEARS,CONTRACT")
+
+
+def test_batch_upload_rejects_invalid_contract_and_cleans_partial_file(
+    api_client,
+    tmp_path,
+    monkeypatch,
+):
+    client, _ = api_client
+    upload_root = tmp_path / "uploads"
+    monkeypatch.setattr(settings, "batch_storage_dir", str(upload_root))
+    monkeypatch.setattr(settings, "batch_output_dir", str(tmp_path / "predictions"))
+    monkeypatch.setattr(settings, "batch_max_upload_bytes", 16)
+
+    invalid_column = client.post(
+        "/v1/batch/jobs",
+        files={"file": ("applicants.csv", "SK_ID_CURR\n1\n", "text/csv")},
+        data={"id_column": "../customer_id"},
+    )
+    assert invalid_column.status_code == 422
+
+    oversized = client.post(
+        "/v1/batch/jobs",
+        files={"file": ("applicants.csv", "SK_ID_CURR,INCOME\n1,70000\n", "text/csv")},
+        data={"id_column": "SK_ID_CURR"},
+    )
+    assert oversized.status_code == 422
+    assert "exceeds" in oversized.json()["detail"]
+    assert not list(upload_root.glob("*"))
+
+
+def test_batch_worker_marks_contract_failure_and_retains_input(
+    api_client,
+    scoring_service,
+    tmp_path,
+    monkeypatch,
+):
+    client, TestingSession = api_client
+    upload_root = tmp_path / "uploads"
+    output_root = tmp_path / "predictions"
+    monkeypatch.setattr(settings, "batch_storage_dir", str(upload_root))
+    monkeypatch.setattr(settings, "batch_output_dir", str(output_root))
+
+    response = client.post(
+        "/v1/batch/jobs",
+        files={"file": ("missing-id.csv", "INCOME\n70000\n", "text/csv")},
+        data={"id_column": "SK_ID_CURR"},
+    )
+    assert response.status_code == 202
+    job_id = response.json()["job_id"]
+    input_path = upload_root / f"{job_id}.csv"
+
+    with TestingSession() as session:
+        assert claim_next_job(session) == job_id
+    process_claimed_job(TestingSession, job_id, scoring_service)
+
+    job = client.get(f"/v1/batch/jobs/{job_id}")
+    assert job.status_code == 200
+    assert job.json()["status"] == "failed"
+    assert "missing id column" in job.json()["error_message"]
+    assert input_path.is_file()
+    assert not (output_root / f"{job_id}.csv").exists()
