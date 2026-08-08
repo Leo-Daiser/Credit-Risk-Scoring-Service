@@ -92,8 +92,10 @@ export interface CreditProfileInput {
   income_band: "lt_50k" | "50k_100k" | "100k_150k" | "150k_250k" | "gt_250k" | "unknown";
   employment_type: "employee" | "self_employed" | "individual_entrepreneur" | "pensioner" | "unofficial" | "unemployed" | "unknown";
   requested_amount_band: "lt_100k" | "100k_300k" | "300k_700k" | "700k_1_5m" | "gt_1_5m";
+  requested_amount?: number;
   term_months: number;
   existing_monthly_payments_band: "zero" | "lt_10k" | "10k_30k" | "30k_60k" | "gt_60k" | "unknown";
+  existing_monthly_payments?: number;
   credit_history_band: "good" | "average" | "minor_overdues" | "serious_overdues" | "no_history" | "unknown";
   loan_purpose: "cash" | "refinance" | "car" | "repair" | "education" | "medical" | "other";
   consent_to_process: boolean;
@@ -113,6 +115,11 @@ export interface CreditProfileResult {
   confidence_level: string;
   warnings: string[];
   disclaimers: string[];
+  profile_bands: {
+    age_band: string; region: string | null; income_band: string; employment_type: string;
+    requested_amount_band: string; term_months: number; existing_monthly_payments_band: string;
+    credit_history_band: string; loan_purpose: string;
+  };
 }
 
 export interface RankedOffer {
@@ -120,7 +127,12 @@ export interface RankedOffer {
   rank: number;
   bank_id: string;
   product_name: string;
+  product_type: string;
   advertiser_name: string;
+  min_amount: number;
+  max_amount: number;
+  min_term_months: number;
+  max_term_months: number;
   positive_reasons: string[];
   warnings: string[];
   disclosure: string;

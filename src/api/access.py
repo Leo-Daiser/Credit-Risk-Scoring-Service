@@ -30,6 +30,7 @@ ENDPOINT_ACCESS_MATRIX = (
     EndpointAccess("POST", "/v1/profile/score", AccessClass.PUBLIC, "Privacy-light profile"),
     EndpointAccess("POST", "/v1/offers/match", AccessClass.PUBLIC, "Offer matching"),
     EndpointAccess("POST", "/v1/offers/{offer_id}/click", AccessClass.PUBLIC, "Tracked redirect"),
+    EndpointAccess("POST", "/v1/analytics/public-event", AccessClass.PUBLIC, "Safe public event"),
     EndpointAccess("POST", "/v1/partner/postback", AccessClass.PARTNER_ONLY, "HMAC postback"),
     EndpointAccess("POST", "/score", AccessClass.OPERATOR_ONLY, "Raw model scoring"),
     EndpointAccess("GET", "/model_info", AccessClass.OPERATOR_ONLY, "Model metadata"),
@@ -37,7 +38,13 @@ ENDPOINT_ACCESS_MATRIX = (
     EndpointAccess("*", "/v1/dashboard", AccessClass.BFF_ONLY, "Operator dashboard"),
     EndpointAccess("*", "/v1/scoring/history", AccessClass.BFF_ONLY, "Decision history"),
     EndpointAccess("*", "/v1/batch/**", AccessClass.BFF_ONLY, "Batch scoring"),
-    EndpointAccess("GET", "/v1/analytics/**", AccessClass.OPERATOR_ONLY, "Analytics"),
+    EndpointAccess(
+        "GET", "/v1/analytics/commercial-summary", AccessClass.OPERATOR_ONLY, "Analytics"
+    ),
+    EndpointAccess(
+        "GET", "/v1/analytics/segment-opportunities", AccessClass.OPERATOR_ONLY, "Segments"
+    ),
+    EndpointAccess("GET", "/v1/analytics/event-debug", AccessClass.OPERATOR_ONLY, "Events"),
     EndpointAccess("GET", "/v1/offers/quality-report", AccessClass.OPERATOR_ONLY, "Offer quality"),
     EndpointAccess("GET", "/v1/offers", AccessClass.LOCAL_DEMO_ONLY, "Demo catalog debug"),
 )

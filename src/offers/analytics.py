@@ -27,12 +27,19 @@ from src.offers.operator_schemas import (
 from src.offers.revenue import build_revenue_estimates
 
 FUNNEL_EVENT_TYPES = {
+    "landing_viewed",
+    "calculator_used",
+    "calculator_continue_clicked",
     "profile_started",
     "profile_completed",
+    "profile_submitted",
     "profile_scored",
     "offers_requested",
     "offers_shown",
+    "result_viewed",
+    "offer_card_viewed",
     "no_eligible_offers",
+    "no_eligible_offers_viewed",
 }
 
 
@@ -346,6 +353,11 @@ class CommercialAnalyticsService:
                 if item.impressions > 0 and item.clicks == 0
             ],
             high_demand_no_offer_segments=high_demand,
+            public_event_counts={
+                event_type: event_counts[event_type]
+                for event_type in sorted(FUNNEL_EVENT_TYPES)
+                if event_counts[event_type]
+            },
         )
         return CommercialAnalyticsResponse(
             summary=summary,
@@ -374,6 +386,14 @@ def recent_event_debug(session: Session, *, limit: int = 50) -> EventDebugRespon
             .limit(limit)
         )
     )
+    public_events = list(
+        session.scalars(
+            select(CommercialFunnelEvent)
+            .where(CommercialFunnelEvent.event_type.in_(FUNNEL_EVENT_TYPES))
+            .order_by(CommercialFunnelEvent.created_at.desc())
+            .limit(limit)
+        )
+    )
     click_variant = {click.click_id: click.experiment_variant for click in clicks}
     events = [
         EventDebugItem(
@@ -398,6 +418,18 @@ def recent_event_debug(session: Session, *, limit: int = 50) -> EventDebugRespon
             occurred_at=postback.received_at,
         )
         for postback in postbacks
+    )
+    events.extend(
+        EventDebugItem(
+            event_type=event.event_type,
+            click_id=event.click_id,
+            offer_id=event.offer_id,
+            status=None,
+            hmac_validation_status=None,
+            experiment_variant=event.experiment_variant,
+            occurred_at=event.created_at,
+        )
+        for event in public_events
     )
     events.extend(
         EventDebugItem(

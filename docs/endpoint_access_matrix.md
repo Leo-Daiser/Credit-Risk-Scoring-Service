@@ -21,6 +21,8 @@ Public mode must use `DEMO_MODE=false`, `OPERATOR_UI_ENABLED=false`,
 | `/` | public | landing page |
 | `/score` | public | browser-only payment and debt-load calculator |
 | `/offers` | public | privacy-light profile and offer matching |
+| `/credit-calculator`, `/debt-load-calculator`, `/loan-by-income` | public | static educational pages |
+| `/refinance-check`, `/credit-history-guide` | public | static educational pages |
 | `/operator`, `/operator/score` | local/demo-only | returns not found |
 | `/commercial` | local/demo-only | returns not found |
 | `/batches` | local/demo-only | returns not found |
@@ -39,6 +41,7 @@ postbacks and arbitrary backend paths are never proxied by the browser BFF.
 | `POST /v1/profile/score` | public | rate limit; privacy-light bands only |
 | `POST /v1/offers/match` | public | rate limit; public response schema |
 | `POST /v1/offers/{offer_id}/click` | public | rate limit and tracked redirect |
+| `POST /v1/analytics/public-event` | public | allowlisted page event; exact values rejected |
 | `POST /v1/partner/postback` | partner-only | HMAC signature and stricter failure limit |
 | `POST /score` | operator-only | operator API key |
 | `GET /model_info` | operator-only | operator API key |
@@ -46,7 +49,9 @@ postbacks and arbitrary backend paths are never proxied by the browser BFF.
 | `GET /v1/dashboard` | BFF/operator-only | operator API key |
 | `/v1/scoring/history` | BFF/operator-only | operator API key |
 | `/v1/batch/**` | BFF/operator-only | operator API key |
-| `/v1/analytics/**` | operator-only | operator API key |
+| `GET /v1/analytics/commercial-summary` | operator-only | operator API key |
+| `GET /v1/analytics/segment-opportunities` | operator-only | operator API key |
+| `GET /v1/analytics/event-debug` | operator-only | operator API key |
 | `GET /v1/offers/quality-report` | operator-only | operator API key |
 | `GET /v1/offers` | local/demo-only | operator API key; not found in public mode |
 | `GET /health`, `GET /ready` | platform-only | expose only to load balancer/orchestrator network |

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -218,13 +218,39 @@ class RankedOfferPublic(BaseModel):
     rank: int
     bank_id: str
     product_name: str
+    product_type: str
     advertiser_name: str
+    min_amount: float
+    max_amount: float
+    min_term_months: int
+    max_term_months: int
     positive_reasons: list[str]
     warnings: list[str]
     disclosure: str
     ad_disclosure: str
     confidence_level: ConfidenceLevel
     redirect_url: str
+
+
+PublicEventType = Literal[
+    "landing_viewed",
+    "calculator_used",
+    "calculator_continue_clicked",
+]
+
+
+class PublicAnalyticsEventRequest(BaseModel):
+    """Allowlisted public product event without arbitrary or financial payloads."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    event_type: PublicEventType
+    anonymous_session_id: str | None = Field(default=None, min_length=8, max_length=128)
+    page: Literal["landing", "credit_calculator"]
+
+
+class PublicAnalyticsEventResponse(BaseModel):
+    accepted: bool = True
 
 
 class MatchContext(BaseModel):

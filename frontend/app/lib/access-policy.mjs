@@ -2,6 +2,7 @@ const PUBLIC_BACKEND_ROUTES = [
   { method: "POST", pattern: /^v1\/profile\/score$/ },
   { method: "POST", pattern: /^v1\/offers\/match$/ },
   { method: "POST", pattern: /^v1\/offers\/\d+\/click$/ },
+  { method: "POST", pattern: /^v1\/analytics\/public-event$/ },
 ];
 
 const OPERATOR_BACKEND_ROUTES = [

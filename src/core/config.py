@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     rate_limit_profile_score: int = 60
     rate_limit_offer_match: int = 30
     rate_limit_offer_click: int = 60
+    rate_limit_public_event: int = 120
     rate_limit_partner_postback: int = 30
     rate_limit_invalid_postback: int = 8
     log_level: str = "INFO"

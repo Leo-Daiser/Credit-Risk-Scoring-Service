@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import {
   calculateAnnuity,
+  calculateCreditScenario,
   calculatePrincipal,
 } from "../app/lib/credit-calculator.mjs";
 import {
@@ -41,8 +42,13 @@ test("server-renders the public landing without operator data", async () => {
   assert.match(html, /<title>Предварительный подбор кредитных предложений · Riskline<\/title>/i);
   assert.match(html, /Privacy-light/);
   assert.match(html, /Демонстрационный режим/);
-  assert.match(html, /Открыть калькулятор/);
-  assert.match(html, /финальное решение по заявке всегда принимает банк/i);
+  assert.match(html, /Рассчитать платёж/);
+  assert.match(html, /Проверьте кредитную нагрузку и подберите подходящие предложения без паспорта и звонков/);
+  assert.match(html, /СНИЛС и ИНН/);
+  assert.match(html, /Название работодателя/);
+  assert.match(html, /Сервис не принимает кредитных решений/);
+  assert.match(html, /Финальное решение принимает банк/);
+  assert.doesNotMatch(html, /гарантируем одобрение|точно знаем, какой банк одобрит|банковский скоринг|официальное решение/i);
   assert.doesNotMatch(html, /Пакетный скоринг|Коммерческая аналитика|История/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
@@ -50,7 +56,7 @@ test("server-renders the public landing without operator data", async () => {
 test("public and enabled local operator routes render their first view", async () => {
   const cases = [
     ["/score", /Рассчитайте платёж и долговую нагрузку/],
-    ["/offers", /Сначала допустимость\. Затем рейтинг/],
+    ["/offers", /Предварительный профиль и совместимые предложения/],
     ["/operator", /Решения по риску/],
     ["/operator/score", /Оцените кредитную нагрузку до заявки/],
     ["/commercial", /Воронка, качество офферов и неудовлетворённый спрос/],
@@ -83,12 +89,17 @@ test("public calculator does not expose raw model or operator controls", async (
   const html = await response.text();
   assert.match(html, /Публичный калькулятор/);
   assert.match(html, /без отправки данных/);
+  assert.match(html, /Всего к возврату/);
+  assert.match(html, /Переплата/);
+  assert.match(html, /Долговая нагрузка/);
+  assert.match(html, /Продолжить к privacy-light подбору/);
   assert.doesNotMatch(html, /Экспертный JSON|Feature payload|audit log/);
 });
 
 test("public deployment blocks operator BFF paths and unknown proxy paths", () => {
   assert.equal(classifyBackendRequest("v1/offers/match", "POST"), "public");
   assert.equal(classifyBackendRequest("v1/offers/42/click", "POST"), "public");
+  assert.equal(classifyBackendRequest("v1/analytics/public-event", "POST"), "public");
   assert.equal(classifyBackendRequest("v1/analytics/commercial-summary", "GET"), "operator");
   assert.equal(classifyBackendRequest("v1/partner/postback", "POST"), "deny");
   assert.equal(classifyBackendRequest("arbitrary/internal", "GET"), "deny");
@@ -123,17 +134,62 @@ test("credit calculator handles zero and non-zero rates consistently", () => {
   assert.equal(calculatePrincipal(-1, 12, 24), 0);
 });
 
+test("credit calculator computes repayment, overpayment, PTI and high-load band locally", () => {
+  const scenario = calculateCreditScenario(120_000, 0, 12, 5_000, 20_000);
+  assert.equal(scenario.payment, 10_000);
+  assert.equal(scenario.totalRepayment, 120_000);
+  assert.equal(scenario.overpayment, 0);
+  assert.equal(scenario.pti, 0.75);
+  assert.equal(scenario.affordabilityBand, "high");
+});
+
 test("privacy-light offer matching exposes consent and advertising boundaries", async () => {
   const response = await render("/offers");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /Паспорт, телефон, адрес и данные БКИ не нужны/);
-  assert.match(html, /Согласен на обработку диапазонов/);
+  assert.match(html, /Паспорт, телефон, имя, документы, работодатель и данные БКИ не запрашиваются/);
+  assert.match(html, /Согласен на обработку введённых диапазонов/);
   assert.match(html, /не принимает кредитных решений/);
-  assert.match(html, /Точные суммы не сохраняются/);
+  assert.match(html, /Точные суммы используются только в текущем запросе/);
   assert.match(html, /Финальное решение принимает банк/);
-  assert.match(html, /предварительно оценит платёж и долговую нагрузку/);
+  assert.match(html, /Можно указать примерные значения/);
+  assert.match(html, /Точная сумма, ₽ — необязательно/);
+  assert.match(html, /Кредитная история/);
+  assert.match(html, /Что такое долговая нагрузка/);
+  assert.match(html, /Почему результат предварительный/);
+  assert.doesNotMatch(html, /Имя пользователя|Номер телефона|Паспортные данные/);
   assert.doesNotMatch(html, /localStorage|sessionStorage/);
+});
+
+test("SEO-ready public guides render metadata, useful copy and CTA", async () => {
+  const cases = [
+    ["/credit-calculator", /Калькулятор кредита по сумме и сроку/],
+    ["/debt-load-calculator", /Как оценить долговую нагрузку/],
+    ["/loan-by-income", /Какой платёж комфортен при вашем доходе/],
+    ["/refinance-check", /Когда рефинансирование может иметь смысл/],
+    ["/credit-history-guide", /Почему кредитная история влияет на решение банка/],
+  ];
+  for (const [path, expected] of cases) {
+    const response = await render(path);
+    assert.equal(response.status, 200, path);
+    const html = await response.text();
+    assert.match(html, expected, path);
+    assert.match(html, /<meta name="description" content="[^"]+"/i, path);
+    assert.match(html, /Финальное решение и индивидуальные условия определяет банк/, path);
+    assert.doesNotMatch(html, /гарантированное одобрение|гарантируем одобрение|официальное решение/i, path);
+  }
+});
+
+test("public calculation and transient matching values are never persisted in browser storage", async () => {
+  const [calculator, offers, analytics] = await Promise.all([
+    readFile(new URL("../app/components/CalculatorWorkspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/components/OfferWorkspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/public-analytics.ts", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(`${calculator}${offers}${analytics}`, /localStorage|sessionStorage/);
+  assert.match(calculator, /calculateCreditScenario/);
+  assert.match(calculator, /continueToMatching/);
+  assert.doesNotMatch(analytics, /amount|income|payment|debt|rate/i);
 });
 
 test("commercial operator view renders protected analytics sections and safe states", async () => {

@@ -6,5 +6,9 @@ def test_endpoint_access_matrix_covers_required_boundaries():
     assert classified[("POST", "/v1/offers/match")] == AccessClass.PUBLIC
     assert classified[("POST", "/v1/offers/{offer_id}/click")] == AccessClass.PUBLIC
     assert classified[("POST", "/score")] == AccessClass.OPERATOR_ONLY
-    assert classified[("GET", "/v1/analytics/**")] == AccessClass.OPERATOR_ONLY
+    assert classified[("POST", "/v1/analytics/public-event")] == AccessClass.PUBLIC
+    assert (
+        classified[("GET", "/v1/analytics/commercial-summary")]
+        == AccessClass.OPERATOR_ONLY
+    )
     assert classified[("POST", "/v1/partner/postback")] == AccessClass.PARTNER_ONLY

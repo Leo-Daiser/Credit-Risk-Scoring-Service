@@ -105,6 +105,7 @@ def build_profile_result(
     risk = assess_risk_profile(profile, scoring_service)
     coverage, confidence = _confidence(profile, risk.data_coverage)
     warnings = list(risk.warnings)
+    warnings.append("No credit bureau data or bank underwriting data is used")
     if pti_band.value in {"high", "very_high"}:
         warnings.append("Approximate debt burden is high")
     if pti is None:
@@ -139,7 +140,9 @@ def build_profile_result(
     )
 
 
-def _session_for_context(session: Session, context: MatchContext | None) -> AnonymousSession | None:
+def ensure_anonymous_session(
+    session: Session, context: MatchContext | None
+) -> AnonymousSession | None:
     if context is None or context.anonymous_session_id is None:
         return None
     key_hash = hashlib.sha256(context.anonymous_session_id.encode()).hexdigest()
@@ -166,7 +169,7 @@ def persist_profile_event(
     result: CreditProfileResult,
     context: MatchContext | None = None,
 ) -> CreditProfileEvent:
-    anonymous = _session_for_context(session, context)
+    anonymous = ensure_anonymous_session(session, context)
     bands = result.profile_bands
     event = CreditProfileEvent(
         anonymous_session_id=anonymous.id if anonymous else None,
@@ -205,6 +208,7 @@ def match_offers(
     for event_type in (
         "profile_started",
         "profile_completed",
+        "profile_submitted",
         "profile_scored",
         "offers_requested",
     ):
@@ -252,15 +256,57 @@ def match_offers(
         experiment_variant=experiment_variant,
         event_value=str(len(ranked)),
     )
+    record_funnel_event(
+        session,
+        "result_viewed",
+        anonymous_session_id=profile_event.anonymous_session_id,
+        profile_id=result.anonymous_profile_id,
+        risk_band=result.risk_band,
+        pti_band=result.pti_band.value,
+        experiment_variant=experiment_variant,
+    )
+    for item in ranked:
+        record_funnel_event(
+            session,
+            "offer_card_viewed",
+            anonymous_session_id=profile_event.anonymous_session_id,
+            profile_id=result.anonymous_profile_id,
+            offer_id=item.offer_id,
+            risk_band=result.risk_band,
+            pti_band=result.pti_band.value,
+            experiment_variant=experiment_variant,
+        )
+    if not ranked:
+        record_funnel_event(
+            session,
+            "no_eligible_offers_viewed",
+            anonymous_session_id=profile_event.anonymous_session_id,
+            profile_id=result.anonymous_profile_id,
+            risk_band=result.risk_band,
+            pti_band=result.pti_band.value,
+            experiment_variant=experiment_variant,
+        )
     session.commit()
+    offer_map = {offer.id: offer for offer in active_offers}
     public_offers = [
         RankedOfferPublic(
             offer_id=item.offer_id,
             rank=item.rank,
             bank_id=item.bank_id,
             product_name=item.product_name,
+            product_type=offer_map[item.offer_id].product_type,
             advertiser_name=item.advertiser_name,
-            positive_reasons=_public_match_reasons(item.match_reasons),
+            min_amount=offer_map[item.offer_id].min_amount,
+            max_amount=offer_map[item.offer_id].max_amount,
+            min_term_months=offer_map[item.offer_id].min_term_months,
+            max_term_months=offer_map[item.offer_id].max_term_months,
+            positive_reasons=_public_match_reasons(
+                item.match_reasons,
+                purpose_match=(
+                    result.profile_bands.loan_purpose.value
+                    == offer_map[item.offer_id].product_type
+                ),
+            ),
             warnings=_public_warnings(item.warnings, result),
             disclosure=(
                 f"{item.ad_disclosure} Реклама: при переходе сервис может получить "
@@ -308,7 +354,7 @@ def match_offers(
     )
 
 
-def _public_match_reasons(reasons: list[str]) -> list[str]:
+def _public_match_reasons(reasons: list[str], *, purpose_match: bool = False) -> list[str]:
     public: list[str] = []
     if "amount" in reasons and "term" in reasons:
         public.append("Подходит по сумме и сроку")
@@ -318,6 +364,8 @@ def _public_match_reasons(reasons: list[str]) -> list[str]:
         public.append("Предварительно совместимо с указанной долговой нагрузкой")
     if "employment_type" in reasons:
         public.append("Учитывает указанный тип занятости")
+    if purpose_match:
+        public.append("Подходит для выбранной цели кредита")
     public.append("Результат предварительный: банк примет решение после проверки анкеты")
     return public
 
@@ -330,6 +378,8 @@ def _public_warnings(
         public.append("Уверенность ограничена полнотой указанных диапазонов")
     if result.pti_band.value in {"high", "very_high"}:
         public.append("Ориентировочная долговая нагрузка повышена")
+    public.append("Без данных БКИ оценка предварительная")
+    public.append("Условия определяются банком; результат не является решением банка")
     return public
 
 

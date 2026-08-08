@@ -5,7 +5,8 @@
 Публичный matching contract принимает только диапазоны: возраст, доход, текущие
 платежи, запрашиваемую сумму, тип занятости, кредитную историю, цель, срок и
 необязательный регион. Точная сумма кредита и точный текущий платёж допускаются API
-как transient inputs, но frontend их не запрашивает и БД их не хранит.
+как transient inputs. Frontend предлагает их только как необязательные поля текущего
+matching-запроса; БД их не хранит и browser storage не используется.
 
 Не собираются имя, телефон, паспорт, СНИЛС, ИНН, точный адрес, работодатель,
 документы и данные БКИ. Browser storage не используется. В application logs разрешены
@@ -38,9 +39,20 @@ scheduled purge ещё не реализован; оператор обязан 
 
 ## Расчёты
 
-Frontend собирает band-only форму. Annuity/PTI и matching вычисляются на сервере;
-операторский калькулятор `/score` остаётся отдельным flow. Exact transient values не
-попадают в structured logs. Без данных БКИ и полного feature contract confidence
-ограничен и показывается пользователю.
+Публичный `/score` считает annuity, total repayment, overpayment и PTI полностью в
+браузере. Изменение чисел не вызывает backend request; значения не сохраняются.
+Privacy-light matching отправляет bands и только явно указанные transient amount/payment,
+но persistence сохраняет лишь bands. Exact values не попадают в analytics events или
+structured logs. Без данных БКИ и полного feature contract confidence ограничен и
+показывается пользователю.
+
+## Public analytics events
+
+Frontend отправляет только allowlisted `landing_viewed`, `calculator_used` и
+`calculator_continue_clicked` с названием публичной страницы и ephemeral anonymous
+session ID. Matching backend добавляет `profile_started`, `profile_submitted`,
+`result_viewed`, `offer_card_viewed` и `no_eligible_offers_viewed` из уже
+нормализованного band-only контекста. Event contract запрещает extra fields: точные
+суммы, доход, ставка, телефон, email и имя в него не принимаются.
 
 Документ фиксирует инженерные границы и не является юридической консультацией.

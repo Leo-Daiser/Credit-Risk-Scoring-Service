@@ -131,6 +131,10 @@ python -m src.cli export-offers --path artifacts/reports/offers_export.csv
 
 ## Known deployment limits
 
+- `npm audit` reports two high-severity advisories in transitive `image-size` through
+  Vinext. The offered `--force` remediation downgrades Vinext to `0.0.45` and is a
+  breaking change, so it is intentionally not applied. Recheck after a compatible
+  Vinext dependency update.
 - One API container, one batch worker, one frontend/BFF and one PostgreSQL instance
   are used in Compose.
 - Local artifact storage is single-host. Multi-host scaling requires S3-compatible

@@ -109,6 +109,12 @@ anonymous IDs и variant. Impression/click/postback не дублируются:
 score, match request, shown/no-offer, click, application outcomes, issued и recorded
 revenue. Raw profile и raw postback body в analytics storage отсутствуют.
 
+Публичная воронка проходит через landing, browser-only calculator, consent-gated
+privacy-light form, result summary, offer cards и tracked click. Browser events
+принимаются отдельным allowlisted endpoint без exact financial values; match/result
+events формируются сервером из уже нормализованных bands. Public response объясняет
+совместимость, но не раскрывает commission, revenue proxy, weights или raw rules.
+
 Эксперимент назначается детерминированно по hash `anonymous_session_id`. По умолчанию
 `configs/experiments.yaml` выключен и 100% трафика использует `rules_v1`. Варианты
 меняют только ограниченные fit/revenue multipliers; eligibility остаётся неизменным.

@@ -32,6 +32,7 @@ class CommercialSummaryMetrics(BaseModel):
     top_offers_by_issued: list[int] = Field(default_factory=list)
     stale_offer_ids: list[int] = Field(default_factory=list)
     high_demand_no_offer_segments: list[str] = Field(default_factory=list)
+    public_event_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class OfferAnalyticsMetric(BaseModel):

@@ -34,17 +34,21 @@ from src.offers.schemas import (
     ClickResponse,
     CreditProfileInput,
     CreditProfileResult,
+    MatchContext,
     OfferMatchRequest,
     OfferMatchResponse,
     OfferPublic,
     PartnerPostbackRequest,
     PartnerPostbackResponse,
+    PublicAnalyticsEventRequest,
+    PublicAnalyticsEventResponse,
 )
 from src.offers.service import (
     CommercialConflictError,
     CommercialNotFoundError,
     build_profile_result,
     create_click,
+    ensure_anonymous_session,
     match_offers,
     record_postback,
     validate_postback_signature,
@@ -53,6 +57,32 @@ from src.services.scoring import ScoringService
 
 router = APIRouter(prefix="/v1", tags=["commercial"])
 logger = logging.getLogger(__name__)
+
+
+@router.post(
+    "/analytics/public-event",
+    response_model=PublicAnalyticsEventResponse,
+    dependencies=[Depends(rate_limit("public_event"))],
+)
+def public_analytics_event(
+    payload: PublicAnalyticsEventRequest,
+    session: Session = Depends(get_db),
+) -> PublicAnalyticsEventResponse:
+    """Record only allowlisted, non-financial public funnel metadata."""
+    anonymous = ensure_anonymous_session(
+        session,
+        MatchContext(anonymous_session_id=payload.anonymous_session_id)
+        if payload.anonymous_session_id
+        else None,
+    )
+    record_funnel_event(
+        session,
+        payload.event_type,
+        anonymous_session_id=anonymous.id if anonymous else None,
+        event_value=payload.page,
+    )
+    session.commit()
+    return PublicAnalyticsEventResponse()
 
 
 @router.post(

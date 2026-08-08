@@ -292,3 +292,15 @@ python -m src.cli export-offers --path artifacts/reports/offers_export.csv
 
 Для реального partner значения template и HMAC secret должны существовать только в
 environment или ignored local configuration. Не показывайте их в терминале демо.
+
+## 20. Public conversion flow
+
+1. Откройте `/` и покажите hero, privacy-light список и обязательный disclaimer.
+2. На `/score` измените сумму и текущие платежи: annuity, переплата и PTI считаются
+   без backend request и browser storage.
+3. Перейдите на `/offers`, заполните bands, оставьте необязательные exact fields
+   пустыми и подтвердите consent.
+4. Покажите coverage/confidence, user-safe warnings, причины совместимости, рекламную
+   маркировку и tracked click.
+5. Для no-offer fixture покажите спокойные предложения изменить сумму/срок или
+   уточнить неизвестные поля без формулировок об отказе.

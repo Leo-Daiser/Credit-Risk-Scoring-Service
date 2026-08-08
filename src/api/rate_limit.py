@@ -55,6 +55,7 @@ def _limit_for(bucket: str) -> int:
         "profile_score": settings.rate_limit_profile_score,
         "offer_match": settings.rate_limit_offer_match,
         "offer_click": settings.rate_limit_offer_click,
+        "public_event": settings.rate_limit_public_event,
         "partner_postback": settings.rate_limit_partner_postback,
         "invalid_postback": settings.rate_limit_invalid_postback,
     }[bucket]

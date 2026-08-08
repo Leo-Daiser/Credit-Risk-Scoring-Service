@@ -157,3 +157,8 @@ commission. Этот loop создаёт датасет для будущего 
   analytics, не вероятностью банковского одобрения.
 - Partner adapter отделяет URL/signature/normalization/disclosure; реализован только
   demo adapter без real credentials и external calls.
+- Я отделил публичный product UX от operator ML-инструментов и сохранил fail-closed
+  BFF/operator boundary.
+- Публичный калькулятор работает только в браузере и не сохраняет финансовые значения.
+- Я объясняю причины совместимости без раскрытия ranking weights, commission и raw rules.
+- Я сознательно исключил обещания одобрения и тяжёлые персональные данные из public flow.

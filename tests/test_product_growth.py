@@ -104,6 +104,40 @@ def test_public_profile_and_matching_work_without_operator_key(growth_client):
     assert click.status_code == 200
 
 
+def test_public_events_accept_only_safe_allowlisted_metadata(growth_client):
+    client, testing_session = growth_client
+    response = client.post(
+        "/v1/analytics/public-event",
+        json={
+            "event_type": "landing_viewed",
+            "page": "landing",
+            "anonymous_session_id": "public-session-001",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {"accepted": True}
+    assert client.post(
+        "/v1/analytics/public-event",
+        json={
+            "event_type": "calculator_used",
+            "page": "credit_calculator",
+            "exact_income": 150_000,
+        },
+    ).status_code == 422
+    assert client.post(
+        "/v1/analytics/public-event",
+        json={"event_type": "arbitrary_event", "page": "landing"},
+    ).status_code == 422
+    with testing_session() as session:
+        event_row = session.scalar(
+            select(CommercialFunnelEvent).where(
+                CommercialFunnelEvent.event_type == "landing_viewed"
+            )
+        )
+        assert event_row.event_value == "landing"
+        assert "150000" not in str(event_row.__dict__)
+
+
 def test_empty_analytics_returns_zeros_and_is_operator_protected(growth_client):
     client, _ = growth_client
     assert client.get("/v1/analytics/commercial-summary").status_code == 401
@@ -138,6 +172,9 @@ def test_funnel_ctr_postback_revenue_and_public_privacy(growth_client):
     assert "score_breakdown" not in offer
     assert "expected_revenue_proxy" not in offer
     assert "commission" not in str(body).lower()
+    assert offer["product_type"]
+    assert offer["min_amount"] < offer["max_amount"]
+    assert "affiliate_url_template" not in str(body)
     click = client.post(
         f"/v1/offers/{offer['offer_id']}/click",
         json={"profile_id": body["profile_result"]["anonymous_profile_id"]},
@@ -172,6 +209,9 @@ def test_funnel_ctr_postback_revenue_and_public_privacy(growth_client):
     assert analytics["summary"]["approval_rate"] == 1
     assert analytics["summary"]["issued_rate"] == 1
     assert analytics["summary"]["estimated_revenue"] == 1250
+    assert analytics["summary"]["public_event_counts"]["profile_submitted"] == 1
+    assert analytics["summary"]["public_event_counts"]["result_viewed"] == 1
+    assert analytics["summary"]["public_event_counts"]["offer_card_viewed"] >= 1
     assert "payload" not in str(analytics).lower()
     with testing_session() as session:
         assert session.scalar(select(OfferImpression)).experiment_variant == "rules_v1"
@@ -207,9 +247,9 @@ def test_no_eligible_offer_event_and_safe_suggestions(growth_client):
             )
         )
         assert len(events) == 1
-        assert CommercialAnalyticsService(session).summary(
-            days=30
-        ).summary.no_eligible_offers_rate == 1
+        summary = CommercialAnalyticsService(session).summary(days=30).summary
+        assert summary.no_eligible_offers_rate == 1
+        assert summary.public_event_counts["no_eligible_offers_viewed"] == 1
 
 
 def test_quality_report_flags_demo_copy_and_keeps_inactive_visible(growth_client):
