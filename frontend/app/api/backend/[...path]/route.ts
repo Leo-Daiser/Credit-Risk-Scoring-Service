@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { classifyBackendRequest, operatorUiAvailable } from "../../../lib/access-policy.mjs";
 
 interface RouteContext {
   params: Promise<{ path: string[] }>;
@@ -6,19 +7,35 @@ interface RouteContext {
 
 async function proxy(request: NextRequest, context: RouteContext): Promise<Response> {
   const { path } = await context.params;
+  const backendPath = path.join("/");
+  const access = classifyBackendRequest(backendPath, request.method);
+  if (access === "deny" || (access === "operator" && !operatorUiAvailable(process.env))) {
+    return Response.json({ detail: "Not found." }, { status: 404 });
+  }
   const backendBase = (process.env.BACKEND_URL ?? "http://127.0.0.1:8000").replace(
     /\/$/,
     "",
   );
   const incoming = new URL(request.url);
-  const target = new URL(`${backendBase}/${path.join("/")}`);
+  const target = new URL(`${backendBase}/${backendPath}`);
   target.search = incoming.search;
 
   const headers = new Headers(request.headers);
   headers.delete("host");
   headers.delete("content-length");
-  const apiKey = process.env.API_KEY?.trim();
-  if (apiKey) headers.set("X-API-Key", apiKey);
+  headers.delete("x-api-key");
+  headers.delete("authorization");
+  headers.delete("cookie");
+  if (access === "operator") {
+    const apiKey = process.env.API_KEY?.trim();
+    if (!apiKey) {
+      return Response.json(
+        { detail: "Operator BFF is not configured." },
+        { status: 503 },
+      );
+    }
+    headers.set("X-API-Key", apiKey);
+  }
 
   try {
     const hasBody = request.method !== "GET" && request.method !== "HEAD";

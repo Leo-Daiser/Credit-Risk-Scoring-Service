@@ -67,7 +67,7 @@ export function DashboardClient() {
               качество входа и результат фиксируются в аудите.
             </p>
             <div className="hero-actions">
-              <Link className="button button-dark" href="/score">
+              <Link className="button button-dark" href="/operator/score">
                 Оценить заявку
                 <ArrowRight size={18} aria-hidden="true" />
               </Link>

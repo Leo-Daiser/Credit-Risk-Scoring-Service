@@ -4,6 +4,10 @@ This document describes portfolio-service operating expectations. Targets below
 are design objectives for a controlled deployment, not measured guarantees for
 arbitrary hardware or a banking SLA.
 
+Public deployment must follow the route and configuration boundary in
+[`endpoint_access_matrix.md`](endpoint_access_matrix.md). In particular, do not expose the
+operator UI or catch-all backend access in `APP_ENV=public`.
+
 ## Service objectives
 
 | Signal | Local portfolio objective | Measurement |
@@ -116,9 +120,10 @@ feature count.
   are used in Compose.
 - Local artifact storage is single-host. Multi-host scaling requires S3-compatible
   object storage before API and worker replicas can move independently.
-- The cabinet is a single-tenant operator surface. A public deployment must put it
-  behind an identity-aware reverse proxy or platform SSO; the BFF-held API key is
-  service authentication, not end-user authentication or RBAC.
+- The cabinet is a single-tenant local/demo operator surface and is disabled in
+  `APP_ENV=public`. Re-enabling it in a future deployment requires an identity-aware
+  reverse proxy or platform SSO; the BFF-held API key is service authentication,
+  not end-user authentication or RBAC.
 - Repository-level in-memory commercial rate limiting protects one local/demo API
   process. It is not shared between replicas; TLS termination, secrets manager,
   WAF/reverse-proxy or Redis-backed limits and autoscaling remain target-platform

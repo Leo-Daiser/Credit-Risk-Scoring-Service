@@ -1,9 +1,18 @@
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 DEFAULT_MODEL_BUNDLE_PATH = "artifacts/models/production_model_bundle.joblib"
+PLACEHOLDER_SECRETS = {
+    "change-me",
+    "change-me-local-operator-key",
+    "changeme",
+    "demo",
+    "example",
+    "placeholder",
+    "secret",
+}
 
 
 class Settings(BaseSettings):
@@ -16,7 +25,7 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     app_name: str = "Credit Risk Scoring Service"
-    app_env: str = "dev"
+    app_env: Literal["local", "demo", "public"] = "local"
 
     database_url: str | None = None
     model_bundle_path: str | None = None
@@ -37,7 +46,7 @@ class Settings(BaseSettings):
     demo_mode: bool = True
     real_partner_enabled: bool = False
     real_partner_secret: SecretStr | None = None
-    operator_api_key_required: bool = True
+    operator_ui_enabled: bool = True
     public_auth_strict: bool = False
     offer_config_path: str = "configs/offers.yaml"
     offer_reference_annual_rate: float = 0.24
@@ -64,6 +73,21 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_legacy_environment_names(cls, values: Any) -> Any:
+        if not isinstance(values, dict):
+            return values
+        normalized = dict(values)
+        app_env = str(normalized.get("app_env", "local")).strip().lower()
+        normalized["app_env"] = {
+            "dev": "local",
+            "development": "local",
+            "prod": "public",
+            "production": "public",
+        }.get(app_env, app_env)
+        return normalized
+
     @model_validator(mode="after")
     def validate_commercial_safety(self) -> "Settings":
         if self.real_partner_enabled and (
@@ -71,13 +95,27 @@ class Settings(BaseSettings):
             or not self.real_partner_secret.get_secret_value().strip()
         ):
             raise ValueError("REAL_PARTNER_SECRET is required when REAL_PARTNER_ENABLED=true")
-        if (
-            self.public_auth_strict
-            and self.app_env.lower() in {"production", "prod", "public"}
-            and (self.api_key is None or not self.api_key.get_secret_value().strip())
-        ):
-            raise ValueError("API_KEY is required for a strict public deployment")
+        if self.app_env == "public":
+            if self.demo_mode:
+                raise ValueError("DEMO_MODE must be false when APP_ENV=public")
+            if self.operator_ui_enabled:
+                raise ValueError("OPERATOR_UI_ENABLED must be false when APP_ENV=public")
+            if not self.public_auth_strict:
+                raise ValueError("PUBLIC_AUTH_STRICT must be true when APP_ENV=public")
+            if self.api_key is None or not self.api_key.get_secret_value().strip():
+                raise ValueError("API_KEY is required for a strict public deployment")
+            for name, secret in (
+                ("API_KEY", self.api_key),
+                ("PARTNER_POSTBACK_SECRET", self.partner_postback_secret),
+                ("REAL_PARTNER_SECRET", self.real_partner_secret),
+            ):
+                if secret is not None and secret.get_secret_value().strip().lower() in PLACEHOLDER_SECRETS:
+                    raise ValueError(f"{name} cannot use a placeholder in public mode")
         return self
+
+    @property
+    def is_public(self) -> bool:
+        return self.app_env == "public"
 
     @property
     def resolved_database_url(self) -> str:

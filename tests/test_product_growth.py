@@ -90,9 +90,26 @@ def operator_headers():
     return {"X-API-Key": "operator-test-key"}
 
 
+def test_public_profile_and_matching_work_without_operator_key(growth_client):
+    client, _ = growth_client
+    profile = client.post("/v1/profile/score", json=growth_profile())
+    assert profile.status_code == 200
+    matched = client.post("/v1/offers/match", json={"profile": growth_profile()})
+    assert matched.status_code == 200
+    offer_id = matched.json()["offers"][0]["offer_id"]
+    click = client.post(
+        f"/v1/offers/{offer_id}/click",
+        json={"profile_id": matched.json()["profile_result"]["anonymous_profile_id"]},
+    )
+    assert click.status_code == 200
+
+
 def test_empty_analytics_returns_zeros_and_is_operator_protected(growth_client):
     client, _ = growth_client
     assert client.get("/v1/analytics/commercial-summary").status_code == 401
+    assert client.get(
+        "/v1/analytics/commercial-summary", headers={"X-API-Key": "wrong"}
+    ).status_code == 401
     response = client.get(
         "/v1/analytics/commercial-summary?days=7", headers=operator_headers()
     )
@@ -112,7 +129,6 @@ def test_funnel_ctr_postback_revenue_and_public_privacy(growth_client):
             "profile": growth_profile(),
             "context": {"anonymous_session_id": "growth-session"},
         },
-        headers=operator_headers(),
     )
     assert match.status_code == 200
     body = match.json()
@@ -125,7 +141,6 @@ def test_funnel_ctr_postback_revenue_and_public_privacy(growth_client):
     click = client.post(
         f"/v1/offers/{offer['offer_id']}/click",
         json={"profile_id": body["profile_result"]["anonymous_profile_id"]},
-        headers=operator_headers(),
     ).json()
     for index, status in enumerate(("approved", "issued"), start=1):
         postback = PartnerPostbackRequest.model_validate(
@@ -372,14 +387,81 @@ def test_safe_configuration_validation():
     defaults = Settings(_env_file=None)
     assert defaults.offer_ranker_mode == "rules"
     assert defaults.real_partner_enabled is False
+    assert defaults.app_env == "local"
+    assert defaults.operator_ui_enabled is True
     with pytest.raises(ValidationError, match="REAL_PARTNER_SECRET"):
         Settings(_env_file=None, real_partner_enabled=True)
     with pytest.raises(ValidationError):
         Settings(_env_file=None, offer_ranker_mode="commission_only")
+    with pytest.raises(ValidationError, match="DEMO_MODE"):
+        Settings(_env_file=None, app_env="public")
+    with pytest.raises(ValidationError, match="OPERATOR_UI_ENABLED"):
+        Settings(
+            _env_file=None,
+            app_env="public",
+            demo_mode=False,
+            public_auth_strict=True,
+            api_key=SecretStr("deployment-operator-key-with-entropy"),
+        )
+    with pytest.raises(ValidationError, match="PUBLIC_AUTH_STRICT"):
+        Settings(
+            _env_file=None,
+            app_env="public",
+            demo_mode=False,
+            operator_ui_enabled=False,
+            api_key=SecretStr("deployment-operator-key-with-entropy"),
+        )
     with pytest.raises(ValidationError, match="API_KEY"):
         Settings(
             _env_file=None,
-            app_env="production",
+            app_env="public",
+            demo_mode=False,
+            operator_ui_enabled=False,
             public_auth_strict=True,
             api_key=None,
         )
+    with pytest.raises(ValidationError, match="placeholder"):
+        Settings(
+            _env_file=None,
+            app_env="public",
+            demo_mode=False,
+            operator_ui_enabled=False,
+            public_auth_strict=True,
+            api_key=SecretStr("change-me"),
+        )
+    public = Settings(
+        _env_file=None,
+        app_env="public",
+        demo_mode=False,
+        operator_ui_enabled=False,
+        public_auth_strict=True,
+        api_key=SecretStr("deployment-operator-key-with-entropy"),
+    )
+    assert public.is_public is True
+
+
+def test_public_mode_blocks_demo_partner_and_demo_catalog(growth_client):
+    client, _ = growth_client
+    old_env = settings.app_env
+    settings.app_env = "public"
+    try:
+        assert client.get("/v1/offers", headers=operator_headers()).status_code == 404
+        payload = PartnerPostbackRequest.model_validate(
+            {
+                "postback_id": "public-demo-postback",
+                "click_id": "00000000-0000-0000-0000-000000000000",
+                "status": "approved",
+            }
+        )
+        signature = hmac.new(
+            b"growth-postback-secret", canonical_postback_bytes(payload), sha256
+        ).hexdigest()
+        response = client.post(
+            "/v1/partner/postback",
+            json=payload.model_dump(mode="json"),
+            headers={"X-Postback-Signature": signature},
+        )
+        assert response.status_code == 404
+        assert response.json() == {"detail": "Partner unavailable."}
+    finally:
+        settings.app_env = old_env

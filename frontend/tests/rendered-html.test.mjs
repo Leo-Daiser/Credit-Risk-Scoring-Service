@@ -14,6 +14,10 @@ import {
   initialPersonalForm,
   parsePersonalFormDraft,
 } from "../app/lib/personal-score.ts";
+import {
+  classifyBackendRequest,
+  operatorUiAvailable,
+} from "../app/lib/access-policy.mjs";
 
 async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -28,23 +32,27 @@ async function render(path = "/") {
   );
 }
 
-test("server-renders the product dashboard without starter metadata", async () => {
+test("server-renders the public landing without operator data", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Обзор · Riskline<\/title>/i);
-  assert.match(html, /Решения по риску/);
-  assert.match(html, /Оценить заявку/);
-  assert.match(html, /Пакетный скоринг/);
+  assert.match(html, /<title>Предварительный подбор кредитных предложений · Riskline<\/title>/i);
+  assert.match(html, /Privacy-light/);
+  assert.match(html, /Демонстрационный режим/);
+  assert.match(html, /Открыть калькулятор/);
+  assert.match(html, /финальное решение по заявке всегда принимает банк/i);
+  assert.doesNotMatch(html, /Пакетный скоринг|Коммерческая аналитика|История/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
-test("all primary operator routes render their product-specific first view", async () => {
+test("public and enabled local operator routes render their first view", async () => {
   const cases = [
-    ["/score", /Оцените кредитную нагрузку до заявки/],
+    ["/score", /Рассчитайте платёж и долговую нагрузку/],
     ["/offers", /Сначала допустимость\. Затем рейтинг/],
+    ["/operator", /Решения по риску/],
+    ["/operator/score", /Оцените кредитную нагрузку до заявки/],
     ["/commercial", /Воронка, качество офферов и неудовлетворённый спрос/],
     ["/batches", /Реестр вошёл\. Решения вышли/],
     ["/history", /Каждое решение можно восстановить/],
@@ -58,8 +66,8 @@ test("all primary operator routes render their product-specific first view", asy
   }
 });
 
-test("personal score route starts with a questionnaire and keeps JSON in expert mode", async () => {
-  const response = await render("/score");
+test("operator score route keeps the internal model questionnaire and JSON mode", async () => {
+  const response = await render("/operator/score");
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Для себя/);
@@ -68,6 +76,40 @@ test("personal score route starts with a questionnaire and keeps JSON in expert 
   assert.match(html, /Комфортная сумма кредита/);
   assert.match(html, /Экспертный JSON/);
   assert.match(html, /не является офертой, кредитным решением/);
+});
+
+test("public calculator does not expose raw model or operator controls", async () => {
+  const response = await render("/score");
+  const html = await response.text();
+  assert.match(html, /Публичный калькулятор/);
+  assert.match(html, /без отправки данных/);
+  assert.doesNotMatch(html, /Экспертный JSON|Feature payload|audit log/);
+});
+
+test("public deployment blocks operator BFF paths and unknown proxy paths", () => {
+  assert.equal(classifyBackendRequest("v1/offers/match", "POST"), "public");
+  assert.equal(classifyBackendRequest("v1/offers/42/click", "POST"), "public");
+  assert.equal(classifyBackendRequest("v1/analytics/commercial-summary", "GET"), "operator");
+  assert.equal(classifyBackendRequest("v1/partner/postback", "POST"), "deny");
+  assert.equal(classifyBackendRequest("arbitrary/internal", "GET"), "deny");
+  assert.equal(operatorUiAvailable({ APP_ENV: "public", OPERATOR_UI_ENABLED: "true" }), false);
+  assert.equal(operatorUiAvailable({ APP_ENV: "demo", OPERATOR_UI_ENABLED: "true" }), true);
+  assert.equal(operatorUiAvailable({ APP_ENV: "dev", OPERATOR_UI_ENABLED: "true" }), true);
+  assert.equal(operatorUiAvailable({ APP_ENV: "unexpected", OPERATOR_UI_ENABLED: "true" }), false);
+});
+
+test("every operator page applies the shared server-side UI guard", async () => {
+  const pages = [
+    "../app/operator/page.tsx",
+    "../app/operator/score/page.tsx",
+    "../app/commercial/page.tsx",
+    "../app/batches/page.tsx",
+    "../app/history/page.tsx",
+    "../app/model/page.tsx",
+  ];
+  for (const page of pages) {
+    assert.match(await readFile(new URL(page, import.meta.url), "utf8"), /requireOperatorUi\(\)/);
+  }
 });
 
 test("credit calculator handles zero and non-zero rates consistently", () => {
@@ -163,5 +205,5 @@ test("starter preview and unused persistence dependencies are removed", async ()
   assert.doesNotMatch(page, /_sites-preview|codex-preview/);
   assert.deepEqual(JSON.parse(hosting), { d1: null, r2: null });
   assert.match(packageJson, /riskline-console/);
-  assert.match(page, /DashboardClient/);
+  assert.match(page, /Предварительный подбор/);
 });

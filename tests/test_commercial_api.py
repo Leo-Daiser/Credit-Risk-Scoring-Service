@@ -43,13 +43,16 @@ def commercial_client():
             yield session
 
     old_secret = settings.partner_postback_secret
+    old_api_key = settings.api_key
     settings.partner_postback_secret = SecretStr("postback-test-secret")
+    settings.api_key = SecretStr("operator-test-key")
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_optional_scoring_service] = lambda: None
     try:
         yield TestClient(app), testing_session
     finally:
         settings.partner_postback_secret = old_secret
+        settings.api_key = old_api_key
         app.dependency_overrides.clear()
         engine.dispose()
 
@@ -142,9 +145,10 @@ def test_click_postback_and_dataset_pipeline_is_idempotent(commercial_client, tm
         assert clicked["approved_flag"] == 1
 
 
-def test_public_offer_list_does_not_leak_commission_or_affiliate_template(commercial_client):
+def test_demo_offer_list_is_operator_protected_and_does_not_leak_internals(commercial_client):
     client, _ = commercial_client
-    response = client.get("/v1/offers")
+    assert client.get("/v1/offers").status_code == 401
+    response = client.get("/v1/offers", headers={"X-API-Key": "operator-test-key"})
     assert response.status_code == 200
     item = response.json()[0]
     assert "commission_amount" not in item
