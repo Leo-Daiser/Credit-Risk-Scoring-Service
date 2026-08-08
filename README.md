@@ -1,143 +1,73 @@
 # Credit Risk Scoring Service
 
-Production-like ML-сервис оценки вероятности дефолта на датасете Home Credit Default Risk.
+Portfolio-grade MVP сервиса оценки вероятности дефолта на данных
+Home Credit Default Risk. Репозиторий показывает полный путь от проверки raw tables
+и feature engineering до versioned model bundle, FastAPI inference, PostgreSQL
+audit log, batch scoring и drift report.
 
-Это не ноутбук с моделью, а воспроизводимый сервисный контур:
+Проект не является банковской системой принятия решений. `decision` в API —
+демонстрационный operating rule поверх вероятности и локального threshold, а не
+юридически значимое одобрение кредита.
 
-- загрузка и проверка raw data;
-- feature engineering для всех восьми исходных Home Credit tables;
+## Статус
+
+Реализовано:
+
+- data contracts для восьми Home Credit tables;
+- applicant-level features из application, bureau, previous application,
+  POS/CASH, installments и credit-card history;
 - Logistic Regression baseline и CatBoost challenger;
-- калибровка, cost-sensitive threshold и acceptance gates без утечки в evaluation split;
-- online API и batch scoring через один immutable model bundle;
-- локальные SHAP reason codes;
-- PostgreSQL audit log и model registry;
-- input-quality diagnostics, API-key authentication, Prometheus metrics и JSON logs;
-- bootstrap confidence intervals, subgroup report и offline drift monitoring;
-- Docker Compose, Alembic migrations, CI, тесты и воспроизводимый load smoke.
+- sigmoid calibration, cost-sensitive threshold и acceptance gates;
+- immutable production bundle с feature schema и deterministic version;
+- FastAPI `/score`, input-quality diagnostics и local reason codes;
+- PostgreSQL audit logging, Alembic, batch scoring и PSI monitoring;
+- Docker Compose, CI, unit/integration tests и load-smoke script.
 
-## Статус проекта
+## Результат локального обучения
 
-Полноценный MVP сервиса реализован.
+Метрики ниже относятся только к конкретному локальному полному прогону на Home
+Credit data и bundle `catboost_calibrated-6dba880cb73a`. Они не являются
+гарантированными свойствами кода или будущих данных.
 
-| Фаза | Результат | Статус |
-|---|---|---|
-| 0 | Структура, конфигурация, FastAPI, PostgreSQL, Docker | ✅ |
-| 1 | Загрузка и data contracts для raw Home Credit tables | ✅ |
-| 2.1 | Application-level features | ✅ |
-| 2.2 | Bureau и bureau_balance aggregations | ✅ |
-| 2.3 | Previous application, POS/CASH, installments и credit-card aggregations | ✅ |
-| 2.4 | Финальный train/test feature dataset и feature pruning | ✅ |
-| 3.1 | Logistic Regression baseline | ✅ |
-| 3.2 | CatBoost challenger и сравнение на общем holdout | ✅ |
-| 5 | Калибровка, business-cost threshold, CI, quality gates, subgroup report | ✅ |
-| 6 | `/score`, input contract, API key, metrics, DB logging, model registry | ✅ |
-| 7 | Batch scoring, PSI drift report, Alembic, CI | ✅ |
-| 8 | Correlation-safe JSON logs, local SLO и concurrent load smoke | ✅ |
+| Метрика на локальном evaluation split | Значение |
+|---|---:|
+| Rows | 30 752 |
+| Features | 622 |
+| ROC-AUC, calibrated CatBoost | 0.79233 |
+| ROC-AUC 95% bootstrap CI | 0.78272–0.80081 |
+| PR-AUC | 0.29791 |
+| Brier score | 0.06544 |
+| Expected calibration error | 0.00351 |
+| Operating threshold | 0.15 |
+| Recall / precision / F1 | 0.52880 / 0.25760 / 0.34644 |
+| ROC-AUC improvement over baseline | +0.00774 |
 
-Финальный локальный production bundle:
-
-- model: calibrated CatBoost;
-- version: `catboost_calibrated-6dba880cb73a`;
-- features: `622`;
-- evaluation ROC-AUC: `0.79233` (95% CI: `0.78272–0.80081`);
-- evaluation PR-AUC: `0.29791` (95% CI: `0.27858–0.31985`);
-- Brier score после калибровки: `0.06544`;
-- expected calibration error: `0.00351`;
-- operating threshold: `0.15`;
-- recall / precision / F1: `0.52880 / 0.25760 / 0.34644`;
-- ROC-AUC improvement over baseline on the same rows: `+0.00774`
-  (paired 95% CI: `+0.00391…+0.01165`);
-- acceptance gates: `passed`.
-
-Версия детерминированно строится из SHA-256 source/baseline models, metrics,
-feature schema, production config, packaging code, pinned dependencies и training
-parquet, использованного для calibration.
-Значения выше относятся к конкретному локальному прогону на полном датасете и не
-зашиты в код как гарантии.
+Методология, baseline comparison и ограничения описаны в
+[`docs/ml_report.md`](docs/ml_report.md).
 
 ## Архитектура
 
 ```text
-raw CSV
-  -> schema validation
-  -> application + bureau + previous/POS/installments/card feature builders
-  -> train_features.parquet / test_features.parquet
-  -> baseline + CatBoost challenger
-  -> calibration + cost-sensitive threshold + acceptance gates
-  -> production_model_bundle.joblib
-       |-> FastAPI /score
-       |-> batch scoring
-       |-> reference stats -> drift monitoring
-       `-> model metadata / CI / subgroup report / reason codes
-
-FastAPI /score
-  -> schema alignment
-  -> required-field, coverage and training-domain diagnostics
-  -> calibrated probability
-  -> decision + risk band + local SHAP reasons
-  -> atomic PostgreSQL request/prediction log
-  -> Prometheus metrics + payload-free correlated JSON events
+raw CSV -> validation -> applicant-level features -> train/test parquet
+        -> baseline + CatBoost -> calibration + threshold + gates
+        -> trusted production bundle
+             |-> FastAPI /score -> PostgreSQL audit log
+             |-> batch scoring
+             `-> reference statistics -> drift monitoring
 ```
 
-Train/calibration/evaluation разделены. Source model обучается на train-части. Половина исходного holdout используется только для calibration и выбора threshold, вторая половина — только для итоговой оценки. Перед сборкой bundle split contract сверяется с metrics-манифестами source model и baseline: `random_seed`, holdout fraction и feature count обязаны совпадать. Candidate и baseline сравниваются на одних evaluation-строках, а положительное улучшение подтверждается парным bootstrap CI. Bundle сохраняется только после прохождения gates по ROC-AUC, нижней границе bootstrap CI, PR-AUC, Brier, ECE, улучшению относительно baseline и эффекту калибровки. Drift reference statistics строятся только по train-части.
-
-## Структура репозитория
-
-```text
-credit-risk-scoring/
-├── .github/workflows/ci.yml
-├── migrations/
-│   ├── env.py
-│   └── versions/
-├── configs/
-│   ├── data.yaml
-│   ├── features.yaml
-│   ├── service.yaml
-│   └── train.yaml
-├── src/
-│   ├── api/
-│   │   ├── dependencies.py
-│   │   ├── main.py
-│   │   ├── routes.py
-│   │   └── schemas.py
-│   ├── core/config.py
-│   ├── data/
-│   ├── db/
-│   ├── features/
-│   ├── models/
-│   │   ├── model_bundle.py
-│   │   ├── prepare_production_model.py
-│   │   ├── train_baseline.py
-│   │   └── train_catboost.py
-│   ├── services/
-│   │   ├── batch.py
-│   │   ├── monitoring.py
-│   │   └── scoring.py
-│   └── cli.py
-├── scripts/load_smoke.py
-├── docs/
-│   ├── adr/001-model-artifact-contract.md
-│   └── operations.md
-├── tests/
-├── alembic.ini
-├── Dockerfile
-├── docker-compose.yml
-├── Makefile
-└── requirements.txt
-```
-
-Raw data, processed parquet, trained models, reports and predictions не коммитятся.
+Подробное описание слоёв: [`docs/architecture.md`](docs/architecture.md).
 
 ## Требования
 
 - Python 3.11;
-- PostgreSQL 16 для production-like запуска;
-- Docker Desktop с Compose — опционально;
-- полный Home Credit Default Risk dataset для повторной сборки features и обучения.
+- PostgreSQL 16 для API с audit logging;
+- Docker Desktop с Compose — для production-like локального запуска;
+- полный Home Credit dataset — только для пересборки features и моделей.
 
-## Установка на Windows PowerShell
+## Быстрый старт
 
-В корне репозитория:
+В PowerShell из корня репозитория:
 
 ```powershell
 python -m venv .venv
@@ -147,44 +77,30 @@ pip install -r requirements-dev.txt
 Copy-Item .env.example .env
 ```
 
-Замените `POSTGRES_PASSWORD=change-me` в `.env`.
+Замените `POSTGRES_PASSWORD=change-me` и задайте `API_KEY` перед использованием
+за пределами изолированной локальной среды.
 
-Проверка среды:
+Базовая проверка checkout не требует Kaggle CSV или model artifacts:
 
 ```powershell
-python --version
 python -m pip check
-pip-audit -r requirements.txt
 ruff check src tests migrations scripts
 pytest -q
+docker compose config --quiet
 ```
 
-Результат последнего локального запуска на этой ветке: `143 passed`. Это число
-относится к конкретному checkout и может измениться при добавлении или удалении тестов.
+## Данные и воспроизводимость
 
-## Данные
-
-Используемые файлы:
+Распакуйте Kaggle tables в `data/raw/home_credit/`:
 
 ```text
-data/raw/home_credit/
-├── application_train.csv
-├── application_test.csv
-├── bureau.csv
-├── bureau_balance.csv
-├── previous_application.csv
-├── POS_CASH_balance.csv
-├── installments_payments.csv
-└── credit_card_balance.csv
+application_train.csv       application_test.csv
+bureau.csv                  bureau_balance.csv
+previous_application.csv    POS_CASH_balance.csv
+installments_payments.csv   credit_card_balance.csv
 ```
 
-Исходные таблицы проверяются на наличие файлов и обязательных колонок, пустые таблицы, уникальные ключи и foreign-key relationship.
-
-В реальном `bureau_balance` есть ключи, отсутствующие в `bureau`. Поэтому unit-тесты используют strict FK mode, а CLI — report mode: аномалия остаётся в отчёте, но не останавливает весь pipeline.
-
-## Полная сборка модели
-
-В активированной `.venv`, из корня репозитория:
+Полная последовательность:
 
 ```powershell
 python -m src.cli validate-raw
@@ -197,71 +113,40 @@ python -m src.cli train-catboost
 python -m src.cli prepare-production-model
 ```
 
-Для production API обязателен файл:
-
-```text
-artifacts/models/production_model_bundle.joblib
-```
-
-Bundle содержит calibrated estimator, versioned format contract, feature schema,
-обязательные входные признаки и минимальное покрытие payload,
-fingerprints всех воспроизводящих входов, model metadata, risk bands, confidence
-intervals, acceptance report, subgroup report и reference distributions. Перед
-публикацией bundle и metadata записываются во временные файлы, а runtime проверяет
-format version, feature partition, threshold, risk bands и SHA-256 manifest.
-Artifact создаётся только из реального обучения и намеренно не хранится в Git.
-
-`joblib` следует загружать только из доверенного training pipeline: формат Python
-serialization не является безопасным для artifacts из внешних источников.
-
-Архитектурное решение и его границы зафиксированы в
-[`docs/adr/001-model-artifact-contract.md`](docs/adr/001-model-artifact-contract.md).
+Полученный `artifacts/models/production_model_bundle.joblib` используется online,
+batch и monitoring кодом. Bundle создаётся локально и намеренно не хранится в Git.
+Загружайте joblib только из доверенного training pipeline.
 
 ## CLI
 
-```text
+Список README соответствует `src/cli.py`:
+
+| Команда | Назначение |
+|---|---|
+| `init-db` | Применить Alembic migrations |
+| `validate-raw` | Проверить raw tables и relationships |
+| `build-application-features` | Собрать application-level features |
+| `build-bureau-features` | Агрегировать bureau и bureau_balance |
+| `build-advanced-history-features` | Агрегировать previous/POS/installments/card |
+| `build-full-features` | Собрать финальные train/test feature tables |
+| `train-baseline` | Обучить Logistic Regression baseline |
+| `train-catboost` | Обучить CatBoost challenger |
+| `prepare-production-model` | Калибровать, проверить gates и собрать bundle |
+| `batch-score` | Выполнить offline batch scoring |
+| `monitor-drift` | Построить offline PSI/missingness report |
+
+Формат запуска: `python -m src.cli <command>`. `init-db` — совместимый alias для
+того же Alembic runner:
+
+```powershell
 python -m src.cli init-db
-python -m src.cli validate-raw
-python -m src.cli build-application-features
-python -m src.cli build-bureau-features
-python -m src.cli build-advanced-history-features
-python -m src.cli build-full-features
-python -m src.cli train-baseline
-python -m src.cli train-catboost
-python -m src.cli prepare-production-model
-python -m src.cli batch-score
-python -m src.cli monitor-drift
-```
-
-`init-db` — backward-compatible alias для того же migration runner. Прямой вариант:
-
-```powershell
+# Эквивалентный прямой вызов:
 python -m src.db.migrate
 ```
 
-## Локальный запуск API
+## API и Docker Compose
 
-Сначала PostgreSQL должен быть доступен по настройкам `.env`, а migration — применена:
-
-```powershell
-python -m src.db.migrate
-uvicorn src.api.main:app --host 0.0.0.0 --port 8000
-```
-
-Адреса:
-
-- OpenAPI: `http://localhost:8000/docs`;
-- liveness: `http://localhost:8000/health`;
-- readiness: `http://localhost:8000/ready`;
-- model metadata: `http://localhost:8000/model_info`.
-- machine-readable input contract: `http://localhost:8000/feature_schema`;
-- Prometheus metrics: `http://localhost:8000/metrics`.
-
-`/health` показывает, что процесс жив. `/ready` возвращает `200` только если production bundle загружен и PostgreSQL отвечает.
-
-## Docker Compose
-
-До запуска должен существовать production model bundle. Затем:
+До запуска должен существовать локальный production bundle:
 
 ```powershell
 docker compose up --build -d
@@ -269,252 +154,88 @@ docker compose ps
 docker compose logs -f api
 ```
 
-Compose:
+Compose поднимает PostgreSQL и один FastAPI container, применяет Alembic migrations,
+монтирует `./artifacts` read-only и проверяет `/ready`.
 
-- поднимает PostgreSQL 16;
-- ждёт его healthcheck;
-- выполняет безопасный migration bridge и `alembic upgrade head`;
-- запускает API без development `--reload`;
-- монтирует `./artifacts` в read-only режиме;
-- проверяет `/ready`.
+Endpoints:
 
-Остановка без удаления данных:
+- `GET /health` — liveness процесса;
+- `GET /ready` — model bundle и PostgreSQL готовы;
+- `GET /model_info` — metadata текущего bundle;
+- `GET /feature_schema` — machine-readable input contract;
+- `POST /score` — одиночный scoring с audit logging;
+- `GET /metrics` — Prometheus exposition;
+- `GET /docs` — OpenAPI UI.
+
+Пример scoring request:
 
 ```powershell
-docker compose down
-```
+$headers = @{ "Content-Type" = "application/json" }
+if ($env:API_KEY) { $headers["X-API-Key"] = $env:API_KEY }
 
-## API
-
-Примеры ниже показывают форму контракта. `model_version`, `feature_count` и
-зависящие от них счётчики берутся из bundle, который генерируется локально и не
-хранится в Git. Поэтому они не являются фиксированными свойствами исходного кода.
-
-### `GET /health`
-
-```json
-{
-  "status": "ok",
-  "service": "credit-risk-scoring"
-}
-```
-
-### `GET /ready`
-
-```json
-{
-  "status": "ready",
-  "model_version": "catboost_calibrated-<generated-hash>",
-  "database": "ok"
-}
-```
-
-### `GET /model_info`
-
-Возвращает version/type модели, feature count, threshold, risk bands, основные offline metrics, confidence intervals и статус acceptance gates. Сам estimator и полный feature schema наружу не выдаются.
-
-### `GET /feature_schema`
-
-Возвращает numeric/categorical feature names, обязательные поля и минимальное покрытие входа для текущей версии модели. Endpoint нужен клиентам для генерации и проверки scoring payload; estimator и reference distributions не раскрываются.
-
-### `POST /score`
-
-Request:
-
-```json
-{
-  "request_id": "application-100001",
-  "features": {
-    "AMT_INCOME_TOTAL": 180000,
-    "AMT_CREDIT": 450000,
-    "AMT_ANNUITY": 24000,
-    "AGE_YEARS": 37,
-    "NAME_CONTRACT_TYPE": "Cash loans",
-    "EXT_SOURCE_2": 0.61,
-    "EXT_SOURCE_3": 0.48
+$body = @{
+  request_id = "demo-100001"
+  features = @{
+    AMT_INCOME_TOTAL = 180000
+    AMT_CREDIT = 450000
+    AMT_ANNUITY = 24000
+    AGE_YEARS = 37
+    NAME_CONTRACT_TYPE = "Cash loans"
+    EXT_SOURCE_2 = 0.61
+    EXT_SOURCE_3 = 0.48
   }
-}
+} | ConvertTo-Json -Depth 4
+
+Invoke-RestMethod -Method Post -Uri http://localhost:8000/score `
+  -Headers $headers -Body $body
 ```
 
-Все признаки передавать не обязательно. Их фактическое число определяется текущим
-bundle (`622` в локальном прогоне, описанном в разделе «Статус проекта»). Обязательны
-`AGE_YEARS`, `AMT_CREDIT`, `AMT_ANNUITY`, `AMT_INCOME_TOTAL`, а доля непустых
-переданных признаков должна быть не ниже `0.01`. Это требования конкретного
-локального bundle: они задаются в `production_model.input_contract`, входят в его
-детерминированную версию и одинаково применяются API и batch scoring. Неизвестные
-имена, нечисловые/бесконечные numeric values, пустые request
-IDs и чрезмерно длинные categorical values отклоняются с `422`. Ответ содержит
-полноту входа и предупреждения о значениях вне обучающего диапазона или неизвестных
-категориях.
+Required features и minimum coverage принадлежат конкретному bundle и возвращаются
+через `/feature_schema`. API отклоняет неизвестные признаки, нечисловые/бесконечные
+numeric values, некорректные request IDs и слишком большие payloads. При
+`DATABASE_REQUIRED=true` успешный ответ не возвращается, если audit transaction не
+сохранена.
 
-Обязательный признак означает обязательное наличие ключа/колонки. Его значение
-может быть `null`, если обученный preprocessing поддерживает пропуски; такой `null`
-не засчитывается в минимальное покрытие payload.
+## Batch и monitoring
 
-Если в `.env` задан `API_KEY`, запрос должен содержать заголовок `X-API-Key`. При
-пустом `API_KEY` проверка отключена; перед production-развёртыванием оператор обязан
-задать сильный случайный ключ.
-
-Опциональный `X-Correlation-ID` возвращается в response и попадает в operational
-logs. Небезопасное или отсутствующее значение заменяется UUID. Feature payload и
-API key в логи не пишутся.
-
-Response:
-
-```json
-{
-  "request_id": "application-100001",
-  "default_probability": 0.083,
-  "decision": "approve",
-  "decision_threshold": 0.15,
-  "risk_band": "medium",
-  "reason_codes": [
-    {
-      "code": "EXT_SOURCE_3",
-      "feature": "EXT_SOURCE_3",
-      "contribution": 0.18,
-      "direction": "increases_risk",
-      "description": "External credit score increased the estimated risk."
-    }
-  ],
-  "model_version": "catboost_calibrated-<generated-hash>",
-  "missing_feature_count": 615,
-  "input_quality": {
-    "supplied_feature_count": 7,
-    "supplied_feature_coverage": 0.01125,
-    "missing_feature_count": 615,
-    "out_of_range_features": [],
-    "unseen_categorical_features": [],
-    "warnings": []
-  },
-  "latency_ms": 651.2,
-  "logging_status": "persisted"
-}
-```
-
-`decision` — демонстрационный operating decision, а не юридическое решение. При `DATABASE_REQUIRED=true` сервис не возвращает успешный scoring response, если audit log не записан. Повторный `request_id` возвращает `409`.
-
-## Explainability
-
-- CatBoost: локальные SHAP values для конкретного запроса;
-- Logistic Regression fallback: локальные contributions в log-odds;
-- в ответ попадают только positive contributions, повышающие риск;
-- reason codes объясняют поведение модели, но не являются причинно-следственными выводами.
-
-## PostgreSQL
-
-Alembic migration создаёт:
-
-- `model_registry` — version/type/path/metrics production model;
-- `scoring_requests` — request id, входной feature payload, model version;
-- `scoring_predictions` — probability, risk band, reason codes;
-- `feature_stats` — задел для периодической агрегации feature statistics.
-
-Запрос и prediction сохраняются одной транзакцией. При ошибке выполняется rollback.
-Audit schema запрещает request без зарегистрированной версии модели, prediction без
-обязательных полей и probability вне диапазона `[0, 1]`. Связь request/prediction
-остаётся one-to-one, а индекс `(model_version, received_at)` поддерживает выборки по
-версии и временному окну.
-
-`sql/init.sql` оставлен как legacy/reference schema; Docker Compose использует Alembic как единственный authoritative migration mechanism.
-
-## Batch scoring
-
-Пути и ограничения задаются в `configs/service.yaml`:
+Пути задаются в `configs/service.yaml`:
 
 ```powershell
 python -m src.cli batch-score
-```
-
-По умолчанию читается `data/processed/test_features.parquet`, а результат сохраняется в:
-
-```text
-artifacts/predictions/test_batch_scores.parquet
-artifacts/reports/batch_scoring_summary.json
-```
-
-Online и batch scoring используют один bundle, threshold и risk-band mapping.
-
-## Drift monitoring
-
-```powershell
 python -m src.cli monitor-drift
 ```
 
-Отчёт `artifacts/reports/drift_report.json` содержит:
+По умолчанию оба процесса читают `data/processed/test_features.parquet`. Результаты
+записываются в `artifacts/predictions/` и `artifacts/reports/`.
 
-- numeric/categorical PSI;
-- текущий missing rate и delta к train reference;
-- severity по каждому признаку;
-- общий `ok`, `warning` или `critical`.
+## Generated artifacts
 
-На локальном `application_test` текущий отчёт даёт `critical`: 43 critical и 16 warning features. Среди сильных сигналов — `AMT_REQ_CREDIT_BUREAU_MON` (`PSI=0.492`) и различия missingness bureau-агрегатов. Это сигнал для анализа population/data-pipeline shift, а не повод автоматически переобучать модель.
+В Git разрешены только `.gitkeep` внутри generated directories. Игнорируются:
 
-## Конфигурация
+- `data/raw/*`, `data/interim/*`, `data/processed/*`;
+- `artifacts/models/*`, `artifacts/metrics/*`;
+- `artifacts/reports/*`, `artifacts/predictions/*`;
+- `.env`, virtual environment и test caches.
 
-- `configs/data.yaml` — raw paths и data contracts;
-- `configs/features.yaml` — feature builders и processed outputs;
-- `configs/train.yaml` — baseline, CatBoost, calibration, input contract, threshold policy, quality gates и risk bands;
-- `configs/service.yaml` — model bundle, batch и monitoring paths;
-- `.env` — DB, deployment override model path, logging policy/format и API key.
+## Документация
 
-Основные env-параметры перечислены в `.env.example`. `DATABASE_URL` при наличии
-имеет приоритет над отдельными `POSTGRES_*`. `MODEL_BUNDLE_PATH` при наличии
-одинаково переопределяет путь из service config для API, batch и monitoring; сам
-input contract берётся только из загруженного bundle.
+- [ML report](docs/ml_report.md) — задача, validation, metrics и leakage controls;
+- [Architecture](docs/architecture.md) — data/model/runtime layers;
+- [Demo script](docs/demo_script.md) — последовательность интервью-демо;
+- [Interview notes](docs/interview_notes.md) — короткие ответы по design decisions;
+- [Operations](docs/operations.md) — local SLO и triage runbook;
+- [Model artifact ADR](docs/adr/001-model-artifact-contract.md) — versioning и trust boundary.
 
-## Тесты и CI
+## Ограничения
 
-```powershell
-.\.venv\Scripts\python.exe -m pip check
-.\.venv\Scripts\pip-audit.exe -r requirements.txt
-.\.venv\Scripts\ruff.exe check src tests migrations
-.\.venv\Scripts\python.exe -m pytest -q
-docker compose config --quiet
-```
+- текущая validation случайная stratified, а не temporal/out-of-time;
+- датасет Kaggle не отражает текущий production population;
+- local SHAP reason codes объясняют модель, но не доказывают причинность;
+- нет fairness approval, юридических credit rules и автоматического retraining;
+- shared API key не заменяет user/RBAC, TLS, rate limiting и secrets manager;
+- Compose рассчитан на один API instance и один PostgreSQL instance.
 
-Тесты покрывают data contracts, все feature builders, pruning, baseline, CatBoost,
-cost-sensitive threshold, bootstrap CI, acceptance gates, calibration, subgroup
-report, model bundle, input quality, API key, Prometheus endpoint, безопасный logging
-contract, local explanations, transactional persistence, batch scoring, PSI
-monitoring, load-smoke helpers и CLI dispatch.
-
-GitHub Actions:
-
-- использует branch-level concurrency, чтобы не выполнять дублирующиеся или устаревшие runs;
-- устанавливает зафиксированные зависимости на Python 3.11;
-- проверяет production dependencies по OSV advisory database через `pip-audit`;
-- поднимает PostgreSQL 16;
-- применяет Alembic migration;
-- запускает весь test suite;
-- валидирует Compose config.
-- собирает production Docker image.
-
-## Operational readiness
-
-После запуска Compose concurrent smoke проверяет readiness, live input contract,
-model-version stability, сохранение audit log, error rate и p95 latency:
-
-```powershell
-.\.venv\Scripts\python.exe scripts\load_smoke.py --requests 50 --concurrency 2
-```
-
-Цели, ограничения и triage runbook описаны в
-[`docs/operations.md`](docs/operations.md). Результаты load smoke зависят от хоста,
-поэтому фиксируются как параметры конкретного локального запуска, а не как
-гарантированные свойства сервиса.
-
-## Что намеренно не входит в MVP
-
-- fine-grained user/role authorization и rate limiting (shared API key реализован);
-- TLS termination и secrets manager;
-- Kubernetes и autoscaling;
-- online feature store;
-- streaming monitoring и автоматический retraining;
-- LightGBM: после фактического превосходства CatBoost второй tree challenger не нужен для завершённости сервиса;
-- юридически значимые credit-decision правила и fairness approval.
-
-Для реального production эти пункты обязательны в зависимости от регуляторного и инфраструктурного контекста. Текущий проект является полноценным portfolio-grade service MVP, но не банковской системой принятия решений.
+Практический сценарий презентации: [`docs/demo_script.md`](docs/demo_script.md).
 
 ## Лицензия
 
