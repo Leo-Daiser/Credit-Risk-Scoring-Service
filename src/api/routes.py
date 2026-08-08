@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from src.api.dependencies import get_scoring_service, require_api_key
+from src.api.dependencies import get_scoring_service, require_operator_api_key
 from src.api.metrics import record_scoring_result
 from src.api.schemas import (
     FeatureSchemaResponse,
@@ -35,6 +35,7 @@ def healthcheck() -> HealthResponse:
 
 @router.get("/model_info", response_model=ModelInfoResponse)
 def model_info(
+    _: None = Depends(require_operator_api_key),
     service: ScoringService = Depends(get_scoring_service),
 ) -> ModelInfoResponse:
     return ModelInfoResponse.model_validate(service.model_info())
@@ -42,6 +43,7 @@ def model_info(
 
 @router.get("/feature_schema", response_model=FeatureSchemaResponse)
 def feature_schema(
+    _: None = Depends(require_operator_api_key),
     service: ScoringService = Depends(get_scoring_service),
 ) -> FeatureSchemaResponse:
     schema = service.bundle.feature_schema
@@ -77,7 +79,7 @@ def readiness(
 @router.post("/score", response_model=ScoreResponse)
 def score(
     payload: ScoreRequest,
-    _: None = Depends(require_api_key),
+    _: None = Depends(require_operator_api_key),
     service: ScoringService = Depends(get_scoring_service),
     session: Session = Depends(get_db),
 ) -> ScoreResponse:

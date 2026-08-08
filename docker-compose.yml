@@ -76,6 +76,10 @@ services:
     environment:
       BACKEND_URL: http://api:8000
       API_KEY: ${API_KEY:-}
+      APP_ENV: ${APP_ENV:-local}
+      DEMO_MODE: ${DEMO_MODE:-true}
+      OPERATOR_UI_ENABLED: ${OPERATOR_UI_ENABLED:-true}
+      PUBLIC_AUTH_STRICT: ${PUBLIC_AUTH_STRICT:-false}
     ports:
       - "3000:3000"
     healthcheck:

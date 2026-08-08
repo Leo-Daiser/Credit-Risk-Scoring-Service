@@ -12,7 +12,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const origin = `${protocol}://${host}`;
   const title = "Riskline — кредитный риск без ручной рутины";
   const description =
-    "Операторский кабинет для одиночного и пакетного кредитного скоринга.";
+    "Privacy-light калькулятор и предварительный подбор кредитных предложений.";
   return {
     title: { default: title, template: "%s · Riskline" },
     description,

@@ -1051,3 +1051,9 @@ textarea:focus-visible,
     transition-duration: 0.01ms !important;
   }
 }
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 20px 0;
+}

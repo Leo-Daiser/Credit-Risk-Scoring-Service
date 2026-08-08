@@ -97,9 +97,9 @@ storage behind the same workflow without changing the public job contract.
 ## Security and privacy boundaries
 
 - API key stays in BFF and backend process environments.
-- The cabinet is a single-tenant operator surface. Public deployments must place
-  it behind platform SSO or an identity-aware proxy; the backend API key is not
-  treated as end-user authentication.
+- The cabinet is a single-tenant operator surface and is disabled in public mode.
+  A future public operator deployment must place it behind platform SSO or an
+  identity-aware proxy; the backend API key is not treated as end-user authentication.
 - Upload paths are generated from UUIDs; the original filename is metadata only.
 - Download paths must resolve under the configured prediction directory.
 - Feature payloads and API keys are excluded from application logs.

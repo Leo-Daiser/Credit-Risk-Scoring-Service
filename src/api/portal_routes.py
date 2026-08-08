@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from src.api.dependencies import get_scoring_service, require_api_key
+from src.api.dependencies import get_scoring_service, require_operator_api_key
 from src.api.schemas import (
     BatchJobListResponse,
     BatchJobResponse,
@@ -31,7 +31,7 @@ from src.db.session import get_db
 from src.services.batch_jobs import BatchUploadError, create_batch_job, utc_now
 from src.services.scoring import ScoringService
 
-router = APIRouter(prefix="/v1", dependencies=[Depends(require_api_key)])
+router = APIRouter(prefix="/v1", dependencies=[Depends(require_operator_api_key)])
 ID_COLUMN_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 HTTP_422_UNPROCESSABLE = getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", 422)
 

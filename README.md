@@ -251,6 +251,7 @@ python -m src.cli monitor-drift
 
 ## Документация
 
+- [Матрица публичного, operator и partner-доступа](docs/endpoint_access_matrix.md)
 - [ML report](docs/ml_report.md) — задача, validation, metrics и leakage controls;
 - [Architecture](docs/architecture.md) — data/model/runtime layers;
 - [Demo script](docs/demo_script.md) — последовательность интервью-демо;

@@ -107,13 +107,16 @@ def api_client(scoring_service):
     app.dependency_overrides[get_db] = override_db
     original_logging = settings.inference_logging_enabled
     original_required = settings.database_required
+    original_api_key = settings.api_key
     settings.inference_logging_enabled = True
     settings.database_required = True
+    settings.api_key = SecretStr("operator-test-key")
     try:
-        yield TestClient(app), TestingSession
+        yield TestClient(app, headers={"X-API-Key": "operator-test-key"}), TestingSession
     finally:
         settings.inference_logging_enabled = original_logging
         settings.database_required = original_required
+        settings.api_key = original_api_key
         app.dependency_overrides.clear()
 
 
@@ -124,6 +127,28 @@ def test_model_info_returns_production_metadata(api_client):
     assert response.json()["model_version"] == TEST_MODEL_VERSION
     assert response.json()["decision_threshold"] == 0.5
     assert response.json()["confidence_intervals"] == {}
+
+
+def test_operator_metadata_rejects_missing_and_invalid_key(api_client):
+    client, _ = api_client
+    assert client.get("/model_info", headers={"X-API-Key": ""}).status_code == 401
+    assert client.get("/model_info", headers={"X-API-Key": "wrong"}).status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("method", "path"),
+    [
+        ("GET", "/feature_schema"),
+        ("POST", "/score"),
+        ("GET", "/v1/dashboard"),
+        ("GET", "/v1/scoring/history"),
+        ("GET", "/v1/batch/jobs"),
+        ("POST", "/v1/batch/jobs"),
+    ],
+)
+def test_operator_endpoints_fail_closed_without_bff_key(api_client, method, path):
+    client, _ = api_client
+    assert client.request(method, path, headers={"X-API-Key": ""}).status_code == 401
 
 
 def test_feature_schema_returns_machine_readable_input_contract(api_client):
@@ -212,7 +237,9 @@ def test_score_requires_configured_api_key(api_client):
     settings.api_key = SecretStr("test-secret")
     try:
         payload = {"features": {"INCOME": 70_000, "AGE_YEARS": 31, "CONTRACT": "cash"}}
-        assert client.post("/score", json=payload).status_code == 401
+        assert client.post(
+            "/score", json=payload, headers={"X-API-Key": ""}
+        ).status_code == 401
         response = client.post(
             "/score",
             json=payload,

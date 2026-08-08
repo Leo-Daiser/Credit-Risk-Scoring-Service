@@ -6,7 +6,10 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from src.api.dependencies import get_optional_scoring_service, require_api_key
+from src.api.dependencies import (
+    get_optional_scoring_service,
+    require_local_demo_operator_api_key,
+)
 from src.api.metrics import (
     COMMERCIAL_PTI_BANDS,
     COMMERCIAL_RISK_BANDS,
@@ -55,7 +58,7 @@ logger = logging.getLogger(__name__)
 @router.post(
     "/profile/score",
     response_model=CreditProfileResult,
-    dependencies=[Depends(require_api_key), Depends(rate_limit("profile_score"))],
+    dependencies=[Depends(rate_limit("profile_score"))],
 )
 def score_profile(
     payload: CreditProfileInput,
@@ -88,7 +91,7 @@ def score_profile(
 @router.post(
     "/offers/match",
     response_model=OfferMatchResponse,
-    dependencies=[Depends(require_api_key), Depends(rate_limit("offer_match"))],
+    dependencies=[Depends(rate_limit("offer_match"))],
 )
 def match(
     payload: OfferMatchRequest,
@@ -119,7 +122,7 @@ def match(
 @router.get(
     "/offers",
     response_model=list[OfferPublic],
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_local_demo_operator_api_key)],
 )
 def list_offers(session: Session = Depends(get_db)) -> list[BankOffer]:
     return OfferRepository(session).list_active()
@@ -128,7 +131,7 @@ def list_offers(session: Session = Depends(get_db)) -> list[BankOffer]:
 @router.post(
     "/offers/{offer_id}/click",
     response_model=ClickResponse,
-    dependencies=[Depends(require_api_key), Depends(rate_limit("offer_click"))],
+    dependencies=[Depends(rate_limit("offer_click"))],
 )
 def click_offer(
     offer_id: int,
@@ -167,6 +170,8 @@ def partner_postback(
     x_postback_signature: str = Header(default="", alias="X-Postback-Signature"),
     session: Session = Depends(get_db),
 ) -> PartnerPostbackResponse:
+    if settings.is_public and payload.partner_id == "demo":
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner unavailable.")
     if not validate_postback_signature(payload, x_postback_signature):
         POSTBACK_SIGNATURE_FAILURES.inc()
         record_funnel_event(

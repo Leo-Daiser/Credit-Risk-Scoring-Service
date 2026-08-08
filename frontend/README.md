@@ -1,4 +1,4 @@
-# Riskline operator console
+# Riskline public MVP and operator console
 
 React/Vinext кабинет для Credit Risk Scoring Service.
 
@@ -11,14 +11,18 @@ React/Vinext кабинет для Credit Risk Scoring Service.
 - скачивание шаблона и готового prediction-only CSV;
 - история решений без показа чувствительного payload;
 - экран model bundle и input contract;
-- server-side BFF: `API_KEY` не передаётся в браузер.
+- server-side BFF: `API_KEY` не передаётся в браузер;
+- В `APP_ENV=public` operator UI и operator BFF-маршруты fail closed; доступен только
+  allowlist публичного matching flow.
+- Полная матрица доступа: [`../docs/endpoint_access_matrix.md`](../docs/endpoint_access_matrix.md).
 
 Frontend не хранит продуктовые данные в browser storage. Источником истины
 остаются FastAPI, PostgreSQL и artifact storage backend-контура.
 
-Калькулятор платежа работает в браузере и не отправляет данные. ML-оценка
-запускается отдельной кнопкой после явного подтверждения: тогда поля анкеты и
-результат сохраняются backend-сервисом в PostgreSQL audit log. Короткая анкета
+Публичный калькулятор платежа работает в браузере и не отправляет данные. ML-оценка
+доступна только в local/demo operator UI по адресу `/operator/score` и запускается
+после явного подтверждения: тогда поля анкеты и результат сохраняются backend-сервисом
+в PostgreSQL audit log. Короткая анкета
 покрывает только часть полного feature-контракта, поэтому результат показывается как
 предварительный и не является кредитным решением или офертой.
 
@@ -54,4 +58,4 @@ npm test
 из `vinext@1.0.0-beta.4`. Исправленной версии в используемой линии Vinext нет;
 `npm audit fix --force` предлагает несовместимый downgrade. Пользовательские изображения
 runtime не обрабатывает. До обновления Vinext публичный reverse proxy должен также
-ограничивать размер HTTP-запроса и закрывать кабинет через SSO/identity-aware policy.
+ограничивать размер HTTP-запроса. Operator UI остаётся выключенным в public mode.

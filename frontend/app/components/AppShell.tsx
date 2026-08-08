@@ -13,12 +13,17 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-type NavKey = "overview" | "score" | "offers" | "commercial" | "batches" | "history" | "model";
+type NavKey = "overview" | "score" | "offers" | "operator" | "commercial" | "batches" | "history" | "model";
 
-const navigation = [
+const publicNavigation = [
   { key: "overview", href: "/", label: "Обзор", icon: LayoutDashboard },
   { key: "score", href: "/score", label: "Калькулятор", icon: ScanLine },
   { key: "offers", href: "/offers", label: "Подбор предложений", icon: BadgePercent },
+] as const;
+
+const operatorNavigation = [
+  { key: "operator", href: "/operator", label: "Операторский обзор", icon: LayoutDashboard },
+  { key: "score", href: "/operator/score", label: "ML-скоринг", icon: ScanLine },
   { key: "commercial", href: "/commercial", label: "Коммерческая аналитика", icon: TrendingUp },
   { key: "batches", href: "/batches", label: "Пакетный скоринг", icon: Files },
   { key: "history", href: "/history", label: "История", icon: Clock3 },
@@ -30,9 +35,11 @@ interface AppShellProps {
   eyebrow: string;
   title: string;
   children: ReactNode;
+  operator?: boolean;
 }
 
-export function AppShell({ active, eyebrow, title, children }: AppShellProps) {
+export function AppShell({ active, eyebrow, title, children, operator = false }: AppShellProps) {
+  const navigation = operator ? operatorNavigation : publicNavigation;
   return (
     <div className="app-frame">
       <aside className="sidebar">
@@ -46,7 +53,7 @@ export function AppShell({ active, eyebrow, title, children }: AppShellProps) {
         </Link>
 
         <nav className="side-nav" aria-label="Основная навигация">
-          <p className="nav-caption">Рабочее пространство</p>
+          <p className="nav-caption">{operator ? "Внутренний контур" : "Публичный сервис"}</p>
           {navigation.map((item) => {
             const Icon = item.icon;
             return (
@@ -68,12 +75,12 @@ export function AppShell({ active, eyebrow, title, children }: AppShellProps) {
             <Activity size={18} />
           </div>
           <div>
-            <strong>Контур наблюдаем</strong>
-            <span>API, worker и PostgreSQL</span>
+            <strong>{operator ? "Контур наблюдаем" : "Privacy-light подход"}</strong>
+            <span>{operator ? "API, worker и PostgreSQL" : "Без паспорта, телефона и БКИ"}</span>
           </div>
         </div>
 
-        <Link className="help-link" href="/model#contract">
+        <Link className="help-link" href={operator ? "/model#contract" : "/offers"}>
           <CircleHelp size={18} aria-hidden="true" />
           Как подготовить данные
         </Link>
@@ -86,10 +93,10 @@ export function AppShell({ active, eyebrow, title, children }: AppShellProps) {
             <h1>{title}</h1>
           </div>
           <button className="profile-button" type="button" aria-label="Профиль среды portfolio">
-            <span className="profile-avatar">ML</span>
+            <span className="profile-avatar">{operator ? "ML" : "RL"}</span>
             <span className="profile-copy">
-              <strong>Portfolio workspace</strong>
-              <small>внутренний контур</small>
+              <strong>{operator ? "Portfolio workspace" : "Public MVP"}</strong>
+              <small>{operator ? "внутренний контур" : "предварительный подбор"}</small>
             </span>
             <ChevronDown size={16} aria-hidden="true" />
           </button>

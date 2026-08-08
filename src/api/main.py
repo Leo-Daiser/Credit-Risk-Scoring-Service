@@ -3,7 +3,7 @@ import re
 import time
 from uuid import uuid4
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from src.api.commercial_routes import router as commercial_router
@@ -19,18 +19,13 @@ logger = logging.getLogger(__name__)
 CORRELATION_HEADER = "X-Correlation-ID"
 CORRELATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
-if settings.app_env.lower() in {"production", "prod", "public"} and (
-    settings.api_key is None or not settings.api_key.get_secret_value().strip()
-):
-    logger.warning(
-        "public_deployment_without_api_key",
-        extra={"operator_endpoints_available": not settings.operator_api_key_required},
-    )
-
 app = FastAPI(
     title=settings.app_name,
     version="1.0.0",
     description="Calibrated credit-default risk scoring with explainability and audit logging.",
+    docs_url=None if settings.is_public else "/docs",
+    redoc_url=None if settings.is_public else "/redoc",
+    openapi_url=None if settings.is_public else "/openapi.json",
 )
 app.include_router(router)
 app.include_router(portal_router)
@@ -74,4 +69,6 @@ async def observe_http_request(request: Request, call_next):
 
 @app.get("/metrics", include_in_schema=False)
 def metrics() -> Response:
+    if settings.is_public:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
     return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)

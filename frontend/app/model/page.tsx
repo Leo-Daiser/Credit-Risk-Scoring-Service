@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AppShell } from "../components/AppShell";
 import { ModelWorkspace } from "../components/ModelWorkspace";
+import { requireOperatorUi } from "../lib/access";
 
 export const metadata: Metadata = {
   title: "Модель и контур",
@@ -8,8 +9,9 @@ export const metadata: Metadata = {
 };
 
 export default function ModelPage() {
+  requireOperatorUi();
   return (
-    <AppShell active="model" eyebrow="Governance" title="Модель и контур">
+    <AppShell operator active="model" eyebrow="Governance" title="Модель и контур">
       <ModelWorkspace />
     </AppShell>
   );

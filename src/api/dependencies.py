@@ -35,34 +35,16 @@ def get_optional_scoring_service() -> ScoringService | None:
         return None
 
 
-def require_api_key(
-    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
-) -> None:
-    """Require an API key when one is configured for the deployment."""
-    configured = settings.api_key
-    if configured is None or not configured.get_secret_value().strip():
-        return
-    supplied = x_api_key or ""
-    if not compare_digest(supplied, configured.get_secret_value()):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing API key.",
-            headers={"WWW-Authenticate": "ApiKey"},
-        )
-
-
 def require_operator_api_key(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
 ) -> None:
     """Fail closed for internal analytics/operator endpoints."""
     configured = settings.api_key
     if configured is None or not configured.get_secret_value().strip():
-        if settings.operator_api_key_required:
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Operator API key is not configured.",
-            )
-        return
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Operator API key is not configured.",
+        )
     supplied = x_api_key or ""
     if not compare_digest(supplied, configured.get_secret_value()):
         raise HTTPException(
@@ -70,3 +52,12 @@ def require_operator_api_key(
             detail="Invalid or missing operator API key.",
             headers={"WWW-Authenticate": "ApiKey"},
         )
+
+
+def require_local_demo_operator_api_key(
+    x_api_key: str | None = Header(default=None, alias="X-API-Key"),
+) -> None:
+    """Expose demo catalog/debug routes only outside public deployments."""
+    if settings.is_public:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found.")
+    require_operator_api_key(x_api_key)

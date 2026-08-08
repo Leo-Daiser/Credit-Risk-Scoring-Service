@@ -98,9 +98,11 @@ FastAPI загружает и валидирует bundle перед readiness/s
 5. Calibrated inference, threshold decision, risk band и local reason codes.
 6. Atomic audit transaction.
 
-`/health` проверяет процесс, `/ready` — bundle и PostgreSQL. Настроенный shared API
-key защищает `/score`; при пустом `API_KEY` проверка отключена. Такой ключ не заменяет
-полноценную user authentication/authorization.
+`/health` проверяет процесс, `/ready` — bundle и PostgreSQL. `/score`, model metadata,
+history, batch и analytics требуют operator API key и fail closed без него. Публичный
+privacy-light matching вынесен в отдельные allowlisted endpoints. Такой shared key не
+заменяет полноценную user authentication/authorization; полная классификация приведена
+в [`endpoint_access_matrix.md`](endpoint_access_matrix.md).
 
 ## Batch scoring
 
