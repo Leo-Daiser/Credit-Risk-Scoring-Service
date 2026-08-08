@@ -249,6 +249,13 @@ python -m src.cli monitor-drift
 - `artifacts/uploads/*` и generated offer-ranker artifacts;
 - `.env`, virtual environment и test caches.
 
+## Deployment
+
+Для локального/demo/public-safe профилей используются отдельные Compose overrides.
+Короткая инструкция: [demo deployment](docs/deployment_demo.md), переменные:
+[environment reference](docs/env_reference.md), проверка перед публикацией:
+[public checklist](docs/deployment_public_checklist.md).
+
 ## Документация
 
 - [Матрица публичного, operator и partner-доступа](docs/endpoint_access_matrix.md)
@@ -257,6 +264,7 @@ python -m src.cli monitor-drift
 - [Demo script](docs/demo_script.md) — последовательность интервью-демо;
 - [Interview notes](docs/interview_notes.md) — короткие ответы по design decisions;
 - [Operations](docs/operations.md) — local SLO и triage runbook;
+- [Demo deployment](docs/deployment_demo.md) — Compose profiles, setup/verify и smoke;
 - [Model artifact ADR](docs/adr/001-model-artifact-contract.md) — versioning и trust boundary.
 - [Commercial matching](docs/commercial_matching.md) — product/ML/event architecture;
 - [Safe offer import](docs/offer_import.md) — YAML/CSV validation, env-only affiliate templates и export;

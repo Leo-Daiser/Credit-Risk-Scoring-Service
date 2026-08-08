@@ -8,6 +8,7 @@ import yaml
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from src.core.config import settings
 from src.db.models import BankOffer
 
 DEFAULT_CONFIG_PATH = Path("configs/offers.yaml")
@@ -27,24 +28,30 @@ class OfferRepository:
         self.session = session
 
     def list_active(self) -> list[BankOffer]:
+        filters = [
+            BankOffer.is_active.is_(True),
+            (BankOffer.expires_at.is_(None))
+            | (BankOffer.expires_at > datetime.now(UTC).replace(tzinfo=None)),
+        ]
+        if not settings.demo_adapter_allowed:
+            filters.append(BankOffer.partner_id != "demo")
         statement = (
             select(BankOffer)
-            .where(
-                BankOffer.is_active.is_(True),
-                (BankOffer.expires_at.is_(None))
-                | (BankOffer.expires_at > datetime.now(UTC).replace(tzinfo=None)),
-            )
+            .where(*filters)
             .order_by(BankOffer.priority.desc(), BankOffer.id.asc())
         )
         return list(self.session.scalars(statement))
 
     def get_active(self, offer_id: int) -> BankOffer | None:
-        statement = select(BankOffer).where(
+        filters = [
             BankOffer.id == offer_id,
             BankOffer.is_active.is_(True),
             (BankOffer.expires_at.is_(None))
             | (BankOffer.expires_at > datetime.now(UTC).replace(tzinfo=None)),
-        )
+        ]
+        if not settings.demo_adapter_allowed:
+            filters.append(BankOffer.partner_id != "demo")
+        statement = select(BankOffer).where(*filters)
         return self.session.scalar(statement)
 
     def seed_demo(self, config_path: str | Path = DEFAULT_CONFIG_PATH) -> int:

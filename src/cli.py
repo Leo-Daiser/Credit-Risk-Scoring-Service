@@ -21,6 +21,8 @@ Supported commands:
     evaluate-offer-ranker
     import-offers
     export-offers
+    setup-demo
+    verify-demo
 """
 
 import argparse
@@ -41,6 +43,7 @@ from src.offers.repository import OfferRepository
 from src.offers.train_offer_ranker import evaluate_offer_ranker, train_offer_ranker
 from src.offers.training_dataset import build_offer_ranking_dataset
 from src.services.batch import run_batch_scoring
+from src.services.demo_setup import setup_demo, verify_demo
 from src.services.monitoring import run_drift_monitoring
 
 DATA_CONFIG_PATH = "configs/data.yaml"
@@ -66,6 +69,8 @@ AVAILABLE_COMMANDS = (
     "evaluate-offer-ranker",
     "import-offers",
     "export-offers",
+    "setup-demo",
+    "verify-demo",
 )
 
 
@@ -284,6 +289,33 @@ def cmd_export_offers(path: str) -> None:
     print(f"Output path: {path}")
 
 
+def cmd_setup_demo(*, with_synthetic_events: bool = False) -> None:
+    """Apply migrations and idempotently seed the secret-free demo catalog."""
+    report = setup_demo(with_synthetic_events=with_synthetic_events)
+    print("Demo setup completed.")
+    print(f"Migration previous state: {report['migration_previous_state']}")
+    print(f"Offers created: {report['offers_created']}")
+    print(f"Active offers: {report['active_offers']}")
+    print(f"Synthetic events created: {report['synthetic_events_created']}")
+    print("Next: start the API and run python -m src.cli verify-demo")
+
+
+def cmd_verify_demo() -> None:
+    """Fail clearly when deployment prerequisites or repository hygiene are broken."""
+    report = verify_demo()
+    runtime = report["runtime"]
+    print(f"Deployment verification: {'PASS' if report['ok'] else 'FAIL'}")
+    print(f"Environment: {runtime['app_env']}")
+    print(f"Core API ready: {runtime['core_api_ready']}")
+    print(f"Commercial matching ready: {runtime['commercial_matching_ready']}")
+    print(f"Matching probe ready: {report['matching_probe_ready']}")
+    print(f"Model bundle ready: {runtime['model_bundle_ready']}")
+    for warning in runtime["warnings"]:
+        print(f"Warning: {warning}")
+    if not report["ok"]:
+        raise SystemExit("Verification failed: " + ", ".join(report["failures"]))
+
+
 COMMANDS = {
     "init-db": cmd_init_db,
     "validate-raw": cmd_validate_raw,
@@ -327,6 +359,17 @@ def main(argv: list[str] | None = None) -> None:
         parser.add_argument("--path", required=True)
         parsed = parser.parse_args(args[1:])
         cmd_export_offers(parsed.path)
+        return
+    if command == "setup-demo":
+        parser = argparse.ArgumentParser(prog="python -m src.cli setup-demo")
+        parser.add_argument("--with-synthetic-events", action="store_true")
+        parsed = parser.parse_args(args[1:])
+        cmd_setup_demo(with_synthetic_events=parsed.with_synthetic_events)
+        return
+    if command == "verify-demo":
+        parser = argparse.ArgumentParser(prog="python -m src.cli verify-demo")
+        parser.parse_args(args[1:])
+        cmd_verify_demo()
         return
     handler = COMMANDS.get(command)
     if handler is None:

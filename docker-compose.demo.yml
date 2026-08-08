@@ -1,0 +1,38 @@
+services:
+  demo-setup:
+    build: .
+    restart: "no"
+    environment: &demo-environment
+      APP_ENV: demo
+      DEMO_MODE: "true"
+      OPERATOR_UI_ENABLED: ${OPERATOR_UI_ENABLED:-true}
+      PUBLIC_AUTH_STRICT: "false"
+      PUBLIC_SAFE_DEMO_ADAPTER_ENABLED: "false"
+      DATABASE_URL: postgresql+psycopg2://credit_user:credit_pass@db:5432/credit_risk
+      API_KEY: ${API_KEY:-demo-only-operator-key}
+      PARTNER_POSTBACKS_ENABLED: "true"
+      PARTNER_POSTBACK_SECRET: ${PARTNER_POSTBACK_SECRET:-demo-only-postback-secret}
+      MODEL_BUNDLE_REQUIRED: "false"
+      OFFER_CONFIG_PATH: configs/offers.yaml
+      PARTNER_CONFIG_PATH: configs/partners.yaml
+      EXPERIMENT_CONFIG_PATH: configs/experiments.yaml
+      REAL_PARTNER_ENABLED: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "src.cli", "setup-demo"]
+
+  api:
+    environment: *demo-environment
+    depends_on:
+      demo-setup:
+        condition: service_completed_successfully
+
+  frontend:
+    environment:
+      BACKEND_URL: http://api:8000
+      API_KEY: ${API_KEY:-demo-only-operator-key}
+      APP_ENV: demo
+      DEMO_MODE: "true"
+      OPERATOR_UI_ENABLED: ${OPERATOR_UI_ENABLED:-true}
+      PUBLIC_AUTH_STRICT: "false"

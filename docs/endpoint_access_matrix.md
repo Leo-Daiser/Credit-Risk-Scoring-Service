@@ -9,10 +9,12 @@ replace reverse-proxy, firewall, TLS, WAF, or secret-management controls.
 |---|---:|---:|---:|---|
 | `local` | enabled | configurable, enabled by default | allowed | local development |
 | `demo` | enabled | configurable, enabled by default | allowed | controlled portfolio demo |
-| `public` | enabled | always blocked | disabled | public MVP |
+| `public` | enabled | always blocked | disabled unless explicit safe `example.invalid` mode | public MVP |
 
 Public mode must use `DEMO_MODE=false`, `OPERATOR_UI_ENABLED=false`,
-`PUBLIC_AUTH_STRICT=true`, and a non-placeholder `API_KEY`. Invalid combinations fail startup.
+`PUBLIC_AUTH_STRICT=true`, an explicit `DATABASE_URL`, and a non-placeholder `API_KEY`.
+`PUBLIC_SAFE_DEMO_ADAPTER_ENABLED=true` may only enable the bundled synthetic redirect adapter;
+it cannot be combined with partner callbacks. Invalid combinations fail startup.
 
 ## Frontend routes
 
@@ -54,6 +56,7 @@ postbacks and arbitrary backend paths are never proxied by the browser BFF.
 | `GET /v1/analytics/event-debug` | operator-only | operator API key |
 | `GET /v1/offers/quality-report` | operator-only | operator API key |
 | `GET /v1/offers` | local/demo-only | operator API key; not found in public mode |
+| `GET /v1/runtime/status` | local/demo-only | operator API key; not found in public mode |
 | `GET /health`, `GET /ready` | platform-only | expose only to load balancer/orchestrator network |
 | `GET /metrics` | platform-only | not found in public mode; restrict at network boundary elsewhere |
 | `/docs`, `/redoc`, `/openapi.json` | local/demo-only | disabled in public mode |

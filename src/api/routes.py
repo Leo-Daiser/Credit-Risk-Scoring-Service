@@ -5,7 +5,11 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from src.api.dependencies import get_scoring_service, require_operator_api_key
+from src.api.dependencies import (
+    get_optional_scoring_service,
+    get_scoring_service,
+    require_operator_api_key,
+)
 from src.api.metrics import record_scoring_result
 from src.api.schemas import (
     FeatureSchemaResponse,
@@ -17,6 +21,7 @@ from src.api.schemas import (
 )
 from src.core.config import settings
 from src.db.session import get_db
+from src.offers.repository import OfferRepository
 from src.services.scoring import (
     DuplicateRequestError,
     ScoringService,
@@ -59,7 +64,7 @@ def feature_schema(
 
 @router.get("/ready", response_model=ReadinessResponse)
 def readiness(
-    service: ScoringService = Depends(get_scoring_service),
+    service: ScoringService | None = Depends(get_optional_scoring_service),
     session: Session = Depends(get_db),
 ) -> ReadinessResponse:
     try:
@@ -69,10 +74,25 @@ def readiness(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database is unavailable.",
         ) from exc
+    model_ready = service is not None
+    if settings.model_bundle_required and not model_ready:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Required production model is unavailable.",
+        )
+    catalog_ready = bool(OfferRepository(session).list_active())
+    warnings = []
+    if not model_ready:
+        warnings.append("model_bundle_unavailable_operator_scoring_disabled")
+    if not catalog_ready:
+        warnings.append("offer_catalog_empty")
     return ReadinessResponse(
-        status="ready",
-        model_version=service.bundle.metadata["model_version"],
+        status="ready" if not warnings else "degraded",
+        model_version=service.bundle.metadata["model_version"] if service else None,
         database="ok",
+        model_bundle_ready=model_ready,
+        commercial_matching_ready=catalog_ready,
+        warnings=warnings,
     )
 
 

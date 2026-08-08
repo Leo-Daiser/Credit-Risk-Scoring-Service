@@ -1,43 +1,47 @@
+x-app-environment: &app-environment
+  APP_ENV: ${APP_ENV:-local}
+  DEMO_MODE: ${DEMO_MODE:-true}
+  OPERATOR_UI_ENABLED: ${OPERATOR_UI_ENABLED:-true}
+  PUBLIC_AUTH_STRICT: ${PUBLIC_AUTH_STRICT:-false}
+  PUBLIC_SAFE_DEMO_ADAPTER_ENABLED: ${PUBLIC_SAFE_DEMO_ADAPTER_ENABLED:-false}
+  DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://credit_user:credit_pass@db:5432/credit_risk}
+  API_KEY: ${API_KEY:-local-only-operator-key}
+  PARTNER_POSTBACKS_ENABLED: ${PARTNER_POSTBACKS_ENABLED:-true}
+  PARTNER_POSTBACK_SECRET: ${PARTNER_POSTBACK_SECRET:-local-demo-postback-secret}
+  MODEL_BUNDLE_PATH: ${MODEL_BUNDLE_PATH:-artifacts/models/production_model_bundle.joblib}
+  MODEL_BUNDLE_REQUIRED: ${MODEL_BUNDLE_REQUIRED:-false}
+  OFFER_CONFIG_PATH: ${OFFER_CONFIG_PATH:-configs/offers.yaml}
+  PARTNER_CONFIG_PATH: ${PARTNER_CONFIG_PATH:-configs/partners.yaml}
+  EXPERIMENT_CONFIG_PATH: ${EXPERIMENT_CONFIG_PATH:-configs/experiments.yaml}
+  REAL_PARTNER_ENABLED: "false"
+
 services:
   db:
     image: postgres:16
-    container_name: credit_risk_db
     restart: unless-stopped
-    env_file:
-      - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER:-credit_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-credit_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-credit_risk}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
 
   api:
     build: .
-    container_name: credit_risk_api
     restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      API_KEY: ${API_KEY:-}
-      PARTNER_POSTBACK_SECRET: ${PARTNER_POSTBACK_SECRET:-}
-      REAL_PARTNER_SECRET: ${REAL_PARTNER_SECRET:-}
+    environment: *app-environment
     depends_on:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000"
-    volumes:
-      - ./artifacts/models:/app/artifacts/models:ro
-      - ./artifacts/uploads:/app/artifacts/uploads
-      - ./artifacts/predictions:/app/artifacts/predictions
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
     command: >-
       sh -c "python -m src.db.migrate &&
       exec uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --no-access-log"
@@ -45,22 +49,19 @@ services:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 8
       start_period: 20s
 
   worker:
+    profiles: ["ml-worker"]
     build: .
-    container_name: credit_risk_worker
     restart: unless-stopped
-    env_file:
-      - .env
+    environment:
+      <<: *app-environment
+      MODEL_BUNDLE_REQUIRED: "true"
     depends_on:
       api:
         condition: service_healthy
-    volumes:
-      - ./artifacts/models:/app/artifacts/models:ro
-      - ./artifacts/uploads:/app/artifacts/uploads
-      - ./artifacts/predictions:/app/artifacts/predictions
     command: ["python", "-m", "src.worker.main"]
     healthcheck:
       disable: true
@@ -68,31 +69,24 @@ services:
   frontend:
     build:
       context: ./frontend
-    container_name: credit_risk_frontend
     restart: unless-stopped
     depends_on:
       api:
         condition: service_healthy
     environment:
-      BACKEND_URL: http://api:8000
-      API_KEY: ${API_KEY:-}
+      BACKEND_URL: ${BACKEND_URL:-http://api:8000}
+      API_KEY: ${API_KEY:-local-only-operator-key}
       APP_ENV: ${APP_ENV:-local}
       DEMO_MODE: ${DEMO_MODE:-true}
       OPERATOR_UI_ENABLED: ${OPERATOR_UI_ENABLED:-true}
       PUBLIC_AUTH_STRICT: ${PUBLIC_AUTH_STRICT:-false}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     healthcheck:
-      test:
-        [
-          "CMD",
-          "node",
-          "-e",
-          "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
-        ]
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 8
       start_period: 20s
 
 volumes:

@@ -9,9 +9,13 @@ ENV PIP_NO_CACHE_DIR=1
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
-COPY . .
+COPY alembic.ini ./
+COPY configs ./configs
+COPY migrations ./migrations
+COPY src ./src
 
-RUN addgroup --system app && adduser --system --ingroup app app \
+RUN mkdir -p artifacts/models artifacts/uploads artifacts/predictions \
+    && addgroup --system app && adduser --system --ingroup app app \
     && chown -R app:app /app
 
 USER app

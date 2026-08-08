@@ -24,7 +24,9 @@ from src.api.metrics import (
     record_offer_impression,
 )
 from src.api.rate_limit import rate_limit, record_invalid_postback
+from src.api.schemas import RuntimeStatusResponse
 from src.core.config import settings
+from src.core.runtime import build_runtime_status
 from src.db.models import BankOffer, OfferClick
 from src.db.session import get_db
 from src.offers.analytics import record_funnel_event
@@ -57,6 +59,15 @@ from src.services.scoring import ScoringService
 
 router = APIRouter(prefix="/v1", tags=["commercial"])
 logger = logging.getLogger(__name__)
+
+
+@router.get(
+    "/runtime/status",
+    response_model=RuntimeStatusResponse,
+    dependencies=[Depends(require_local_demo_operator_api_key)],
+)
+def runtime_status(session: Session = Depends(get_db)) -> RuntimeStatusResponse:
+    return RuntimeStatusResponse.model_validate(build_runtime_status(session))
 
 
 @router.post(
@@ -200,6 +211,8 @@ def partner_postback(
     x_postback_signature: str = Header(default="", alias="X-Postback-Signature"),
     session: Session = Depends(get_db),
 ) -> PartnerPostbackResponse:
+    if not settings.partner_postbacks_enabled:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner unavailable.")
     if settings.is_public and payload.partner_id == "demo":
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Partner unavailable.")
     if not validate_postback_signature(payload, x_postback_signature):

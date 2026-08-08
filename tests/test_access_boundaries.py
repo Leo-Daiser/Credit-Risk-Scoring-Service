@@ -12,3 +12,4 @@ def test_endpoint_access_matrix_covers_required_boundaries():
         == AccessClass.OPERATOR_ONLY
     )
     assert classified[("POST", "/v1/partner/postback")] == AccessClass.PARTNER_ONLY
+    assert classified[("GET", "/v1/runtime/status")] == AccessClass.LOCAL_DEMO_ONLY

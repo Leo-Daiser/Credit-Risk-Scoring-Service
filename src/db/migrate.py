@@ -6,6 +6,8 @@ from collections.abc import Collection
 
 from alembic import command
 from alembic.config import Config
+from alembic.migration import MigrationContext
+from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect
 
 from src.core.config import settings
@@ -50,6 +52,19 @@ def run_migrations() -> str:
         command.stamp(config, LEGACY_BASE_REVISION)
     command.upgrade(config, "head")
     return state
+
+
+def migrations_are_current(database_url: str | None = None) -> bool:
+    """Return whether the database revision matches the configured Alembic head."""
+    config = Config("alembic.ini")
+    expected = ScriptDirectory.from_config(config).get_current_head()
+    engine = create_engine(database_url or settings.resolved_database_url, pool_pre_ping=True)
+    try:
+        with engine.connect() as connection:
+            actual = MigrationContext.configure(connection).get_current_revision()
+    finally:
+        engine.dispose()
+    return actual == expected
 
 
 def main() -> None:

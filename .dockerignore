@@ -7,6 +7,10 @@ __pycache__
 .pytest_cache
 .ruff_cache
 .env
+.env.*
+!.env.example
+coverage
+htmlcov
 data
 artifacts
 frontend/node_modules

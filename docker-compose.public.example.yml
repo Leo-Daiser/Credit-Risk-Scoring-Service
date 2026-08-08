@@ -1,0 +1,50 @@
+services:
+  db:
+    ports: !reset []
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-credit_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-public-db}
+      POSTGRES_DB: ${POSTGRES_DB:-credit_risk}
+
+  public-setup:
+    build: .
+    restart: "no"
+    environment: &public-environment
+      APP_ENV: public
+      DEMO_MODE: "false"
+      OPERATOR_UI_ENABLED: "false"
+      PUBLIC_AUTH_STRICT: "true"
+      PUBLIC_SAFE_DEMO_ADAPTER_ENABLED: "true"
+      DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://credit_user:change-me-public-db@db:5432/credit_risk}
+      API_KEY: ${API_KEY:-change-me}
+      PARTNER_POSTBACKS_ENABLED: "false"
+      PARTNER_POSTBACK_SECRET: ""
+      MODEL_BUNDLE_REQUIRED: "false"
+      OFFER_CONFIG_PATH: configs/offers.yaml
+      PARTNER_CONFIG_PATH: configs/partners.yaml
+      EXPERIMENT_CONFIG_PATH: configs/experiments.yaml
+      REAL_PARTNER_ENABLED: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "src.cli", "setup-demo"]
+
+  api:
+    environment: *public-environment
+    depends_on:
+      public-setup:
+        condition: service_completed_successfully
+    ports: !override
+      - "127.0.0.1:${APP_PORT:-8000}:8000"
+
+  frontend:
+    environment:
+      BACKEND_URL: http://api:8000
+      API_KEY: ${API_KEY:-change-me}
+      APP_ENV: public
+      DEMO_MODE: "false"
+      OPERATOR_UI_ENABLED: "false"
+      PUBLIC_AUTH_STRICT: "true"
+
+  worker:
+    profiles: ["disabled"]

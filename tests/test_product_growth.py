@@ -476,6 +476,8 @@ def test_safe_configuration_validation():
         operator_ui_enabled=False,
         public_auth_strict=True,
         api_key=SecretStr("deployment-operator-key-with-entropy"),
+        database_url="postgresql+psycopg2://user:password@db/database",
+        partner_postbacks_enabled=False,
     )
     assert public.is_public is True
 
@@ -486,6 +488,7 @@ def test_public_mode_blocks_demo_partner_and_demo_catalog(growth_client):
     settings.app_env = "public"
     try:
         assert client.get("/v1/offers", headers=operator_headers()).status_code == 404
+        assert client.get("/v1/runtime/status", headers=operator_headers()).status_code == 404
         payload = PartnerPostbackRequest.model_validate(
             {
                 "postback_id": "public-demo-postback",

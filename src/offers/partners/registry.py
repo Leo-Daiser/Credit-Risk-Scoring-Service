@@ -36,6 +36,8 @@ def get_partner_adapter(
     if not partner.get("enabled", False):
         raise ValueError(f"Partner is disabled: {partner_id}")
     adapter_name = partner.get("adapter")
+    if adapter_name == "demo" and not settings.demo_adapter_allowed:
+        raise ValueError("Demo partner adapter is disabled in this deployment mode")
     secret_env = str(partner.get("secret_env", "")).strip()
     configured_secret = os.getenv(secret_env) if secret_env else None
     if partner_id == "demo" and settings.partner_postback_secret is not None:

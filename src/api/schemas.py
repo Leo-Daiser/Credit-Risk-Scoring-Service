@@ -76,9 +76,26 @@ class FeatureSchemaResponse(BaseModel):
 
 
 class ReadinessResponse(BaseModel):
-    status: Literal["ready"]
-    model_version: str
+    status: Literal["ready", "degraded"]
+    model_version: str | None
     database: Literal["ok"]
+    model_bundle_ready: bool
+    commercial_matching_ready: bool
+    warnings: list[str]
+
+
+class RuntimeStatusResponse(BaseModel):
+    app_env: Literal["local", "demo", "public"]
+    core_api_ready: bool
+    db_ready: bool
+    migrations_ready: bool
+    model_bundle_ready: bool
+    commercial_matching_ready: bool
+    offer_catalog_ready: bool
+    partner_config_ready: bool
+    worker_configured: bool
+    public_mode_safe: bool
+    warnings: list[str]
 
 
 class BatchJobResponse(BaseModel):

@@ -9,7 +9,7 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.api.dependencies import get_scoring_service
+from src.api.dependencies import get_optional_scoring_service, get_scoring_service
 from src.api.main import app
 from src.core.config import settings
 from src.db.base import Base
@@ -104,6 +104,7 @@ def api_client(scoring_service):
             session.close()
 
     app.dependency_overrides[get_scoring_service] = lambda: scoring_service
+    app.dependency_overrides[get_optional_scoring_service] = lambda: scoring_service
     app.dependency_overrides[get_db] = override_db
     original_logging = settings.inference_logging_enabled
     original_required = settings.database_required
@@ -170,10 +171,24 @@ def test_readiness_checks_model_and_database(api_client):
     response = client.get("/ready")
     assert response.status_code == 200
     assert response.json() == {
-        "status": "ready",
+        "status": "degraded",
         "model_version": TEST_MODEL_VERSION,
         "database": "ok",
+        "model_bundle_ready": True,
+        "commercial_matching_ready": False,
+        "warnings": ["offer_catalog_empty"],
     }
+
+
+def test_readiness_reports_optional_model_bundle_as_unavailable(api_client):
+    client, _ = api_client
+    app.dependency_overrides[get_optional_scoring_service] = lambda: None
+    response = client.get("/ready")
+    assert response.status_code == 200
+    assert response.json()["model_bundle_ready"] is False
+    assert "model_bundle_unavailable_operator_scoring_disabled" in response.json()[
+        "warnings"
+    ]
 
 
 def test_score_persists_request_and_prediction_atomically(api_client):

@@ -29,6 +29,7 @@ class Settings(BaseSettings):
 
     database_url: str | None = None
     model_bundle_path: str | None = None
+    model_bundle_required: bool = False
     inference_logging_enabled: bool = True
     database_required: bool = True
     top_reason_codes: int = 5
@@ -41,9 +42,11 @@ class Settings(BaseSettings):
     batch_retain_inputs: bool = False
     api_key: SecretStr | None = None
     partner_postback_secret: SecretStr | None = None
+    partner_postbacks_enabled: bool = True
     partner_config_path: str = "configs/partners.yaml"
     experiment_config_path: str = "configs/experiments.yaml"
     demo_mode: bool = True
+    public_safe_demo_adapter_enabled: bool = False
     real_partner_enabled: bool = False
     real_partner_secret: SecretStr | None = None
     operator_ui_enabled: bool = True
@@ -112,7 +115,26 @@ class Settings(BaseSettings):
             ):
                 if secret is not None and secret.get_secret_value().strip().lower() in PLACEHOLDER_SECRETS:
                     raise ValueError(f"{name} cannot use a placeholder in public mode")
+            if not self.database_url:
+                raise ValueError("DATABASE_URL is required when APP_ENV=public")
+            if self.partner_postbacks_enabled and (
+                self.partner_postback_secret is None
+                or not self.partner_postback_secret.get_secret_value().strip()
+            ):
+                raise ValueError(
+                    "PARTNER_POSTBACK_SECRET is required when partner callbacks are enabled"
+                )
+            if self.public_safe_demo_adapter_enabled and self.partner_postbacks_enabled:
+                raise ValueError(
+                    "Public safe demo adapter cannot be combined with partner callbacks"
+                )
         return self
+
+    @property
+    def demo_adapter_allowed(self) -> bool:
+        return self.demo_mode or (
+            self.is_public and self.public_safe_demo_adapter_enabled
+        )
 
     @property
     def is_public(self) -> bool:

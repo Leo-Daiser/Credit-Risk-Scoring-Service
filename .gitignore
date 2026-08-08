@@ -2,6 +2,8 @@ __pycache__/
 *.pyc
 .venv/
 .env
+.env.*
+!.env.example
 configs/offers.local.*
 configs/partners.local.*
 .pytest_cache/

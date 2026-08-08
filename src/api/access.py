@@ -27,6 +27,9 @@ ENDPOINT_ACCESS_MATRIX = (
     EndpointAccess("GET", "/health", AccessClass.PLATFORM_ONLY, "Liveness probe"),
     EndpointAccess("GET", "/ready", AccessClass.PLATFORM_ONLY, "Readiness probe"),
     EndpointAccess("GET", "/metrics", AccessClass.PLATFORM_ONLY, "Prometheus scrape"),
+    EndpointAccess(
+        "GET", "/v1/runtime/status", AccessClass.LOCAL_DEMO_ONLY, "Runtime diagnostics"
+    ),
     EndpointAccess("POST", "/v1/profile/score", AccessClass.PUBLIC, "Privacy-light profile"),
     EndpointAccess("POST", "/v1/offers/match", AccessClass.PUBLIC, "Offer matching"),
     EndpointAccess("POST", "/v1/offers/{offer_id}/click", AccessClass.PUBLIC, "Tracked redirect"),
