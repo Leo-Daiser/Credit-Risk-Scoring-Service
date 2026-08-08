@@ -1,0 +1,11 @@
+partners:
+  demo:
+    adapter: demo
+    enabled: true
+    secret_env: PARTNER_POSTBACK_SECRET
+    demo_only: true
+  future_partner:
+    adapter: future
+    enabled: false
+    secret_env: FUTURE_PARTNER_POSTBACK_SECRET
+    demo_only: false

@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
-import json
 from datetime import datetime
-from secrets import compare_digest
 from uuid import uuid4
 
 from sqlalchemy import select
@@ -28,9 +25,15 @@ from src.offers.affordability import (
     estimate_existing_payments_from_band,
     estimate_income_from_band,
 )
+from src.offers.analytics import record_funnel_event
 from src.offers.eligibility import evaluate_offer_eligibility
+from src.offers.experiments import assign_experiment_variant
+from src.offers.partners.base import PartnerPostbackEnvelope
+from src.offers.partners.registry import get_partner_adapter
+from src.offers.partners.signatures import canonical_payload_bytes
 from src.offers.ranking import rank_offers
 from src.offers.repository import OfferRepository
+from src.offers.revenue import build_revenue_estimates
 from src.offers.risk_profile import ScoringProtocol, assess_risk_profile
 from src.offers.schemas import (
     STANDARD_DISCLAIMERS,
@@ -44,6 +47,7 @@ from src.offers.schemas import (
     PartnerPostbackRequest,
     PartnerPostbackResponse,
     ProfileBands,
+    RankedOfferPublic,
 )
 
 
@@ -195,11 +199,37 @@ def match_offers(
 ) -> OfferMatchResponse:
     result = build_profile_result(profile, scoring_service)
     profile_event = persist_profile_event(session, result, context)
+    experiment_variant = assign_experiment_variant(
+        context.anonymous_session_id if context else None
+    )
+    for event_type in (
+        "profile_started",
+        "profile_completed",
+        "profile_scored",
+        "offers_requested",
+    ):
+        record_funnel_event(
+            session,
+            event_type,
+            anonymous_session_id=profile_event.anonymous_session_id,
+            profile_id=result.anonymous_profile_id,
+            risk_band=result.risk_band,
+            pti_band=result.pti_band.value,
+            experiment_variant=experiment_variant,
+        )
     repository = OfferRepository(session)
+    active_offers = repository.list_active()
     evaluated = [
-        (offer, evaluate_offer_eligibility(result, offer)) for offer in repository.list_active()
+        (offer, evaluate_offer_eligibility(result, offer)) for offer in active_offers
     ]
-    ranked = rank_offers(result, evaluated, context.model_dump() if context else None)[:limit]
+    revenue_estimates = build_revenue_estimates(session, active_offers)
+    ranked = rank_offers(
+        result,
+        evaluated,
+        context.model_dump() if context else None,
+        revenue_estimates=revenue_estimates,
+        experiment_variant=experiment_variant,
+    )[:limit]
     for item in ranked:
         session.add(
             OfferImpression(
@@ -209,14 +239,98 @@ def match_offers(
                 rank=item.rank,
                 score=item.final_score,
                 score_breakdown_json=item.score_breakdown,
+                experiment_variant=experiment_variant,
             )
         )
+    record_funnel_event(
+        session,
+        "offers_shown" if ranked else "no_eligible_offers",
+        anonymous_session_id=profile_event.anonymous_session_id,
+        profile_id=result.anonymous_profile_id,
+        risk_band=result.risk_band,
+        pti_band=result.pti_band.value,
+        experiment_variant=experiment_variant,
+        event_value=str(len(ranked)),
+    )
     session.commit()
+    public_offers = [
+        RankedOfferPublic(
+            offer_id=item.offer_id,
+            rank=item.rank,
+            bank_id=item.bank_id,
+            product_name=item.product_name,
+            advertiser_name=item.advertiser_name,
+            positive_reasons=_public_match_reasons(item.match_reasons),
+            warnings=_public_warnings(item.warnings, result),
+            disclosure=(
+                f"{item.ad_disclosure} Реклама: при переходе сервис может получить "
+                "вознаграждение. Финальное решение принимает банк."
+            ),
+            ad_disclosure=(
+                f"{item.ad_disclosure} Реклама: при переходе сервис может получить "
+                "вознаграждение. Финальное решение принимает банк."
+            ),
+            confidence_level=result.confidence_level,
+            redirect_url=item.redirect_url,
+        )
+        for item in ranked
+    ]
     return OfferMatchResponse(
         profile_result=result,
-        offers=ranked,
+        offers=public_offers,
         disclaimers=STANDARD_DISCLAIMERS,
+        no_eligible_offers=not public_offers,
+        user_explanation=(
+            None
+            if public_offers
+            else "По указанным диапазонам безопасно подходящих предложений пока нет. "
+            "Это не означает отказ банка."
+        ),
+        suggestions=(
+            []
+            if public_offers
+            else [
+                "Попробуйте уменьшить диапазон суммы.",
+                "Рассмотрите более длинный срок.",
+                "Снизьте текущую долговую нагрузку, если это возможно.",
+                "Выберите рефинансирование, если цель — объединить текущие платежи.",
+                "Уточните поля, отмеченные как неизвестные.",
+            ]
+        ),
+        why_not_reasons=(
+            []
+            if public_offers
+            else [
+                "Доступные предложения не прошли консервативную проверку диапазонов.",
+                "Мы не показываем заведомо несовместимые рекламные предложения.",
+            ]
+        ),
     )
+
+
+def _public_match_reasons(reasons: list[str]) -> list[str]:
+    public: list[str] = []
+    if "amount" in reasons and "term" in reasons:
+        public.append("Подходит по сумме и сроку")
+    if "income" in reasons:
+        public.append("Подходит для вашего диапазона дохода")
+    if "pti" in reasons:
+        public.append("Предварительно совместимо с указанной долговой нагрузкой")
+    if "employment_type" in reasons:
+        public.append("Учитывает указанный тип занятости")
+    public.append("Результат предварительный: банк примет решение после проверки анкеты")
+    return public
+
+
+def _public_warnings(
+    warnings: list[str], result: CreditProfileResult
+) -> list[str]:
+    public: list[str] = []
+    if warnings or result.confidence_level.value in {"low", "basic"}:
+        public.append("Уверенность ограничена полнотой указанных диапазонов")
+    if result.pti_band.value in {"high", "very_high"}:
+        public.append("Ориентировочная долговая нагрузка повышена")
+    return public
 
 
 def create_click(session: Session, offer_id: int, payload: ClickRequest) -> ClickResponse:
@@ -232,9 +346,12 @@ def create_click(session: Session, offer_id: int, payload: ClickRequest) -> Clic
             offer = session.get(BankOffer, duplicate.offer_id)
             if offer is None:
                 raise CommercialNotFoundError("Offer no longer exists")
+            adapter = get_partner_adapter(offer.partner_id)
             return ClickResponse(
                 click_id=duplicate.click_id,
-                redirect_url=offer.affiliate_url_template.format(click_id=duplicate.click_id),
+                redirect_url=adapter.build_affiliate_url(
+                    offer, duplicate.click_id, payload.model_dump()
+                ),
                 duplicate=True,
             )
     offer = OfferRepository(session).get_active(offer_id)
@@ -246,7 +363,17 @@ def create_click(session: Session, offer_id: int, payload: ClickRequest) -> Clic
     if profile_event is None:
         raise CommercialNotFoundError("Profile not found")
     click_id = str(uuid4())
-    redirect_url = offer.affiliate_url_template.format(click_id=click_id)
+    adapter = get_partner_adapter(offer.partner_id)
+    redirect_url = adapter.build_affiliate_url(offer, click_id, payload.model_dump())
+    impression = session.scalar(
+        select(OfferImpression)
+        .where(
+            OfferImpression.profile_id == payload.profile_id,
+            OfferImpression.offer_id == offer_id,
+        )
+        .order_by(OfferImpression.shown_at.desc())
+    )
+    experiment_variant = impression.experiment_variant if impression else "rules_v1"
     session.add(
         OfferClick(
             click_id=click_id,
@@ -258,6 +385,7 @@ def create_click(session: Session, offer_id: int, payload: ClickRequest) -> Clic
             utm_source=payload.utm_source,
             utm_medium=payload.utm_medium,
             utm_campaign=payload.utm_campaign,
+            experiment_variant=experiment_variant,
         )
     )
     session.commit()
@@ -265,21 +393,20 @@ def create_click(session: Session, offer_id: int, payload: ClickRequest) -> Clic
 
 
 def canonical_postback_bytes(payload: PartnerPostbackRequest) -> bytes:
-    return json.dumps(
-        payload.model_dump(mode="json", exclude_none=True),
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode()
+    return canonical_payload_bytes(payload.model_dump(mode="json", exclude_none=True))
 
 
 def validate_postback_signature(payload: PartnerPostbackRequest, signature: str) -> bool:
-    configured = settings.partner_postback_secret
-    if configured is None or not configured.get_secret_value():
+    try:
+        adapter = get_partner_adapter(payload.partner_id)
+    except ValueError:
         return False
-    expected = hmac.new(
-        configured.get_secret_value().encode(), canonical_postback_bytes(payload), hashlib.sha256
-    ).hexdigest()
-    return compare_digest(signature, expected)
+    return adapter.verify_postback(
+        PartnerPostbackEnvelope(
+            payload=payload.model_dump(mode="json", exclude_none=True),
+            signature=signature,
+        )
+    )
 
 
 def record_postback(
@@ -308,20 +435,23 @@ def record_postback(
     click = session.scalar(select(OfferClick).where(OfferClick.click_id == payload.click_id))
     if click is None:
         raise CommercialNotFoundError("Click not found")
+    offer = session.get(BankOffer, click.offer_id)
+    if offer is None or offer.partner_id != payload.partner_id:
+        raise CommercialConflictError("Postback partner does not match the clicked offer")
+    adapter = get_partner_adapter(payload.partner_id)
+    normalized = adapter.normalize_postback(
+        payload.model_dump(mode="json", exclude_none=True)
+    )
     raw_hash = hashlib.sha256(canonical_postback_bytes(payload)).hexdigest()
     session.add(
         PartnerPostback(
-            postback_id=payload.postback_id,
-            click_id=payload.click_id,
+            postback_id=normalized.postback_id,
+            click_id=normalized.click_id,
             offer_id=click.offer_id,
-            status=payload.status.value,
-            approved_amount_band=(
-                payload.approved_amount_band.value if payload.approved_amount_band else None
-            ),
-            issued_amount_band=(
-                payload.issued_amount_band.value if payload.issued_amount_band else None
-            ),
-            commission_amount=payload.commission_amount,
+            status=normalized.status,
+            approved_amount_band=normalized.approved_amount_band,
+            issued_amount_band=normalized.issued_amount_band,
+            commission_amount=normalized.commission_amount,
             raw_payload_hash=raw_hash,
             validation_status="valid",
         )

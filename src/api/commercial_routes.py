@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -20,9 +20,11 @@ from src.api.metrics import (
     record_offer_click,
     record_offer_impression,
 )
+from src.api.rate_limit import rate_limit, record_invalid_postback
 from src.core.config import settings
 from src.db.models import BankOffer, OfferClick
 from src.db.session import get_db
+from src.offers.analytics import record_funnel_event
 from src.offers.repository import OfferRepository
 from src.offers.schemas import (
     ClickRequest,
@@ -53,13 +55,23 @@ logger = logging.getLogger(__name__)
 @router.post(
     "/profile/score",
     response_model=CreditProfileResult,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(rate_limit("profile_score"))],
 )
 def score_profile(
     payload: CreditProfileInput,
+    session: Session = Depends(get_db),
     service: ScoringService | None = Depends(get_optional_scoring_service),
 ) -> CreditProfileResult:
     result = build_profile_result(payload, service)
+    for event_type in ("profile_started", "profile_completed", "profile_scored"):
+        record_funnel_event(
+            session,
+            event_type,
+            profile_id=result.anonymous_profile_id,
+            risk_band=result.risk_band,
+            pti_band=result.pti_band.value,
+        )
+    session.commit()
     COMMERCIAL_RISK_BANDS.labels(result.risk_band).inc()
     COMMERCIAL_PTI_BANDS.labels(result.pti_band.value).inc()
     logger.info(
@@ -76,7 +88,7 @@ def score_profile(
 @router.post(
     "/offers/match",
     response_model=OfferMatchResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(rate_limit("offer_match"))],
 )
 def match(
     payload: OfferMatchRequest,
@@ -116,7 +128,7 @@ def list_offers(session: Session = Depends(get_db)) -> list[BankOffer]:
 @router.post(
     "/offers/{offer_id}/click",
     response_model=ClickResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(rate_limit("offer_click"))],
 )
 def click_offer(
     offer_id: int,
@@ -144,14 +156,27 @@ def click_offer(
     return result
 
 
-@router.post("/partner/postback", response_model=PartnerPostbackResponse)
+@router.post(
+    "/partner/postback",
+    response_model=PartnerPostbackResponse,
+    dependencies=[Depends(rate_limit("partner_postback"))],
+)
 def partner_postback(
     payload: PartnerPostbackRequest,
+    request: Request,
     x_postback_signature: str = Header(default="", alias="X-Postback-Signature"),
     session: Session = Depends(get_db),
 ) -> PartnerPostbackResponse:
     if not validate_postback_signature(payload, x_postback_signature):
         POSTBACK_SIGNATURE_FAILURES.inc()
+        record_funnel_event(
+            session,
+            "partner_postback_received",
+            click_id=payload.click_id,
+            event_value="invalid",
+        )
+        session.commit()
+        record_invalid_postback(request)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid postback signature.",

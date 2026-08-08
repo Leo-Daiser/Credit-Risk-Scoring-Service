@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,11 @@ class OfferRepository:
     def list_active(self) -> list[BankOffer]:
         statement = (
             select(BankOffer)
-            .where(BankOffer.is_active.is_(True))
+            .where(
+                BankOffer.is_active.is_(True),
+                (BankOffer.expires_at.is_(None))
+                | (BankOffer.expires_at > datetime.now(UTC).replace(tzinfo=None)),
+            )
             .order_by(BankOffer.priority.desc(), BankOffer.id.asc())
         )
         return list(self.session.scalars(statement))
@@ -37,6 +42,8 @@ class OfferRepository:
         statement = select(BankOffer).where(
             BankOffer.id == offer_id,
             BankOffer.is_active.is_(True),
+            (BankOffer.expires_at.is_(None))
+            | (BankOffer.expires_at > datetime.now(UTC).replace(tzinfo=None)),
         )
         return self.session.scalar(statement)
 
@@ -50,6 +57,8 @@ class OfferRepository:
                 raise ValueError("Every demo offer must define valid allowed_age_bands")
             if "{click_id}" not in item["affiliate_url_template"]:
                 raise ValueError("affiliate_url_template must contain {click_id}")
+            if not str(item.get("partner_id", "")).strip():
+                raise ValueError("Every offer must define partner_id")
             item["min_age_band"] = min(age_bands, key=AGE_ORDER.index)
             item["max_age_band"] = max(age_bands, key=AGE_ORDER.index)
             existing = self.session.scalar(

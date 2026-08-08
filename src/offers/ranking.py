@@ -9,22 +9,44 @@ import pandas as pd
 
 from src.core.config import settings
 from src.db.models import BankOffer
+from src.offers.experiments import strategy_multipliers
 from src.offers.repository import load_offer_config
+from src.offers.revenue import RevenueEstimate, conservative_revenue_estimate
 from src.offers.schemas import CreditProfileResult, OfferEligibilityResult, RankedOffer
 
 PTI_SCORE = {"low": 1.0, "moderate": 0.8, "high": 0.55, "very_high": 0.2, "unknown": 0.45}
 RISK_SCORE = {"low": 1.0, "medium": 0.82, "high": 0.55, "very_high": 0.25, "unknown": 0.5}
 
 
-def _component_scores(profile: CreditProfileResult, offer: BankOffer) -> dict[str, float]:
+def _component_scores(
+    profile: CreditProfileResult,
+    offer: BankOffer,
+    eligibility: OfferEligibilityResult,
+    revenue: RevenueEstimate,
+    *,
+    commercial_fit_floor: float,
+) -> dict[str, float]:
     purpose_match = profile.profile_bands.loan_purpose.value == offer.product_type
-    return {
-        "user_fit_score": 1.0,
-        "affordability_fit_score": PTI_SCORE[profile.pti_band.value],
+    components = {
+        "fit_score": 0.9 if eligibility.soft_warnings else 1.0,
+        "affordability_score": PTI_SCORE[profile.pti_band.value],
         "risk_compatibility_score": RISK_SCORE.get(profile.risk_band, 0.5),
         "product_match_score": 1.0 if purpose_match else 0.65,
         "commercial_score": min(max(offer.priority / 100.0, 0.0), 1.0),
+        "expected_revenue_proxy": revenue.expected_revenue_proxy,
     }
+    fit_quality = min(
+        components["fit_score"],
+        components["affordability_score"],
+        components["risk_compatibility_score"],
+        components["product_match_score"],
+    )
+    if fit_quality < commercial_fit_floor:
+        components["commercial_score"] = min(components["commercial_score"], 0.25)
+        components["expected_revenue_proxy"] = min(
+            components["expected_revenue_proxy"], 0.02
+        )
+    return components
 
 
 def _ml_feature_row(
@@ -63,16 +85,40 @@ def rank_offers(
     context: dict[str, Any] | None = None,
     *,
     config: dict[str, Any] | None = None,
+    revenue_estimates: dict[int, RevenueEstimate] | None = None,
+    experiment_variant: str = "rules_v1",
 ) -> list[RankedOffer]:
     del context
     ranking_config = (config or load_offer_config())["ranking"]
-    weights = ranking_config["weights"]
+    base_weights = {key: float(value) for key, value in ranking_config["weights"].items()}
+    fit_multiplier, revenue_multiplier = strategy_multipliers(experiment_variant)
+    effective_weights = dict(base_weights)
+    for key in (
+        "fit_score",
+        "affordability_score",
+        "risk_compatibility_score",
+        "product_match_score",
+    ):
+        effective_weights[key] *= fit_multiplier
+    effective_weights["expected_revenue_proxy"] *= revenue_multiplier
+    total_weight = sum(effective_weights.values())
+    weights = {key: value / total_weight for key, value in effective_weights.items()}
     penalty = ranking_config["confidence_penalties"][profile.confidence_level.value]
+    commercial_fit_floor = float(ranking_config.get("commercial_fit_floor", 0.55))
     scored: list[tuple[float, int, int, BankOffer, OfferEligibilityResult, dict[str, float]]] = []
     for offer, eligibility in eligible_offers:
         if not eligibility.eligible:
             continue
-        components = _component_scores(profile, offer)
+        revenue = (revenue_estimates or {}).get(
+            offer.id, conservative_revenue_estimate(offer)
+        )
+        components = _component_scores(
+            profile,
+            offer,
+            eligibility,
+            revenue,
+            commercial_fit_floor=commercial_fit_floor,
+        )
         weighted = {name: round(components[name] * float(weight), 8) for name, weight in weights.items()}
         final_score = round(sum(weighted.values()) * float(penalty), 8)
         breakdown = {
@@ -134,6 +180,13 @@ def rank_offers(
                 + (["ML ranker unavailable; rules fallback used"] if ml_fallback else []),
                 ad_disclosure=offer.ad_label_text,
                 redirect_url=f"/v1/offers/{offer.id}/click",
+                revenue_estimate_source=(revenue_estimates or {})
+                .get(offer.id, conservative_revenue_estimate(offer))
+                .source,
+                revenue_estimate_confidence=(revenue_estimates or {})
+                .get(offer.id, conservative_revenue_estimate(offer))
+                .confidence,
+                experiment_variant=experiment_variant,
             )
         )
     return ranked

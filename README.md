@@ -191,6 +191,10 @@ Endpoints:
 - `GET /v1/offers` — безопасные публичные поля активных offers;
 - `POST /v1/offers/{offer_id}/click` — идемпотентный tracked click;
 - `POST /v1/partner/postback` — подписанный и идемпотентный partner outcome;
+- `GET /v1/analytics/commercial-summary` — protected product funnel aggregates;
+- `GET /v1/offers/quality-report` — protected offer-quality diagnostics;
+- `GET /v1/analytics/segment-opportunities` — protected underserved segments;
+- `GET /v1/analytics/event-debug` — protected metadata без raw payload;
 - `GET /metrics` — Prometheus exposition;
 - `GET /docs` — OpenAPI UI.
 
@@ -254,6 +258,7 @@ python -m src.cli monitor-drift
 - [Operations](docs/operations.md) — local SLO и triage runbook;
 - [Model artifact ADR](docs/adr/001-model-artifact-contract.md) — versioning и trust boundary.
 - [Commercial matching](docs/commercial_matching.md) — product/ML/event architecture;
+- [Commercial analytics loop](docs/commercial_matching.md#analytics-и-experiment-loop) — funnel, experiments, revenue proxy и operator boundary;
 - [Privacy-light contract](docs/privacy_light_data_contract.md) — collected/stored data;
 - [Offer ranker model card](docs/offer_ranking_model_card.md) — targets, gates и metrics;
 - [Advertising disclosure](docs/ad_disclosure.md) — referral boundary.

@@ -898,11 +898,37 @@ textarea:focus-visible,
 .offer-card-copy h3 { margin: 6px 0 2px; font-size: 15px; }
 .offer-card-copy p { margin: 0; color: var(--muted); font-size: 9px; }
 .offer-card-copy small { display: block; margin-top: 8px; color: var(--green); font-size: 8px; font-weight: 700; }
+.offer-card-copy em { display: block; margin-top: 5px; color: #646a6b; font-size: 8px; font-style: normal; }
 .offer-empty { display: flex; min-height: 150px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 28px; border: 1px dashed #c8cbc6; border-radius: 18px; color: var(--muted); text-align: center; }
 .offer-empty.initial { min-height: 430px; }
 .offer-empty strong { color: var(--ink); font-size: 13px; }
 .offer-empty span { max-width: 360px; font-size: 9px; line-height: 1.5; }
 .ad-boundary { padding: 15px 18px; border-radius: 14px; background: #f0eee5; color: #69685e; font-size: 8px; line-height: 1.55; }
+
+.commercial-stack { display: flex; flex-direction: column; gap: 20px; }
+.commercial-hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 25px; padding: 32px; border-radius: 25px; background: var(--ink); color: #fff; }
+.commercial-hero h2 { max-width: 850px; margin: 11px 0; font-size: clamp(32px, 4vw, 52px); line-height: 1; letter-spacing: -2.4px; }
+.commercial-hero p { max-width: 760px; margin: 0; color: #9da4a5; font-size: 11px; line-height: 1.6; }
+.operator-boundary { display: flex; flex: 0 0 auto; align-items: center; gap: 8px; padding: 12px 15px; border: 1px solid #3a4143; border-radius: 999px; color: var(--lime); font-size: 9px; }
+.commercial-state { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 76px; border: 1px dashed #c9ccc7; border-radius: 15px; color: var(--muted); font-size: 11px; }
+.commercial-metrics { display: grid; grid-template-columns: repeat(4, minmax(130px, 1fr)); gap: 12px; }
+.commercial-metrics article { padding: 19px; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+.commercial-metrics span, .commercial-metrics strong { display: block; }
+.commercial-metrics span { color: var(--muted); font-size: 9px; }
+.commercial-metrics strong { margin-top: 7px; font-size: 23px; letter-spacing: -0.7px; }
+.commercial-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.commercial-panel { min-width: 0; }
+.commercial-table { margin-top: 18px; }
+.commercial-row { display: grid; grid-template-columns: minmax(150px, 1fr) 65px minmax(130px, 1fr) 130px; align-items: center; gap: 11px; min-height: 62px; border-top: 1px solid #ecece7; font-size: 9px; }
+.commercial-row.segment, .commercial-row.event { grid-template-columns: minmax(180px, 1fr) 80px 145px; }
+.commercial-row strong, .commercial-row small { display: block; }
+.commercial-row strong { font-size: 10px; }
+.commercial-row small { margin-top: 4px; color: #969b9c; font-size: 8px; }
+.commercial-row > span { color: var(--green); font-weight: 750; }
+.commercial-row > b { color: #6e7475; font-family: var(--font-mono); font-size: 7px; font-weight: 600; overflow-wrap: anywhere; }
+.quality-flags { display: flex; flex-wrap: wrap; gap: 4px; }
+.quality-flags i { padding: 4px 6px; border-radius: 6px; background: var(--red-soft); color: #8e3b35; font-size: 7px; font-style: normal; }
+.quality-flags i.ok { background: var(--green-soft); color: var(--green); }
 
 .mobile-nav { display: none; }
 .spin { animation: spin 0.9s linear infinite; }
@@ -942,6 +968,9 @@ textarea:focus-visible,
   .score-layout,
   .model-grid { grid-template-columns: 1fr; }
   .offers-layout { grid-template-columns: 1fr; }
+  .commercial-grid { grid-template-columns: 1fr; }
+  .commercial-metrics { grid-template-columns: repeat(2, 1fr); }
+  .commercial-hero { align-items: flex-start; flex-direction: column; }
   .offers-intro { align-items: flex-start; flex-direction: column; }
   .score-result { position: static; }
   .personal-summary { position: static; }
@@ -1007,6 +1036,9 @@ textarea:focus-visible,
   .profile-summary-grid { grid-template-columns: repeat(2, 1fr); }
   .offer-card { grid-template-columns: auto 1fr; }
   .offer-card .button { grid-column: 1 / -1; width: 100%; }
+  .commercial-row { grid-template-columns: 1fr auto; padding: 12px 0; }
+  .commercial-row .quality-flags { grid-column: 1 / -1; }
+  .commercial-row > b { grid-column: 1 / -1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

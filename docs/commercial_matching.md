@@ -18,6 +18,7 @@ Commercial extension превращает скоринг из изолирова
   -> прозрачные eligibility rules
   -> deterministic ranker (production default)
   -> impression -> tracked click -> signed partner postback
+  -> analytics/quality/segment loop
   -> offline ranking dataset -> optional ML ranker
 ```
 
@@ -32,6 +33,12 @@ Credit-risk модель и offer ranker решают разные задачи.
 - `src/offers/risk_profile.py` — ограниченный адаптер bundle с безопасной деградацией;
 - `src/offers/eligibility.py` — блокирующие и мягкие правила с reason codes;
 - `src/offers/ranking.py` — rules formula и opt-in загрузка ML artifact;
+- `src/offers/revenue.py` — conservative priors, smoothed history и revenue proxy;
+- `src/offers/analytics.py` — funnel, CTR, conversion и recorded revenue aggregates;
+- `src/offers/quality.py` — operator flags для copy/rules/partner data;
+- `src/offers/segment_analysis.py` — privacy-light underserved segment report;
+- `src/offers/experiments.py` — deterministic session-hash assignment;
+- `src/offers/partners/` — интерфейс partner adapter и demo-реализация;
 - `src/offers/service.py` — транзакции profile/impression/click/postback;
 - `src/offers/training_dataset.py` — одна строка на impression без row explosion;
 - `src/offers/train_offer_ranker.py` — group split по profile и data sufficiency gate;
@@ -46,9 +53,13 @@ Credit-risk модель и offer ranker решают разные задачи.
 - `POST /v1/offers/{offer_id}/click` — уникальный click и partner URL;
 - `POST /v1/partner/postback` — HMAC-SHA256, нормализованные outcome fields и
   идемпотентность по `postback_id` либо `(click_id, status)`.
+- `GET /v1/analytics/commercial-summary` — internal funnel/revenue aggregates;
+- `GET /v1/offers/quality-report` — internal offer quality diagnostics;
+- `GET /v1/analytics/segment-opportunities` — internal underserved segments;
+- `GET /v1/analytics/event-debug` — click/postback metadata без raw payload.
 
-`/v1/profile/score` вычисляет результат без долговременной записи. `/v1/offers/match`
-сохраняет только band-level профиль и связанные impression events. Partner endpoint
+`/v1/profile/score` сохраняет только безопасные funnel event types, но не профильный
+payload. `/v1/offers/match` сохраняет band-level профиль и связанные impression events. Partner endpoint
 использует отдельный `PARTNER_POSTBACK_SECRET`, а не browser API key.
 
 ## Ранжирование
@@ -56,12 +67,15 @@ Credit-risk модель и offer ranker решают разные задачи.
 До появления достаточных outcome data production default — `OFFER_RANKER_MODE=rules`:
 
 ```text
-0.30 user fit + 0.25 affordability fit + 0.20 risk compatibility
-+ 0.15 product match + 0.10 commercial priority
+0.28 fit + 0.22 affordability + 0.18 risk compatibility
++ 0.14 product match + 0.10 commercial priority + 0.08 expected revenue proxy
 ```
 
-Затем применяется penalty за низкую полноту профиля. Commission не входит в формулу
-напрямую и не может вернуть в выдачу предложение, заблокированное eligibility rules.
+Expected revenue proxy использует click/approval/issue priors и нормализованный
+commission proxy. История сглаживается; demo commission не влияет на порядок. При
+плохом fit commercial/revenue components дополнительно ограничиваются. Ineligible
+offer никогда не попадает в ranker. Public response не содержит weights, commission
+или revenue breakdown.
 При `OFFER_RANKER_MODE=ml` сервис загружает только versioned local artifact. Если
 артефакт отсутствует или несовместим, запрос не падает: используется rules fallback с
 явным warning.
@@ -77,6 +91,33 @@ Demo catalog содержит только `Demo Bank A/B/C` и домен `exam
 Реальный ranker допустим только после проверки sample size, temporal stability,
 calibration, top-k/segment metrics и bias/compliance review. Synthetic data подходит
 для теста pipeline, но не для заявления о production-качестве.
+
+## Analytics и experiment loop
+
+Request-level `commercial_funnel_events` хранит только event type, band dimensions,
+anonymous IDs и variant. Impression/click/postback не дублируются: аналитика читает
+существующие нормализованные таблицы. Воронка покрывает profile start/completion,
+score, match request, shown/no-offer, click, application outcomes, issued и recorded
+revenue. Raw profile и raw postback body в analytics storage отсутствуют.
+
+Эксперимент назначается детерминированно по hash `anonymous_session_id`. По умолчанию
+`configs/experiments.yaml` выключен и 100% трафика использует `rules_v1`. Варианты
+меняют только ограниченные fit/revenue multipliers; eligibility остаётся неизменным.
+Experiment metrics являются продуктовой аналитикой, а не метриками банковского
+одобрения.
+
+## Partner abstraction и защита
+
+`PartnerAdapter` разделяет affiliate URL, HMAC verification, postback normalization и
+public disclosure. В репозитории реализован только `DemoPartnerAdapter`; реальные
+network adapters, credentials и external calls отсутствуют. `configs/partners.yaml`
+содержит только названия env variables. Enabled non-demo partner без secret считается
+configuration error.
+
+Public commercial endpoints защищены single-process sliding-window limiter. Он
+подходит для local/demo, но не синхронизируется между репликами. Публичный deployment
+обязан добавить reverse proxy/WAF или Redis-backed rate limiting. Operator analytics
+fail closed без server-side API key и доступны frontend только через BFF.
 
 ## Ограничения
 

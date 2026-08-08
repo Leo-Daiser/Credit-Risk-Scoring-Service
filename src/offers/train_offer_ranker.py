@@ -26,6 +26,7 @@ EXCLUDED_COLUMNS = {
     "approved_flag",
     "issued_flag",
     "commission_amount",
+    "experiment_variant",
 }
 
 

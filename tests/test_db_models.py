@@ -131,6 +131,7 @@ def test_commercial_tables_have_idempotency_and_query_indexes(audit_engine):
         "offer_impressions",
         "offer_clicks",
         "partner_postbacks",
+        "commercial_funnel_events",
     } <= set(inspector.get_table_names())
     click_uniques = inspector.get_unique_constraints(OfferClick.__tablename__)
     assert any(item["column_names"] == ["click_id"] for item in click_uniques)
@@ -148,3 +149,11 @@ def test_commercial_tables_have_idempotency_and_query_indexes(audit_engine):
         item["name"] for item in inspector.get_check_constraints(PartnerPostback.__tablename__)
     }
     assert "ck_partner_postbacks_status" in postback_checks
+    impression_columns = {
+        item["name"] for item in inspector.get_columns("offer_impressions")
+    }
+    click_columns = {item["name"] for item in inspector.get_columns("offer_clicks")}
+    offer_columns = {item["name"] for item in inspector.get_columns("bank_offers")}
+    assert "experiment_variant" in impression_columns
+    assert "experiment_variant" in click_columns
+    assert {"partner_id", "expires_at"} <= offer_columns
