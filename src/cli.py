@@ -246,6 +246,8 @@ def cmd_prepare_local_ml() -> None:
     print(f"Offer Outcome Ranker: {report['offer_ranker']['status']}")
     if report.get("source_dataset"):
         print(f"Configured training source: {report['source_dataset']}")
+    for warning in report.get("warnings", []):
+        print(f"WARNING: {warning}")
     for error in report["errors"]:
         print(f"ERROR: {error}")
     if not report["ok"]:

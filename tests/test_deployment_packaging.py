@@ -15,6 +15,15 @@ from src import cli
 from src.core.config import Settings
 from src.core.runtime import tracked_generated_artifacts
 from src.db.base import Base
+from src.offers.constraints import (
+    PUBLIC_AGE_MAX,
+    PUBLIC_AGE_MIN,
+    PUBLIC_AMOUNT_MAX,
+    PUBLIC_EMPLOYMENT_YEARS_MAX,
+    PUBLIC_EXISTING_PAYMENTS_MAX,
+    PUBLIC_TERM_MAX_MONTHS,
+    PUBLIC_TERM_MIN_MONTHS,
+)
 from src.services.demo_setup import setup_demo, verify_demo
 from src.services.local_ml import prepare_local_ml
 
@@ -25,13 +34,43 @@ def test_artifact_tracking_check_skips_minimal_image_without_git_metadata(tmp_pa
     assert tracked_generated_artifacts(tmp_path) == []
 
 
-def test_env_example_is_consistent_for_local_compose():
+def test_env_example_is_consistent_for_local_compose(monkeypatch):
+    # Pydantic settings deliberately gives process environment precedence over
+    # an env file.  CI exports DATABASE_URL for integration tests, so isolate
+    # this contract test from the runner before loading .env.example.
+    for name in (
+        "DATABASE_URL",
+        "POSTGRES_USER",
+        "POSTGRES_PASSWORD",
+        "POSTGRES_DB",
+        "POSTGRES_HOST",
+        "POSTGRES_PORT",
+    ):
+        monkeypatch.delenv(name, raising=False)
     config = Settings(_env_file=ROOT / ".env.example")
     assert config.app_env == "local"
     assert config.database_url is None
     assert config.resolved_database_url == (
         "postgresql+psycopg2://credit_user:credit_pass@db:5432/credit_risk"
     )
+
+
+def test_frontend_public_limits_match_backend_contract():
+    source = (ROOT / "frontend/app/lib/public-profile-constraints.ts").read_text(
+        encoding="utf-8"
+    )
+    expected = {
+        "ageMin": PUBLIC_AGE_MIN,
+        "ageMax": PUBLIC_AGE_MAX,
+        "amountMax": int(PUBLIC_AMOUNT_MAX),
+        "termMinMonths": PUBLIC_TERM_MIN_MONTHS,
+        "termMaxMonths": PUBLIC_TERM_MAX_MONTHS,
+        "employmentYearsMax": int(PUBLIC_EMPLOYMENT_YEARS_MAX),
+        "existingPaymentsMax": int(PUBLIC_EXISTING_PAYMENTS_MAX),
+    }
+    compact = source.replace("_", "")
+    for name, value in expected.items():
+        assert f"{name}: {value}" in compact
 
 
 def test_compose_migration_gate_prevents_api_restart_loop():

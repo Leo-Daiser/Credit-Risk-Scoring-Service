@@ -165,7 +165,7 @@ function ExampleResult() {
         <div><span>Нагрузка</span><b>31%</b></div>
         <div><span>Предложения</span><b>4</b></div>
       </div>
-      <div className="preview-insight"><CheckCircle2 size={17} /><span>Умеренная текущая нагрузка и хороший запас дохода</span></div>
+      <div className="preview-insight"><CheckCircle2 size={17} /><span>В примере кредитные платежи занимают умеренную долю указанного дохода</span></div>
       <div className="preview-insight is-improvement"><Sparkles size={17} /><span>Уменьшение суммы может сделать сценарий устойчивее</span></div>
       <small>Это статический пример, а не результат реального пользователя.</small>
     </article>

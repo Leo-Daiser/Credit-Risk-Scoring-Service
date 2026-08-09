@@ -116,11 +116,22 @@ def build_improvement_scenarios(
     scenarios.sort(
         key=lambda item: (
             -(item.eligible_offer_count - baseline_eligible),
-            -(item.riskline_index or 0),
+            -((baseline.pti_value or 0) - (item.pti_value or 0)),
+            -(baseline.estimated_monthly_payment - item.estimated_monthly_payment),
+            -((item.riskline_index or 0) - (baseline.riskline_index or 0)),
             item.scenario_id,
         )
     )
-    return scenarios[:4]
+    # Show the strongest measurable option for each lever.  Three visually
+    # different cards are more useful than several near-identical amount cuts.
+    diverse: list[ImprovementScenario] = []
+    used_factors: set[str] = set()
+    for scenario in scenarios:
+        if scenario.factor in used_factors:
+            continue
+        diverse.append(scenario)
+        used_factors.add(scenario.factor)
+    return diverse[:3]
 
 
 def amount_band(amount: float) -> AmountBand:
@@ -174,18 +185,6 @@ def _candidates(amount: float, term: int, payments: float) -> list[_Candidate]:
                 )
             )
             break
-    if payments > 0:
-        candidates.append(
-            _Candidate(
-                "payments-refinance",
-                "refinance",
-                "Проверить рефинансирование",
-                amount,
-                term,
-                round(payments * 0.7 / 1_000) * 1_000,
-                "Это сценарий для сравнения, а не обещание снизить действующий платёж.",
-            )
-        )
     return candidates
 
 

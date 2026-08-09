@@ -17,6 +17,7 @@ export type PublicEventType =
   | "scenario_applied"
   | "offers_viewed"
   | "recommended_offer_viewed"
+  | "no_eligible_offers_viewed"
   | "offer_clicked"
   | "partner_transition_viewed";
 

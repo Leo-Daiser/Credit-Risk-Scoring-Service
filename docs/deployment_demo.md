@@ -108,6 +108,19 @@ For demo mode HMAC coverage:
 python scripts/smoke_public_demo.py --base-url http://localhost:8000 --frontend-url http://localhost:3000 --mode demo --postback-secret "<demo-secret>"
 ```
 
+Run the browser E2E after the services are healthy:
+
+```powershell
+cd frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
+The suite must pass in desktop and mobile projects. A local model-enabled run also
+asserts that the public result is genuinely personalized; artifact-free CI keeps
+the same browser path but accepts the explicitly labelled rules fallback because
+model artifacts are intentionally absent from Git.
+
 The script checks the assessment entry route, uses a band-only profile, tests matching/click tracking, and confirms
 that operator pages, operator BFF, docs, OpenAPI, metrics and runtime diagnostics
 are hidden in public mode. It never prints a supplied postback secret.

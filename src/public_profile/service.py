@@ -13,6 +13,13 @@ from src.public_profile.bundle import PublicProfileModelBundle
 from src.public_profile.explainability import explain_public_profile, safe_factor_payload
 from src.public_profile.mapping import public_feature_row
 
+RISKLINE_INDEX_MODEL_MIN = 20.0
+RISKLINE_INDEX_MODEL_MAX = 90.0
+RISKLINE_INDEX_OUTPUT_MIN = 10
+RISKLINE_INDEX_OUTPUT_MAX = 95
+RISKLINE_INDEX_PTI_REFERENCE = 0.35
+RISKLINE_INDEX_PTI_PENALTY_PER_UNIT = 35.0
+
 
 @dataclass(frozen=True)
 class PublicProfileAssessment:
@@ -79,12 +86,9 @@ class PublicProfileScoringService:
             profile.age is not None,
             profile.monthly_income is not None,
             profile.employment_years is not None,
-            profile.family_members is not None,
-            profile.housing_type.value != "unknown",
-            profile.owns_car is not None,
-            profile.owns_realty is not None,
             profile.requested_amount is not None,
             profile.existing_monthly_payments is not None,
+            profile.employment_type.value != "unknown",
         ]
         coverage = round(0.55 + 0.45 * sum(supplied) / len(supplied), 4)
         limitations_payload = [safe_factor_payload(item) for item in limitations]
@@ -123,9 +127,24 @@ class PublicProfileScoringService:
             normalized = 0.5
         else:
             normalized = 1.0 - min(max((probability - low) / (high - low), 0.0), 1.0)
-        model_index = 20.0 + normalized * 70.0
-        affordability_penalty = max(pti - 0.35, 0.0) * 35.0
-        return int(round(min(max(model_index - affordability_penalty, 10.0), 95.0)))
+        model_index = RISKLINE_INDEX_MODEL_MIN + normalized * (
+            RISKLINE_INDEX_MODEL_MAX - RISKLINE_INDEX_MODEL_MIN
+        )
+        affordability_penalty = (
+            max(pti - RISKLINE_INDEX_PTI_REFERENCE, 0.0)
+            * RISKLINE_INDEX_PTI_PENALTY_PER_UNIT
+        )
+        return int(
+            round(
+                min(
+                    max(
+                        model_index - affordability_penalty,
+                        RISKLINE_INDEX_OUTPUT_MIN,
+                    ),
+                    RISKLINE_INDEX_OUTPUT_MAX,
+                )
+            )
+        )
 
 
 def _profile_band(index: int) -> str:

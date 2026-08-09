@@ -47,6 +47,20 @@ migration fails, inspect `docker compose logs migrate`; the API remains stopped 
 of repeatedly restarting. After pulling a commit with new migration files, keep
 `--build` so the migration image cannot remain stale.
 
+After the stack is healthy, run the actual browser contract rather than relying on
+server-rendered HTML tests alone:
+
+```powershell
+cd frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
+Playwright uses the running demo API/frontend, two viewports, axe-core and a real
+tracked-transition dialog. Reports under `frontend/test-results` and
+`frontend/playwright-report` are temporary and excluded from Git and Docker build
+contexts.
+
 If the deployment enables `API_KEY`, expose it only in the current process
 environment before running the command:
 

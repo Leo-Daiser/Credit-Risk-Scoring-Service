@@ -20,13 +20,13 @@ export async function generateMetadata(): Promise<Metadata> {
       title,
       description,
       type: "website",
-      images: [{ url: `${origin}/og.png`, width: 1536, height: 1024 }],
+      images: [{ url: `${origin}/riskline-social-preview.png`, width: 1536, height: 1024 }],
     },
     twitter: {
       card: "summary_large_image",
       title,
       description,
-      images: [`${origin}/og.png`],
+      images: [`${origin}/riskline-social-preview.png`],
     },
   };
 }

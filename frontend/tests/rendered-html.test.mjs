@@ -105,14 +105,19 @@ test("operator score route keeps the internal model questionnaire and JSON mode"
 test("public calculator does not expose raw model or operator controls", async () => {
   const response = await render("/score");
   const html = await response.text();
+  const source = await readFile(
+    new URL("../app/components/CalculatorWorkspace.tsx", import.meta.url),
+    "utf8",
+  );
   assert.match(html, /Расчёт без регистрации/);
   assert.match(html, /никуда не отправляются/);
-  assert.match(html, /Всего к возврату/);
-  assert.match(html, /Переплата/);
-  assert.match(html, /Долговая нагрузка/);
-  assert.match(html, /Оценить профиль и подобрать предложения/);
-  assert.match(html, /Остаток бюджета/);
-  assert.match(html, /calculator-primary-fact/);
+  assert.match(source, /Всего к возврату/);
+  assert.match(source, /Переплата/);
+  assert.match(source, /Долговая нагрузка/);
+  assert.match(source, /Оценить профиль и подобрать предложения/);
+  assert.match(source, /После кредитных платежей/);
+  assert.match(source, /calculator-primary-fact/);
+  assert.doesNotMatch(html, /value="450000"|value="120000"|value="24"/);
   assert.doesNotMatch(html, /Экспертный JSON|Feature payload|audit log/);
 });
 
@@ -228,6 +233,12 @@ test("privacy-light offer matching exposes consent and advertising boundaries", 
   assert.match(source, /Текущая финансовая нагрузка/);
   assert.match(source, /Проверьте данные/);
   assert.match(source, /Получить оценку/);
+  assert.match(source, /Есть действующие кредитные платежи/);
+  assert.match(source, /Кредитная история — по вашей оценке/);
+  assert.match(source, /const \[ageDraft, setAgeDraft\] = useState\(""\)/);
+  assert.match(source, /const \[employmentDraft, setEmploymentDraft\] = useState\(""\)/);
+  assert.doesNotMatch(source, /label="Жильё/);
+  assert.doesNotMatch(html, /value="34"|value="450000"|value="120000"|value="24"/);
 });
 
 test("public pages contain no portfolio or raw technical showcase wording", async () => {
@@ -300,8 +311,8 @@ test("offer flow renders ML profile value, safe explanations and what-if control
     "utf8",
   );
   assert.match(source, /Riskline Index/);
-  assert.match(source, /Сильные стороны/);
-  assert.match(source, /Что ограничивает/);
+  assert.match(source, /Что помогает текущему сценарию/);
+  assert.match(source, /Что ограничивает текущий сценарий/);
   assert.match(source, /Как можно улучшить сценарий/);
   assert.match(source, /Интерактивный сценарий/);
   assert.match(source, /Расчёт по условиям предложения/);

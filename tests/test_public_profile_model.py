@@ -6,6 +6,7 @@ from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -23,7 +24,7 @@ from src.offers.repository import OfferRepository
 from src.offers.scenarios import build_improvement_scenarios
 from src.offers.schemas import CreditProfileInput
 from src.offers.service import build_profile_result
-from src.public_profile.bundle import PublicProfileModelBundle
+from src.public_profile.bundle import PUBLIC_BUNDLE_FORMAT_VERSION, PublicProfileModelBundle
 from src.public_profile.mapping import (
     PUBLIC_CATEGORICAL_FEATURES,
     PUBLIC_FEATURES,
@@ -56,7 +57,7 @@ def public_bundle() -> PublicProfileModelBundle:
     return PublicProfileModelBundle(
         model=DeterministicPublicEstimator(),
         metadata={
-            "bundle_format_version": 1,
+            "bundle_format_version": PUBLIC_BUNDLE_FORMAT_VERSION,
             "model_name": "Riskline Public Profile Model",
             "model_version": "public-test-v1",
             "training_source": "synthetic estimator for contract tests",
@@ -80,12 +81,7 @@ def public_bundle() -> PublicProfileModelBundle:
                 name: 0.25 if name.endswith("ratio") or name == "pti" else 1.0
                 for name in PUBLIC_NUMERIC_FEATURES
             },
-            "categorical_modes": {
-                "employment_type": "employee",
-                "housing_type": "owned",
-                "owns_car": "no",
-                "owns_realty": "yes",
-            },
+            "categorical_modes": {"employment_type": "employee"},
             "probability_quantiles": {
                 "q05": 0.05,
                 "q25": 0.15,
@@ -168,17 +164,15 @@ def test_mapper_uses_normalized_contract_and_explanations_hide_feature_ids():
             "current_payments",
             "income_level",
             "employment_stability",
-            "household_budget",
             "employment_context",
-            "housing_context",
-            "age_context",
-            "household_context",
-            "family_context",
         }
         for factor in assessment.strengths + assessment.limiting_factors
     )
     assert all(item["actionable"] for item in assessment.actionable_factors)
     assert all(item["code"] not in {"age_context", "family_context"} for item in assessment.actionable_factors)
+    assert "семейн" not in public_payload.lower()
+    assert "жилищ" not in public_payload.lower()
+    assert all(item["source"] == "ml_explanation" for item in assessment.strengths + assessment.limiting_factors)
 
 
 def test_home_credit_adapter_produces_provider_neutral_training_row():
@@ -192,11 +186,6 @@ def test_home_credit_adapter_produces_provider_neutral_training_row():
             "AMT_CREDIT": 500_000,
             "AMT_ANNUITY": 20_000,
             "NAME_INCOME_TYPE": "Working",
-            "NAME_HOUSING_TYPE": "House / apartment",
-            "CNT_FAM_MEMBERS": 3,
-            "CNT_CHILDREN": 1,
-            "FLAG_OWN_CAR": "N",
-            "FLAG_OWN_REALTY": "Y",
         }]
     )
     normalized = HomeCreditPublicTrainingAdapter().transform(raw)
@@ -204,7 +193,35 @@ def test_home_credit_adapter_produces_provider_neutral_training_row():
     assert set(PUBLIC_FEATURES + ["profile_row_id", "target"]) == set(normalized.columns)
     assert normalized.loc[0, "employment_type"] == "employee"
     assert normalized.loc[0, "target"] == 0
+    assert normalized.loc[0, "age"] == pytest.approx(36, abs=0.1)
+    assert normalized.loc[0, "employment_years"] == pytest.approx(7, abs=0.1)
+    assert normalized.loc[0, "monthly_income"] == pytest.approx(130_000)
+    assert normalized.loc[0, "credit_income_ratio"] == pytest.approx(
+        500_000 / 1_560_000
+    )
+    assert normalized.loc[0, "annuity_income_ratio"] == pytest.approx(
+        20_000 / 130_000
+    )
+    assert normalized.loc[0, "pti"] == pytest.approx(20_000 / 130_000)
     assert set(PublicProfileTrainingRow.model_fields) == set(normalized.columns)
+
+
+def test_public_mapper_does_not_invent_household_economics():
+    mapped = public_feature_row(
+        profile(family_members=8, children=5, housing_type="rent")
+    )
+    assert "family_members" not in mapped
+    assert "children" not in mapped
+    assert "income_per_family_member" not in mapped
+    assert "housing_type" not in mapped
+
+
+def test_riskline_index_direction_and_fallback_are_stable():
+    service = PublicProfileScoringService(public_bundle())
+    assert service._riskline_index(0.1, 0.2) > service._riskline_index(0.6, 0.2)
+    assert service._riskline_index(0.2, 0.2) > service._riskline_index(0.2, 0.8)
+    fallback = build_profile_result(profile(), None)
+    assert fallback.riskline_index is None
 
 
 def test_counterfactual_changes_profile_and_demo_provider_contract():
@@ -236,12 +253,43 @@ def test_counterfactual_changes_profile_and_demo_provider_contract():
         assert scenarios
         assert any(item.pti_value < baseline.pti_value for item in scenarios if item.pti_value is not None)
         assert any(item.riskline_index != baseline.riskline_index for item in scenarios)
+        assert len({item.factor for item in scenarios}) == len(scenarios)
+        assert all(item.factor != "refinance" for item in scenarios)
+        for item in scenarios:
+            if item.factor == "amount":
+                assert "меньше" in item.trade_off.lower()
+            if item.factor == "term":
+                assert "переплата" in item.trade_off.lower()
         calculation = calculate_offer_terms(
             baseline_profile, provider.list_offers()[0].record
         )
         assert calculation.monthly_payment_min is not None
         assert calculation.monthly_payment_max >= calculation.monthly_payment_min
         assert calculation.full_cost_range_text
+
+
+def test_explanations_do_not_turn_demographics_into_advice():
+    assessment = PublicProfileScoringService(public_bundle()).score(
+        profile(age=61, age_band="60_plus", family_members=7, children=4)
+    )
+    factors = assessment.strengths + assessment.limiting_factors
+    assert all(item["code"] not in {"age_context", "family_context"} for item in factors)
+    assert all("возраст" not in item["message"].lower() for item in factors)
+    assert all("сем" not in item["message"].lower() for item in factors)
+
+
+def test_zero_existing_debt_does_not_duplicate_payment_share_and_pti_factors():
+    assessment = PublicProfileScoringService(public_bundle()).score(
+        profile(
+            existing_monthly_payments=0,
+            existing_monthly_payments_band="zero",
+        )
+    )
+    codes = {
+        item["code"]
+        for item in assessment.strengths + assessment.limiting_factors
+    }
+    assert not {"new_payment_share", "debt_load"}.issubset(codes)
 
 
 def test_model_risk_signal_materially_changes_offer_compatibility():
@@ -323,3 +371,114 @@ def test_public_matching_api_uses_model_and_hides_internal_probability():
     assert body["offers"]
     assert body["offers"][0]["calculation"]["monthly_payment_min"] is not None
     assert "commission" not in str(body).lower()
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        {
+            "monthly_income": 300_000,
+            "income_band": "gt_250k",
+            "requested_amount": 600_000,
+            "requested_amount_band": "300k_700k",
+            "existing_monthly_payments": 0,
+            "existing_monthly_payments_band": "zero",
+        },
+        {
+            "monthly_income": 40_000,
+            "income_band": "lt_50k",
+            "requested_amount": 1_200_000,
+            "requested_amount_band": "700k_1_5m",
+            "existing_monthly_payments": 35_000,
+            "existing_monthly_payments_band": "30k_60k",
+        },
+        {"employment_years": 0.1},
+        {"credit_history_band": "no_history"},
+        {
+            "loan_purpose": "refinance",
+            "existing_monthly_payments": 25_000,
+            "existing_monthly_payments_band": "10k_30k",
+        },
+        {"age": 74, "age_band": "60_plus", "employment_type": "pensioner"},
+    ],
+    ids=[
+        "high-income-low-debt",
+        "low-income-high-amount",
+        "short-tenure",
+        "no-credit-history",
+        "refinance-context",
+        "near-product-age-limit",
+    ],
+)
+def test_product_qa_personas_remain_semantically_safe(case):
+    candidate = profile(**case)
+    service = PublicProfileScoringService(public_bundle())
+    result = build_profile_result(candidate, service)
+    public_copy = str(result.strengths + result.limiting_factors).lower()
+
+    assert result.model_available is True
+    assert result.riskline_index is not None
+    assert 10 <= result.riskline_index <= 95
+    assert result.pti_value is None or math.isfinite(result.pti_value)
+    assert "amt_" not in public_copy
+    assert "days_" not in public_copy
+    assert "вероятность одобрения" not in public_copy
+    assert all(
+        factor.code not in {"age_context", "family_context"}
+        for factor in result.actionable_factors
+    )
+
+
+@pytest.mark.parametrize(
+    "candidate",
+    [
+        profile(
+            age=18,
+            age_band="18_21",
+            monthly_income=1,
+            income_band="lt_50k",
+            employment_type="unemployed",
+            employment_years=0,
+            requested_amount=10_000_000,
+            requested_amount_band="gt_1_5m",
+            term_months=3,
+            existing_monthly_payments=70_000,
+            existing_monthly_payments_band="gt_60k",
+            credit_history_band="unknown",
+        ),
+        profile(
+            age=75,
+            age_band="60_plus",
+            monthly_income=10_000_000,
+            income_band="gt_250k",
+            employment_type="pensioner",
+            employment_years=0,
+            requested_amount=1,
+            requested_amount_band="lt_100k",
+            term_months=120,
+            existing_monthly_payments=0,
+            existing_monthly_payments_band="zero",
+            credit_history_band="no_history",
+        ),
+    ],
+    ids=["maximum-load", "opposite-boundaries"],
+)
+def test_adversarial_boundary_profiles_fail_gracefully(candidate):
+    result = build_profile_result(
+        candidate,
+        PublicProfileScoringService(public_bundle()),
+    )
+    assert result.riskline_index is not None
+    assert 10 <= result.riskline_index <= 95
+    assert result.pti_value is not None and math.isfinite(result.pti_value)
+    assert result.estimated_monthly_payment is not None
+    assert result.estimated_monthly_payment >= 0
+
+
+def test_exact_values_must_match_bands_and_tenure_must_be_plausible():
+    with pytest.raises(ValueError, match="monthly_income does not match income_band"):
+        profile(monthly_income=1, income_band="100k_150k")
+    with pytest.raises(ValueError, match="requested_amount does not match"):
+        profile(requested_amount=10_000_000, requested_amount_band="lt_100k")
+    with pytest.raises(ValueError, match="employment_years is not plausible"):
+        profile(age=18, age_band="18_21", employment_years=20)

@@ -63,11 +63,6 @@ def build_normalized_training_dataset(
         "AMT_CREDIT",
         "AMT_ANNUITY",
         "NAME_INCOME_TYPE",
-        "NAME_HOUSING_TYPE",
-        "CNT_FAM_MEMBERS",
-        "CNT_CHILDREN",
-        "FLAG_OWN_CAR",
-        "FLAG_OWN_REALTY",
     ]
     raw = pd.read_csv(source, usecols=columns)
     max_rows = int(config["source"].get("max_rows") or 0)
@@ -186,7 +181,7 @@ def train_public_profile_model(
     version_digest = sha256(
         json.dumps(version_manifest, sort_keys=True, ensure_ascii=True).encode()
     ).hexdigest()[:12]
-    version = f"riskline-public-v1-{selected_name}-{version_digest}"
+    version = f"riskline-public-v2-{selected_name}-{version_digest}"
     bundle = PublicProfileModelBundle(
         model=calibrated,
         metadata={

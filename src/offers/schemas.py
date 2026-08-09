@@ -5,6 +5,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from src.offers.constraints import (
+    PUBLIC_AGE_MAX,
+    PUBLIC_AGE_MIN,
+    PUBLIC_AMOUNT_MAX,
+    PUBLIC_EMPLOYMENT_YEARS_MAX,
+    PUBLIC_EMPLOYMENT_YEARS_MIN,
+    PUBLIC_EXISTING_PAYMENTS_MAX,
+    PUBLIC_MONTHLY_INCOME_MAX,
+    PUBLIC_TERM_MAX_MONTHS,
+    PUBLIC_TERM_MIN_MONTHS,
+)
+
 
 class AgeBand(StrEnum):
     AGE_18_21 = "18_21"
@@ -106,22 +118,32 @@ class CreditProfileInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     age_band: AgeBand
-    age: int | None = Field(default=None, ge=18, le=75)
+    age: int | None = Field(default=None, ge=PUBLIC_AGE_MIN, le=PUBLIC_AGE_MAX)
     region: str | None = Field(default=None, min_length=1, max_length=64)
     income_band: IncomeBand
-    monthly_income: float | None = Field(default=None, gt=0, le=10_000_000)
+    monthly_income: float | None = Field(
+        default=None, gt=0, le=PUBLIC_MONTHLY_INCOME_MAX
+    )
     employment_type: EmploymentType
-    employment_years: float | None = Field(default=None, ge=0, le=60)
+    employment_years: float | None = Field(
+        default=None,
+        ge=PUBLIC_EMPLOYMENT_YEARS_MIN,
+        le=PUBLIC_EMPLOYMENT_YEARS_MAX,
+    )
     family_members: int | None = Field(default=None, ge=1, le=20)
     children: int | None = Field(default=None, ge=0, le=15)
     housing_type: HousingType = HousingType.UNKNOWN
     owns_car: bool | None = None
     owns_realty: bool | None = None
     requested_amount_band: AmountBand
-    requested_amount: float | None = Field(default=None, gt=0, le=10_000_000)
-    term_months: int = Field(ge=3, le=120)
+    requested_amount: float | None = Field(default=None, gt=0, le=PUBLIC_AMOUNT_MAX)
+    term_months: int = Field(
+        ge=PUBLIC_TERM_MIN_MONTHS, le=PUBLIC_TERM_MAX_MONTHS
+    )
     existing_monthly_payments_band: PaymentsBand
-    existing_monthly_payments: float | None = Field(default=None, ge=0, le=2_000_000)
+    existing_monthly_payments: float | None = Field(
+        default=None, ge=0, le=PUBLIC_EXISTING_PAYMENTS_MAX
+    )
     credit_history_band: CreditHistoryBand
     loan_purpose: LoanPurpose
     consent_to_process: bool
@@ -143,34 +165,62 @@ class CreditProfileInput(BaseModel):
             if not lower <= self.age <= upper:
                 raise ValueError("age does not match age_band")
         if (
+            self.age is not None
+            and self.employment_years is not None
+            and self.employment_years > max(self.age - 14, 0)
+        ):
+            raise ValueError("employment_years is not plausible for the supplied age")
+        if (
             self.family_members is not None
             and self.children is not None
             and self.children >= self.family_members
         ):
             raise ValueError("children must be fewer than family_members")
-        amount_ranges = {
-            AmountBand.LT_100K: (0, 100_000),
-            AmountBand.FROM_100K_TO_300K: (100_000, 300_000),
-            AmountBand.FROM_300K_TO_700K: (300_000, 700_000),
-            AmountBand.FROM_700K_TO_1_5M: (700_000, 1_500_000),
-            AmountBand.GT_1_5M: (1_500_000, 10_000_000),
-        }
         if self.requested_amount is not None:
-            lower, upper = amount_ranges[self.requested_amount_band]
-            if not lower <= self.requested_amount <= upper:
+            expected_amount_band = (
+                AmountBand.LT_100K
+                if self.requested_amount < 100_000
+                else AmountBand.FROM_100K_TO_300K
+                if self.requested_amount <= 300_000
+                else AmountBand.FROM_300K_TO_700K
+                if self.requested_amount <= 700_000
+                else AmountBand.FROM_700K_TO_1_5M
+                if self.requested_amount <= 1_500_000
+                else AmountBand.GT_1_5M
+            )
+            if self.requested_amount_band is not expected_amount_band:
                 raise ValueError("requested_amount does not match requested_amount_band")
-        payment_ranges = {
-            PaymentsBand.ZERO: (0, 0),
-            PaymentsBand.LT_10K: (0, 10_000),
-            PaymentsBand.FROM_10K_TO_30K: (10_000, 30_000),
-            PaymentsBand.FROM_30K_TO_60K: (30_000, 60_000),
-            PaymentsBand.GT_60K: (60_000, 2_000_000),
-        }
+        if self.monthly_income is not None:
+            if self.income_band is IncomeBand.UNKNOWN:
+                raise ValueError("exact income cannot be supplied with an unknown band")
+            expected_income_band = (
+                IncomeBand.LT_50K
+                if self.monthly_income < 50_000
+                else IncomeBand.FROM_50K_TO_100K
+                if self.monthly_income <= 100_000
+                else IncomeBand.FROM_100K_TO_150K
+                if self.monthly_income <= 150_000
+                else IncomeBand.FROM_150K_TO_250K
+                if self.monthly_income <= 250_000
+                else IncomeBand.GT_250K
+            )
+            if self.income_band is not expected_income_band:
+                raise ValueError("monthly_income does not match income_band")
         if self.existing_monthly_payments is not None:
             if self.existing_monthly_payments_band is PaymentsBand.UNKNOWN:
                 raise ValueError("exact payments cannot be supplied with an unknown band")
-            lower, upper = payment_ranges[self.existing_monthly_payments_band]
-            if not lower <= self.existing_monthly_payments <= upper:
+            expected_payment_band = (
+                PaymentsBand.ZERO
+                if self.existing_monthly_payments == 0
+                else PaymentsBand.LT_10K
+                if self.existing_monthly_payments < 10_000
+                else PaymentsBand.FROM_10K_TO_30K
+                if self.existing_monthly_payments <= 30_000
+                else PaymentsBand.FROM_30K_TO_60K
+                if self.existing_monthly_payments <= 60_000
+                else PaymentsBand.GT_60K
+            )
+            if self.existing_monthly_payments_band is not expected_payment_band:
                 raise ValueError(
                     "existing_monthly_payments does not match its selected band"
                 )
@@ -194,6 +244,9 @@ class PublicProfileFactor(BaseModel):
     label: str
     message: str
     actionable: bool = False
+    source: Literal[
+        "financial_rule", "ml_explanation", "offer_rule", "user_reported_context"
+    ] = "ml_explanation"
 
 
 class RisklineProfileResult(BaseModel):
@@ -348,6 +401,7 @@ PublicEventType = Literal[
     "scenario_applied",
     "offers_viewed",
     "recommended_offer_viewed",
+    "no_eligible_offers_viewed",
     "offer_clicked",
     "partner_transition_viewed",
 ]

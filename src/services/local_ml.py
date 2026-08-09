@@ -44,6 +44,7 @@ def prepare_local_ml(
             "path": str(ranker_path),
         },
         "source_dataset": None,
+        "warnings": [],
         "errors": [],
     }
 
@@ -52,15 +53,19 @@ def prepare_local_ml(
             bundle = load_public_profile_bundle(public_path)
         except (OSError, TypeError, ValueError) as exc:
             report["public_model"].update(status="INVALID")
-            report["errors"].append(f"Public Profile Model is invalid: {exc}")
+            report["warnings"].append(
+                f"Existing Public Profile Model is incompatible and will be retrained: {exc}"
+            )
+        else:
+            report["public_model"].update(
+                status="AVAILABLE",
+                version=str(bundle.metadata["model_version"]),
+            )
+            report["source_dataset"] = str(
+                bundle.metadata.get("training_source") or "unknown"
+            )
+            report["ok"] = True
             return report
-        report["public_model"].update(
-            status="AVAILABLE",
-            version=str(bundle.metadata["model_version"]),
-        )
-        report["source_dataset"] = str(bundle.metadata.get("training_source") or "unknown")
-        report["ok"] = True
-        return report
 
     model_config = load_public_model_config(public_config_path)
     source_path = Path(model_config["source"]["application_train_path"])

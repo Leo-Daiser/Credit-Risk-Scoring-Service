@@ -1608,3 +1608,117 @@ textarea:focus-visible,
   .simulator-comparison { grid-template-columns: 1fr; }
   .simulator-comparison > svg { margin: 0 auto; transform: rotate(90deg); }
 }
+
+/* Public readability contract. Operator tables intentionally keep their own density. */
+.public-site-frame {
+  --public-body-size: 16px;
+  --public-secondary-size: 14px;
+  --public-meta-size: 13px;
+  --muted: #59615d;
+  color: #202723;
+  font-size: var(--public-body-size);
+  line-height: 1.55;
+}
+.public-site-frame :is(p, li) { font-size: var(--public-body-size); line-height: 1.58; }
+.public-site-frame small { font-size: var(--public-secondary-size); line-height: 1.5; }
+.public-site-frame .section-kicker,
+.public-site-frame :is(.preview-topline, .offer-rank) {
+  font-size: var(--public-meta-size);
+  line-height: 1.35;
+}
+.public-site-frame .field-label { font-size: var(--public-body-size); line-height: 1.45; }
+.public-site-frame .field-label small,
+.public-site-frame :is(.field-help, .assessment-fieldset > p, .assessment-intro > p) {
+  color: #59625d;
+  font-size: var(--public-secondary-size);
+  line-height: 1.55;
+}
+.public-site-frame :is(input, select, textarea) { min-height: 48px; font-size: 16px; }
+.public-site-frame .button { min-height: 44px; font-size: 15px; }
+.public-site-frame :is(.public-card-grid p, .trust-grid p, .public-feature p,
+  .product-value-section p, .product-value-section li, .public-final-cta p,
+  .landing-result-story p, .improvement-story p, .landing-value-list span,
+  .assessment-loading ul, .credit-history-advice p, .assessment-offers > .public-section-heading p,
+  .recommendation-explainer p, .recommendation-explainer li, .refinance-trigger,
+  .exit-recovery, .no-offers ul, .empty-copy, .pti-warning) {
+  font-size: var(--public-secondary-size);
+  line-height: 1.55;
+}
+.public-site-frame :is(.public-footer > div > p, .public-footer nav a, .public-nav a,
+  .hero-trust-row span, .check-list li, .preview-facts span, .preview-facts b,
+  .preview-offer-line, .landing-scenario-card span, .landing-scenario-card strong,
+  .assessment-progress span, .assessment-progress strong, .assessment-review-grid dt,
+  .assessment-review-grid dd, .dev-model-warning span, .profile-summary-grid span,
+  .profile-summary-grid small, .profile-warning, .profile-final-note,
+  .riskline-index-note, .factor-columns h4, .factor-line strong, .factor-line span,
+  .improvement-panel .public-section-heading p, .scenario-simulator p,
+  .improvement-grid ul, .improvement-grid p, .scenario-before-after span,
+  .scenario-before-after strong, .scenario-metric-delta dt, .scenario-metric-delta dd,
+  .simulator-comparison article > span, .simulator-comparison article > small,
+  .offer-compatibility, .offer-calculation-facts span, .offer-overpayment,
+  .offer-adjustment, .offer-range, .offer-payment span, .offer-full-cost) {
+  font-size: var(--public-secondary-size);
+  line-height: 1.5;
+}
+.public-site-frame :is(.public-footer-disclosure, .public-disclaimer p,
+  .offer-card-copy > small, .offer-card-copy i, .offer-disclosure,
+  .offer-disclosure strong, .offer-disclosure span, .landing-profile-preview > small,
+  .landing-index-row small, .landing-scenario-card small) {
+  color: #606862;
+  font-size: var(--public-meta-size);
+  line-height: 1.5;
+}
+.public-site-frame .privacy-feature :is(p, li),
+.public-site-frame .product-value-section :is(p, li) { color: #c4ccc7; }
+.public-site-frame .hero-calculation-preview :is(p, span, small) { color: #bcc5bf; }
+.public-site-frame .landing-profile-preview :is(p, span, small) { color: #c2ccc6; }
+.public-site-frame .product-value-section .section-kicker { color: var(--lime); }
+.public-site-frame :is(.improvement-story, .comparison-feature, .public-final-cta) p { color: #505b55; }
+.public-site-frame .calculator-facts dt { color: #59625d; font-size: var(--public-secondary-size); }
+.public-site-frame .model-disclaimer { color: #505a55; }
+.public-site-frame .calculator-facts dd { font-size: 19px; }
+.public-site-frame .calculator-primary-fact > span,
+.public-site-frame .calculator-primary-fact small { color: #c2cbc5; font-size: var(--public-secondary-size); }
+.public-site-frame .riskline-index span { color: #e1e8e4; font-size: var(--public-meta-size); }
+.remaining-budget-note {
+  margin: 14px 0 0;
+  padding: 13px 15px;
+  border-left: 3px solid #769486;
+  border-radius: 8px;
+  background: #f2f5f2;
+  color: #4f5a54;
+}
+.payment-choice { min-width: 0; margin: 0; padding: 0; border: 0; }
+.payment-choice legend { margin-bottom: 10px; font-size: var(--public-body-size); font-weight: 700; }
+.payment-choice > div { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.payment-choice button {
+  min-height: 50px;
+  border: 1px solid #d9ded9;
+  border-radius: 12px;
+  background: #fbfcfa;
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.payment-choice button.is-selected { border-color: #257258; background: #e8f4ed; color: #174f3d; }
+.payment-choice small { display: block; margin-top: 8px; color: #59625d; }
+.factor-line > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.factor-line b {
+  flex: 0 0 auto;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #e6ebe7;
+  color: #4d5851;
+  font-size: var(--public-meta-size);
+  font-weight: 650;
+}
+.factor-line.is-strength strong { color: #1f604b; }
+.factor-line.is-limit strong { color: #7d4b29; }
+
+@media (max-width: 720px) {
+  .public-site-frame { --public-body-size: 16px; --public-secondary-size: 14px; --public-meta-size: 13px; }
+  .public-site-frame :is(input, select, textarea) { font-size: 16px; }
+  .factor-line > div { align-items: flex-start; flex-direction: column; gap: 6px; }
+  .payment-choice > div { grid-template-columns: 1fr; }
+}

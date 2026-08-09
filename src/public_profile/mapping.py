@@ -22,8 +22,6 @@ PUBLIC_NUMERIC_FEATURES = [
     "age",
     "monthly_income",
     "employment_years",
-    "family_members",
-    "children",
     "requested_amount",
     "term_months",
     "calculated_annuity",
@@ -31,14 +29,10 @@ PUBLIC_NUMERIC_FEATURES = [
     "credit_income_ratio",
     "annuity_income_ratio",
     "pti",
-    "income_per_family_member",
     "employment_age_ratio",
 ]
 PUBLIC_CATEGORICAL_FEATURES = [
     "employment_type",
-    "housing_type",
-    "owns_car",
-    "owns_realty",
 ]
 PUBLIC_FEATURES = PUBLIC_NUMERIC_FEATURES + PUBLIC_CATEGORICAL_FEATURES
 
@@ -79,12 +73,6 @@ def public_feature_row(profile: CreditProfileInput) -> dict[str, Any]:
         if profile.employment_years is not None
         else EMPLOYMENT_YEARS_PRIOR[profile.employment_type.value]
     )
-    family_members = float(
-        profile.family_members
-        if profile.family_members is not None
-        else max((profile.children or 0) + 1, 2)
-    )
-    children = float(profile.children or 0)
     annuity = estimate_annuity_payment(
         amount,
         settings.offer_reference_annual_rate,
@@ -102,8 +90,6 @@ def public_feature_row(profile: CreditProfileInput) -> dict[str, Any]:
         "age": age,
         "monthly_income": income_value,
         "employment_years": employment_years,
-        "family_members": family_members,
-        "children": children,
         "requested_amount": float(amount),
         "term_months": float(profile.term_months),
         "calculated_annuity": float(annuity),
@@ -115,21 +101,9 @@ def public_feature_row(profile: CreditProfileInput) -> dict[str, Any]:
             float(annuity) / income_value if income_value > 0 else np.nan
         ),
         "pti": pti,
-        "income_per_family_member": (
-            income_value / family_members if income_value > 0 and family_members > 0 else np.nan
-        ),
         "employment_age_ratio": employment_years / age if age > 0 else np.nan,
         "employment_type": profile.employment_type.value,
-        "housing_type": profile.housing_type.value,
-        "owns_car": _boolean_category(profile.owns_car),
-        "owns_realty": _boolean_category(profile.owns_realty),
     }
-
-
-def _boolean_category(value: bool | None) -> str:
-    if value is None:
-        return "unknown"
-    return "yes" if value else "no"
 
 
 def estimate_term_months(
@@ -162,11 +136,6 @@ def home_credit_to_public_training(raw: pd.DataFrame) -> pd.DataFrame:
         "AMT_CREDIT",
         "AMT_ANNUITY",
         "NAME_INCOME_TYPE",
-        "NAME_HOUSING_TYPE",
-        "CNT_FAM_MEMBERS",
-        "CNT_CHILDREN",
-        "FLAG_OWN_CAR",
-        "FLAG_OWN_REALTY",
     }
     missing = sorted(required - set(raw.columns))
     if missing:
@@ -177,8 +146,6 @@ def home_credit_to_public_training(raw: pd.DataFrame) -> pd.DataFrame:
     employment_years = (-employment_days / 365.25).where(employment_days < 0, 0).clip(0, 65)
     amount = pd.to_numeric(raw["AMT_CREDIT"], errors="coerce")
     annuity = pd.to_numeric(raw["AMT_ANNUITY"], errors="coerce")
-    family = pd.to_numeric(raw["CNT_FAM_MEMBERS"], errors="coerce").clip(1, 20)
-    children = pd.to_numeric(raw["CNT_CHILDREN"], errors="coerce").clip(0, 15)
     term = estimate_term_months(amount, annuity)
     existing = pd.Series(0.0, index=raw.index)
     pti = (annuity + existing) / monthly_income
@@ -188,8 +155,6 @@ def home_credit_to_public_training(raw: pd.DataFrame) -> pd.DataFrame:
             "age": age,
             "monthly_income": monthly_income,
             "employment_years": employment_years,
-            "family_members": family,
-            "children": children,
             "requested_amount": amount,
             "term_months": term,
             "calculated_annuity": annuity,
@@ -197,12 +162,8 @@ def home_credit_to_public_training(raw: pd.DataFrame) -> pd.DataFrame:
             "credit_income_ratio": amount / (monthly_income * 12.0),
             "annuity_income_ratio": annuity / monthly_income,
             "pti": pti,
-            "income_per_family_member": monthly_income / family,
             "employment_age_ratio": employment_years / age,
             "employment_type": raw["NAME_INCOME_TYPE"].map(_income_type_mapping()).fillna("unknown"),
-            "housing_type": raw["NAME_HOUSING_TYPE"].map(_housing_mapping()).fillna("other"),
-            "owns_car": raw["FLAG_OWN_CAR"].map({"Y": "yes", "N": "no"}).fillna("unknown"),
-            "owns_realty": raw["FLAG_OWN_REALTY"].map({"Y": "yes", "N": "no"}).fillna("unknown"),
             "target": pd.to_numeric(raw["TARGET"], errors="raise").astype("int64"),
         }
     )
@@ -228,15 +189,4 @@ def _income_type_mapping() -> dict[str, str]:
         "Student": "unemployed",
         "Unemployed": "unemployed",
         "Maternity leave": "unemployed",
-    }
-
-
-def _housing_mapping() -> dict[str, str]:
-    return {
-        "House / apartment": "owned",
-        "Rented apartment": "rent",
-        "With parents": "family",
-        "Municipal apartment": "municipal",
-        "Office apartment": "employer",
-        "Co-op apartment": "other",
     }

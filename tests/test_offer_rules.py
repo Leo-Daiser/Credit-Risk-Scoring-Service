@@ -104,6 +104,26 @@ def test_inactive_and_high_pti_offers_are_excluded():
     assert strict.eligible is True  # Profile has low approximate PTI.
 
 
+def test_refinance_offer_requires_reported_existing_payments():
+    profile = make_profile()
+    refinance = evaluate_offer_eligibility(
+        profile,
+        make_offer(product_type="refinance"),
+    )
+    assert refinance.eligible is False
+    assert "refinance_requires_existing_debt" in refinance.blocking_reasons
+
+
+def test_purpose_specific_car_offer_is_not_shown_for_cash_request():
+    profile = make_profile()
+    car_offer = evaluate_offer_eligibility(
+        profile,
+        make_offer(product_type="car"),
+    )
+    assert car_offer.eligible is False
+    assert "product_purpose_not_compatible" in car_offer.blocking_reasons
+
+
 def test_ranker_is_deterministic_and_commission_is_not_a_direct_component():
     profile = make_profile()
     first = make_offer(id=1, priority=40, commission_amount=1)
@@ -160,7 +180,7 @@ def test_revenue_cannot_overcome_poor_fit_beyond_floor():
     profile = make_profile().model_copy(update={"risk_band": "low"})
     good = make_offer(id=1, product_type="cash", priority=20, risk_band_policy=["low"])
     poor = make_offer(
-        id=2, product_type="refinance", priority=100, risk_band_policy=["low"]
+        id=2, product_type="credit_card", priority=100, risk_band_policy=["low"]
     )
     config = {
         "ranking": {

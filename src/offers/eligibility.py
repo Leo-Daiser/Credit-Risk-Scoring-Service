@@ -65,6 +65,18 @@ def evaluate_offer_eligibility(
     matched["risk_band"] = profile.risk_band in offer.risk_band_policy
     if not matched["risk_band"]:
         blocking.append("risk_band_not_allowed")
+    if offer.product_type == "refinance":
+        has_existing_debt = (
+            bands.existing_monthly_payments_band.value not in {"zero", "unknown"}
+        )
+        matched["refinance_context"] = has_existing_debt
+        if not has_existing_debt:
+            blocking.append("refinance_requires_existing_debt")
+    if offer.product_type == "car":
+        purpose_matches = bands.loan_purpose.value == "car"
+        matched["car_purpose"] = purpose_matches
+        if not purpose_matches:
+            blocking.append("product_purpose_not_compatible")
     if offer.allowed_regions and bands.region is None:
         warnings.append("region_unknown")
         matched["region"] = False

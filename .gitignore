@@ -8,6 +8,8 @@ configs/offers.local.*
 configs/partners.local.*
 .pytest_cache/
 .ipynb_checkpoints/
+frontend/playwright-report/
+frontend/test-results/
 
 artifacts/models/*
 artifacts/metrics/*

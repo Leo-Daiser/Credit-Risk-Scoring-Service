@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from typing import Protocol
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -15,8 +15,6 @@ class PublicProfileTrainingRow(BaseModel):
     age: float = Field(ge=18, le=100)
     monthly_income: float = Field(gt=0)
     employment_years: float = Field(ge=0, le=65)
-    family_members: float = Field(ge=1, le=20)
-    children: float = Field(ge=0, le=15)
     requested_amount: float = Field(gt=0)
     term_months: float = Field(ge=3, le=120)
     calculated_annuity: float = Field(gt=0)
@@ -24,13 +22,9 @@ class PublicProfileTrainingRow(BaseModel):
     credit_income_ratio: float = Field(ge=0)
     annuity_income_ratio: float = Field(ge=0)
     pti: float = Field(ge=0)
-    income_per_family_member: float = Field(gt=0)
     employment_age_ratio: float = Field(ge=0)
     employment_type: str
-    housing_type: str
-    owns_car: Literal["yes", "no", "unknown"]
-    owns_realty: Literal["yes", "no", "unknown"]
-    target: Literal[0, 1]
+    target: int = Field(ge=0, le=1)
 
 
 class PublicTrainingDataAdapter(Protocol):

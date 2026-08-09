@@ -30,8 +30,9 @@ def calculate_offer_terms(
                 "Расчёт выполнен по этому лимиту."
             )
     if selected_term != profile.term_months:
+        boundary = "максимальный" if selected_term < profile.term_months else "минимальный"
         adjustments.append(
-            f"Для продукта доступен срок до {offer.max_term_months} месяцев. "
+            f"Для продукта {boundary} срок — {selected_term} месяцев. "
             f"Расчёт выполнен на {selected_term} месяцев."
         )
     rate_min = offer.annual_rate_min

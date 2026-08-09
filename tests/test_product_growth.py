@@ -415,6 +415,29 @@ def test_funnel_ctr_postback_revenue_and_public_privacy(growth_client):
     assert offer["min_amount"] < offer["max_amount"]
     assert "affiliate_url_template" not in str(body)
     assert "partner_terms_url" not in str(body)
+    viewed = client.post(
+        "/v1/analytics/public-event",
+        json={
+            "event_type": "profile_result_viewed",
+            "anonymous_session_id": "growth-session",
+            "page": "result",
+            "profile_band": body["profile_result"]["profile_band"],
+            "pti_band": body["profile_result"]["pti_band"],
+        },
+    )
+    assert viewed.status_code == 200
+    recommended_viewed = client.post(
+        "/v1/analytics/public-event",
+        json={
+            "event_type": "recommended_offer_viewed",
+            "anonymous_session_id": "growth-session",
+            "page": "result",
+            "profile_band": body["profile_result"]["profile_band"],
+            "pti_band": body["profile_result"]["pti_band"],
+            "offer_position": "recommended",
+        },
+    )
+    assert recommended_viewed.status_code == 200
     click = client.post(
         f"/v1/offers/{offer['offer_id']}/click",
         json={"profile_id": body["profile_result"]["anonymous_profile_id"]},
@@ -454,8 +477,8 @@ def test_funnel_ctr_postback_revenue_and_public_privacy(growth_client):
     assert analytics["summary"]["top_card_ctr"] == 1
     assert analytics["summary"]["partner_redirect_failures"] == 0
     assert analytics["summary"]["public_event_counts"]["profile_submitted"] == 1
-    assert analytics["summary"]["public_event_counts"]["result_viewed"] == 1
-    assert analytics["summary"]["public_event_counts"]["offer_card_viewed"] >= 1
+    assert analytics["summary"]["public_event_counts"]["profile_result_viewed"] == 1
+    assert analytics["summary"]["public_event_counts"]["recommended_offer_viewed"] == 1
     assert "payload" not in str(analytics).lower()
     with testing_session() as session:
         assert session.scalar(select(OfferImpression)).experiment_variant == "rules_v1"
@@ -483,6 +506,17 @@ def test_no_eligible_offer_event_and_safe_suggestions(growth_client):
     assert body["suggestions"]
     assert "отказ" not in body["user_explanation"].lower()
     assert "плох" not in body["user_explanation"].lower()
+    viewed = client.post(
+        "/v1/analytics/public-event",
+        json={
+            "event_type": "no_eligible_offers_viewed",
+            "anonymous_session_id": "no-offers-session",
+            "page": "result",
+            "profile_band": body["profile_result"]["profile_band"],
+            "pti_band": body["profile_result"]["pti_band"],
+        },
+    )
+    assert viewed.status_code == 200
     with testing_session() as session:
         events = list(
             session.scalars(

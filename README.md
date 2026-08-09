@@ -132,6 +132,18 @@ npm test
 npm run build
 ```
 
+Реальный браузерный E2E запускается при поднятом demo-стеке:
+
+```powershell
+cd frontend
+npx playwright install chromium
+npm run test:e2e
+```
+
+Набор проходит основной путь анкета → ML-профиль → сценарий → предложение →
+прозрачный партнёрский переход в desktop и mobile viewport, а также проверяет
+серьёзные нарушения доступности через axe-core.
+
 Compose:
 
 ```powershell
@@ -148,6 +160,7 @@ docker compose -f docker-compose.yml -f docker-compose.public.example.yml config
 - [Матрица доступа](docs/endpoint_access_matrix.md)
 - [Операционные процедуры](docs/operations.md)
 - [Контракт минимальных данных](docs/privacy_light_data_contract.md)
+- [Семантика публичного профиля](docs/public_profile_semantics.md)
 - [Рекламная маркировка](docs/ad_disclosure.md)
 
 В режиме `public` операторские страницы, документация сервера, метрики и

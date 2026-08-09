@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-PUBLIC_BUNDLE_FORMAT_VERSION = 1
+PUBLIC_BUNDLE_FORMAT_VERSION = 2
 
 
 @dataclass

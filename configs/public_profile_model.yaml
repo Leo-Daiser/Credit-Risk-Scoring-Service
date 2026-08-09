@@ -31,7 +31,9 @@ outputs:
 provenance:
   training_source: Home Credit Default Risk public dataset (application_train only)
   population_limitations: >-
-    The v1 model is trained on an open non-Russian historical population and
+    The v2 public contract is trained on an open non-Russian historical population and
     estimates a default-risk signal, not approval. It must not be represented
     as Russian bank underwriting and is designed to be replaced by a
-    Russia-relevant source without changing the public API contract.
+    Russia-relevant source without changing the public API contract. Existing
+    debt payments are unavailable in the source and are zero in training v1;
+    this covariate requires a future relevant dataset before relying on it.

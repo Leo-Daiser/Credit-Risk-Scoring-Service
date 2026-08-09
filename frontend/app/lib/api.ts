@@ -161,6 +161,7 @@ export interface PublicProfileFactor {
   label: string;
   message: string;
   actionable: boolean;
+  source: "financial_rule" | "ml_explanation" | "offer_rule" | "user_reported_context";
 }
 
 export interface OfferCalculation {

@@ -62,3 +62,40 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: docker build --tag riskline-frontend:ci .
+
+  browser-e2e:
+    runs-on: ubuntu-latest
+    needs: [test, frontend]
+    env:
+      E2E_FRONTEND_URL: http://127.0.0.1:3000
+      E2E_BACKEND_URL: http://127.0.0.1:8000
+      # Trusted model artifacts and raw training data are intentionally absent
+      # from Git. Full ML assertions run in the local demo acceptance pass.
+      E2E_REQUIRE_ML: "false"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: docker compose up -d db migrate
+      - run: docker compose run --rm api python -m src.cli setup-demo
+      - run: docker compose up -d api frontend
+      - run: |
+          for attempt in {1..60}; do
+            curl --fail --silent http://127.0.0.1:8000/health >/dev/null && \
+            curl --fail --silent http://127.0.0.1:3000 >/dev/null && exit 0
+            sleep 2
+          done
+          docker compose ps
+          docker compose logs api frontend
+          exit 1
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:e2e
+        working-directory: frontend
+      - if: always()
+        run: docker compose down -v

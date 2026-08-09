@@ -303,56 +303,9 @@ def match_offers(
         experiment_variant=experiment_variant,
         event_value=str(len(ranked)),
     )
-    record_funnel_event(
-        session,
-        "profile_result_viewed",
-        anonymous_session_id=profile_event.anonymous_session_id,
-        profile_id=result.anonymous_profile_id,
-        risk_band=result.risk_band,
-        pti_band=result.pti_band.value,
-        experiment_variant=experiment_variant,
-    )
-    record_funnel_event(
-        session,
-        "result_viewed",
-        anonymous_session_id=profile_event.anonymous_session_id,
-        profile_id=result.anonymous_profile_id,
-        risk_band=result.risk_band,
-        pti_band=result.pti_band.value,
-        experiment_variant=experiment_variant,
-    )
-    for item in ranked:
-        record_funnel_event(
-            session,
-            "offer_card_viewed",
-            anonymous_session_id=profile_event.anonymous_session_id,
-            profile_id=result.anonymous_profile_id,
-            offer_id=item.offer_id,
-            risk_band=result.risk_band,
-            pti_band=result.pti_band.value,
-            experiment_variant=experiment_variant,
-        )
-    if ranked:
-        record_funnel_event(
-            session,
-            "recommended_offer_viewed",
-            anonymous_session_id=profile_event.anonymous_session_id,
-            profile_id=result.anonymous_profile_id,
-            offer_id=ranked[0].offer_id,
-            risk_band=result.risk_band,
-            pti_band=result.pti_band.value,
-            experiment_variant=experiment_variant,
-        )
-    if not ranked:
-        record_funnel_event(
-            session,
-            "no_eligible_offers_viewed",
-            anonymous_session_id=profile_event.anonymous_session_id,
-            profile_id=result.anonymous_profile_id,
-            risk_band=result.risk_band,
-            pti_band=result.pti_band.value,
-            experiment_variant=experiment_variant,
-        )
+    # Visibility belongs to the browser.  The backend owns request/scoring and
+    # offer-generation events only; a generated response is not proof that it
+    # was rendered to the user.
     offer_map = {offer.id: offer for offer in active_offers}
     public_offers = [
         RankedOfferPublic(
@@ -406,17 +359,6 @@ def match_offers(
     improvement_scenarios = build_improvement_scenarios(
         profile, result, active_offers, scoring_service
     )
-    if improvement_scenarios:
-        record_funnel_event(
-            session,
-            "improvement_viewed",
-            anonymous_session_id=profile_event.anonymous_session_id,
-            profile_id=result.anonymous_profile_id,
-            risk_band=result.risk_band,
-            pti_band=result.pti_band.value,
-            experiment_variant=experiment_variant,
-            event_value=str(len(improvement_scenarios)),
-        )
     session.commit()
     return OfferMatchResponse(
         profile_result=result,

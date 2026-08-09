@@ -7,5 +7,7 @@ dist
 coverage
 .cache
 .turbo
+test-results
+playwright-report
 .git
 *.log
