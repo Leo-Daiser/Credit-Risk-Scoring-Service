@@ -25,9 +25,16 @@ offers:
     max_pti_band: medium
     risk_band_policy: [low, medium]
     advertiser_name: Example advertiser
-    ad_label_text: "Реклама. Условия определяются банком."
+    ad_label_text: "Реклама"
     erid: null
     legal_disclaimer: "Финальное решение принимает банк."
+    full_cost_range_text: null
+    compensation_disclosure: "Сервис может получить вознаграждение за переход."
+    partner_terms_url: https://partner.example/credit-terms
+    main_benefit: "Подходит по сумме и сроку"
+    display_warnings:
+      - "Условия определяет партнёр"
+    cta_text: "Посмотреть условия"
     partner_id: future_partner
     affiliate_url_template_key: ALFA_CREDIT_AFFILIATE_TEMPLATE
     commission_type: fixed
@@ -84,8 +91,15 @@ URL template или secret. `artifacts/reports/` игнорируется Git.
 
 ## Проверки
 
-Импорт отклоняет отсутствующие advertiser/disclosure, некорректные диапазоны,
-просроченный активный оффер, дубликаты, реальный активный оффер без template key,
-выключенного или неправильно настроенного partner, а также URL/token/secret,
-случайно помещённые непосредственно в import-файл. Public API не возвращает
-commission, template key, validation flags или внутренние ranking components.
+Импорт отклоняет отсутствующие данные рекламодателя, рекламную маркировку,
+юридический текст или раскрытие возможного вознаграждения, некорректные диапазоны,
+просроченный активный оффер, дубликаты и реальный активный оффер без template key
+или публичной HTTPS-ссылки на условия партнёра. Если в видимом тексте указана ставка,
+обязателен `full_cost_range_text`. Отсутствующий ERID не подменяется вымышленным:
+оператор получает предупреждение и должен проверить маркировку до публикации.
+
+URL с token/secret/query-параметрами, выключенный или неправильно настроенный partner
+и секретные значения непосредственно в import-файле отклоняются. Исключение сделано
+только для `partner_terms_url`: это публичная HTTPS-ссылка без query, fragment и credentials.
+Публичный API не возвращает commission, template key, validation flags, ссылку на условия
+партнёра или внутренние ranking components.

@@ -11,7 +11,7 @@ an operator workflow. Running a CLI against configured local paths is useful for
 development, but it is not a service boundary for users who need to submit a
 registry, observe progress and retrieve a result.
 
-The platform must remain suitable for a portfolio deployment on one machine. A
+The platform must remain suitable for a controlled single-host deployment. A
 large collection of network services, Kafka, Kubernetes or a separate feature
 store would increase operational surface without solving a demonstrated load or
 ownership problem.
@@ -104,7 +104,7 @@ storage behind the same workflow without changing the public job contract.
 - Download paths must resolve under the configured prediction directory.
 - Feature payloads and API keys are excluded from application logs.
 - Raw datasets, uploads, prediction files and model artifacts are gitignored.
-- The interface states that a model-ready Home Credit feature table is required;
+- The internal interface states that a compatible prepared feature table is required;
   it does not claim to understand arbitrary customer exports.
 
 ## Alternatives rejected
@@ -114,7 +114,7 @@ storage behind the same workflow without changing the public job contract.
 Rejected because long CPU-bound work would tie job lifetime to an HTTP connection,
 compete with online latency and lose progress on process restarts.
 
-### Redis/Celery for the first portfolio deployment
+### Redis/Celery for the first single-host deployment
 
 Rejected for now. PostgreSQL already provides durability and row-level locking,
 and the expected queue volume does not justify another stateful dependency. Redis

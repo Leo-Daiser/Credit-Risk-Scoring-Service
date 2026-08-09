@@ -40,25 +40,27 @@ export function ModelWorkspace() {
     <div className="page-stack">
       <section className="model-hero">
         <div>
-          <span className="section-kicker light">Production model bundle</span>
-          <h2>Версия модели — часть каждого решения.</h2>
+          <span className="section-kicker light">Состояние системы</span>
+          <h2>Расчётный модуль и внутренние сервисы.</h2>
           <p>
-            Контракт, калибровка, порог, risk bands и reference statistics упакованы вместе.
-            API и worker загружают один и тот же доверенный artifact.
+            Здесь сотрудники могут проверить версию расчётного модуля, готовность
+            внутренних операций и совместимость загружаемых данных.
           </p>
           <div className="model-version-line">
             <span className="status-badge success"><CheckCircle2 size={14} /> acceptance {model?.acceptance_status ?? "—"}</span>
-            <code>{model?.model_version ?? "production bundle unavailable"}</code>
+            <code>{model?.model_version ?? "расчётный модуль недоступен"}</code>
           </div>
         </div>
         <div className="bundle-visual" aria-hidden="true">
-          <span>FEATURES</span><span>MODEL</span><span>THRESHOLD</span><span>REFERENCE</span>
-          <div><Boxes size={34} /><strong>immutable</strong><small>bundle</small></div>
+          <span>ДАННЫЕ</span><span>РАСЧЁТ</span><span>ПРАВИЛА</span><span>КОНТРОЛЬ</span>
+          <div><Boxes size={34} /><strong>внутренний</strong><small>модуль</small></div>
         </div>
       </section>
 
       {error ? <div className="form-error" role="alert"><TriangleAlert size={18} /> {error}</div> : null}
 
+      <details className="panel system-technical-details">
+        <summary>Технические детали</summary>
       <section className="model-metrics">
         <article><span>ROC-AUC</span><strong>{model?.metrics.roc_auc != null ? Number(model.metrics.roc_auc).toFixed(5) : "—"}</strong><small>локальный evaluation split</small></article>
         <article><span>PR-AUC</span><strong>{model?.metrics.pr_auc != null ? Number(model.metrics.pr_auc).toFixed(5) : "—"}</strong><small>локальный evaluation split</small></article>
@@ -93,7 +95,7 @@ export function ModelWorkspace() {
 
         <article className="panel architecture-panel">
           <div className="panel-heading">
-            <div><span className="section-kicker">Runtime topology</span><h3>Три осмысленных сервиса</h3></div>
+            <div><span className="section-kicker">Операционный контур</span><h3>Внутренние сервисы</h3></div>
             <Workflow size={25} />
           </div>
           <div className="service-map">
@@ -119,6 +121,7 @@ export function ModelWorkspace() {
         <article><Database size={21} /><div><strong>Файл не хранится в базе</strong><span>PostgreSQL содержит метаданные, не бинарные данные.</span></div></article>
         <article><ShieldCheck size={21} /><div><strong>Секрет не попадает в браузер</strong><span>BFF добавляет API key на серверной стороне.</span></div></article>
       </section>
+      </details>
     </div>
   );
 }

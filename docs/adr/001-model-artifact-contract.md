@@ -74,6 +74,6 @@ execute Python code during deserialization, so artifacts must still come from a
 trusted training pipeline.
 
 An external artifact registry, object storage, signing service or MLflow model
-registry is intentionally not introduced in this portfolio MVP. The contract
+registry is intentionally not introduced in the current single-host release. The contract
 keeps that migration possible without adding infrastructure that the project
 does not currently need.

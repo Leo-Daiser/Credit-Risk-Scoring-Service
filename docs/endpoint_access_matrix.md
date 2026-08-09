@@ -8,7 +8,7 @@ replace reverse-proxy, firewall, TLS, WAF, or secret-management controls.
 | Mode | Public UI | Operator UI | Demo adapters | Intended use |
 |---|---:|---:|---:|---|
 | `local` | enabled | configurable, enabled by default | allowed | local development |
-| `demo` | enabled | configurable, enabled by default | allowed | controlled portfolio demo |
+| `demo` | enabled | configurable, enabled by default | allowed | controlled product demo |
 | `public` | enabled | always blocked | disabled unless explicit safe `example.invalid` mode | public MVP |
 
 Public mode must use `DEMO_MODE=false`, `OPERATOR_UI_ENABLED=false`,
@@ -30,7 +30,8 @@ it cannot be combined with partner callbacks. Invalid combinations fail startup.
 | `/commercial` | local/demo-only | returns not found |
 | `/batches` | local/demo-only | returns not found |
 | `/history` | local/demo-only | returns not found |
-| `/model` | local/demo-only | returns not found |
+| `/operator/system` | local/demo-only | protected system details; returns not found |
+| `/model` | local/demo-only redirect | redirects to `/operator/system`; returns not found in public mode |
 | `/api/backend/**` | allowlisted BFF | public paths only; operator and unknown paths return not found |
 
 The BFF strips browser-provided `X-API-Key`, `Authorization`, and `Cookie` headers. It adds the

@@ -79,6 +79,10 @@ def _partner_validation(candidate: OfferWritable) -> OfferValidationResult:
                 errors.append("affiliate_template_environment_missing")
             elif "{click_id}" not in template:
                 errors.append("affiliate_template_click_id_missing")
+    if candidate.is_active and not candidate.erid:
+        warnings.append("erid_not_configured")
+    if candidate.is_active and candidate.partner_id == "demo":
+        warnings.append("demo_link")
     return OfferValidationResult(
         valid=not errors,
         errors=sorted(set(errors)),
@@ -117,6 +121,12 @@ def _offer_payload(offer: BankOffer) -> dict[str, Any]:
         "ad_label_text": offer.ad_label_text,
         "erid": offer.erid,
         "legal_disclaimer": offer.legal_disclaimer,
+        "full_cost_range_text": offer.full_cost_range_text,
+        "compensation_disclosure": offer.compensation_disclosure,
+        "partner_terms_url": offer.partner_terms_url,
+        "main_benefit": offer.main_benefit,
+        "display_warnings": offer.display_warnings,
+        "cta_text": offer.cta_text,
         "partner_id": offer.partner_id,
         "affiliate_url_template_key": offer.affiliate_url_template_key,
         "commission_type": offer.commission_type,

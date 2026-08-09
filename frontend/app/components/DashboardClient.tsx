@@ -246,8 +246,8 @@ export function DashboardClient() {
             Метрики относятся к локально сгенерированному bundle и не являются гарантией
             для произвольных данных.
           </p>
-          <Link className="button button-soft" href="/model">
-            Контракт модели <ArrowRight size={17} aria-hidden="true" />
+          <Link className="button button-soft" href="/operator/system">
+            Состояние системы <ArrowRight size={17} aria-hidden="true" />
           </Link>
         </article>
       </section>

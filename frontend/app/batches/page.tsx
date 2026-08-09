@@ -4,14 +4,14 @@ import { BatchWorkspace } from "../components/BatchWorkspace";
 import { requireOperatorUi } from "../lib/access";
 
 export const metadata: Metadata = {
-  title: "Пакетный скоринг",
+  title: "Импорт и задачи",
   description: "Безопасная загрузка подготовленных CSV и parquet реестров.",
 };
 
 export default function BatchesPage() {
   requireOperatorUi();
   return (
-    <AppShell operator active="batches" eyebrow="Массовая обработка" title="Пакетный скоринг">
+    <AppShell operator active="batches" eyebrow="Внутренние операции" title="Импорт и задачи">
       <BatchWorkspace />
     </AppShell>
   );

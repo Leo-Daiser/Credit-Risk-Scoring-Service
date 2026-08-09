@@ -182,10 +182,38 @@ def click_offer(
     try:
         result = create_click(session, offer_id, payload)
     except CommercialConflictError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Переход уже обрабатывается. Обновите страницу и попробуйте снова.",
+        ) from exc
     except CommercialNotFoundError as exc:
         REDIRECT_FAILURES.inc()
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        record_funnel_event(
+            session,
+            "partner_redirect_failed",
+            profile_id=payload.profile_id,
+            offer_id=offer_id,
+            event_value="not_available",
+        )
+        session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Предложение временно недоступно.",
+        ) from exc
+    except ValueError as exc:
+        REDIRECT_FAILURES.inc()
+        record_funnel_event(
+            session,
+            "partner_redirect_failed",
+            profile_id=payload.profile_id,
+            offer_id=offer_id,
+            event_value="integration_unavailable",
+        )
+        session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Переход к партнёру временно недоступен.",
+        ) from exc
     if not result.duplicate:
         record_offer_click(offer_id)
     logger.info(

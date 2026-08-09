@@ -67,9 +67,9 @@ export function CalculatorWorkspace() {
     <div className="page-stack">
       <section className="page-intro score-intro">
         <div>
-          <span className="section-kicker">Публичный калькулятор</span>
-          <h2>Рассчитайте платёж и долговую нагрузку без отправки данных.</h2>
-          <p>Все вычисления выполняются в браузере. Значения не отправляются на backend и не сохраняются в browser storage.</p>
+          <span className="section-kicker">Расчёт без регистрации</span>
+          <h2>Проверьте, какой платёж подходит вашему бюджету.</h2>
+          <p>Все вычисления выполняются на этой странице. Введённые значения никуда не отправляются и не сохраняются.</p>
         </div>
       </section>
       <section className="score-layout">
@@ -94,13 +94,17 @@ export function CalculatorWorkspace() {
                 <div><dt>Всего к возврату</dt><dd>{money.format(result.totalRepayment)}</dd></div>
                 <div><dt>Переплата</dt><dd>{money.format(result.overpayment)}</dd></div>
                 <div><dt>Долговая нагрузка</dt><dd>{result.pti === null ? "—" : `${(result.pti * 100).toFixed(1)}%`}</dd></div>
-                <div><dt>Диапазон нагрузки</dt><dd>{affordabilityLabels[result.affordabilityBand]}</dd></div>
+                <div><dt>Остаток бюджета</dt><dd>{money.format(result.remainingBudget)}</dd></div>
+                <div><dt>Комфорт платежа</dt><dd>{affordabilityLabels[result.affordabilityBand]}</dd></div>
               </dl>
               {result.pti !== null && result.pti > 0.5 ? (
                 <div className="pti-warning" role="status"><AlertTriangle size={18} aria-hidden="true" />Расчётная нагрузка повышена. Проверьте более длинный срок или меньшую сумму.</div>
               ) : null}
               <button className="button button-dark button-full" type="button" onClick={continueToMatching}>
-                Продолжить к privacy-light подбору <ArrowRight size={17} aria-hidden="true" />
+                Показать предложения под этот платёж <ArrowRight size={17} aria-hidden="true" />
+              </button>
+              <button className="button button-ghost button-full" type="button" onClick={() => document.getElementById("public-amount")?.focus()}>
+                Изменить параметры
               </button>
             </>
           ) : <p className="empty-copy">Исправьте параметры — расчёт появится без отправки данных.</p>}

@@ -296,6 +296,7 @@ def match_offers(
             product_name=item.product_name,
             product_type=offer_map[item.offer_id].product_type,
             advertiser_name=item.advertiser_name,
+            is_demo=offer_map[item.offer_id].partner_id == "demo",
             min_amount=offer_map[item.offer_id].min_amount,
             max_amount=offer_map[item.offer_id].max_amount,
             min_term_months=offer_map[item.offer_id].min_term_months,
@@ -307,16 +308,27 @@ def match_offers(
                     == offer_map[item.offer_id].product_type
                 ),
             ),
-            warnings=_public_warnings(item.warnings, result),
+            warnings=list(
+                dict.fromkeys(
+                    _public_warnings(item.warnings, result)
+                    + offer_map[item.offer_id].display_warnings
+                )
+            ),
             disclosure=(
-                f"{item.ad_disclosure} Реклама: при переходе сервис может получить "
-                "вознаграждение. Финальное решение принимает банк."
+                f"{item.ad_disclosure} "
+                f"{_compensation_disclosure(offer_map[item.offer_id])} "
+                f"{offer_map[item.offer_id].legal_disclaimer}"
             ),
             ad_disclosure=(
-                f"{item.ad_disclosure} Реклама: при переходе сервис может получить "
-                "вознаграждение. Финальное решение принимает банк."
+                f"{item.ad_disclosure} "
+                f"{_compensation_disclosure(offer_map[item.offer_id])}"
             ),
             confidence_level=result.confidence_level,
+            main_benefit=offer_map[item.offer_id].main_benefit,
+            full_cost_range_text=offer_map[item.offer_id].full_cost_range_text,
+            compensation_disclosure=_compensation_disclosure(offer_map[item.offer_id]),
+            legal_disclaimer=offer_map[item.offer_id].legal_disclaimer,
+            cta_text=offer_map[item.offer_id].cta_text,
             redirect_url=item.redirect_url,
         )
         for item in ranked
@@ -329,8 +341,8 @@ def match_offers(
         user_explanation=(
             None
             if public_offers
-            else "По указанным диапазонам безопасно подходящих предложений пока нет. "
-            "Это не означает отказ банка."
+            else "По указанным диапазонам подходящих предложений пока нет. "
+            "Попробуйте скорректировать параметры или вернуться к подбору позже."
         ),
         suggestions=(
             []
@@ -354,19 +366,25 @@ def match_offers(
     )
 
 
+def _compensation_disclosure(offer: BankOffer) -> str:
+    return (
+        offer.compensation_disclosure.strip()
+        or "Сервис может получить вознаграждение за переход."
+    )
+
+
 def _public_match_reasons(reasons: list[str], *, purpose_match: bool = False) -> list[str]:
     public: list[str] = []
     if "amount" in reasons and "term" in reasons:
         public.append("Подходит по сумме и сроку")
     if "income" in reasons:
-        public.append("Подходит для вашего диапазона дохода")
+        public.append("Совместимо с указанным диапазоном дохода")
     if "pti" in reasons:
-        public.append("Предварительно совместимо с указанной долговой нагрузкой")
+        public.append("Платёж укладывается в выбранный ориентир")
     if "employment_type" in reasons:
         public.append("Учитывает указанный тип занятости")
     if purpose_match:
         public.append("Подходит для выбранной цели кредита")
-    public.append("Результат предварительный: банк примет решение после проверки анкеты")
     return public
 
 
@@ -378,8 +396,8 @@ def _public_warnings(
         public.append("Уверенность ограничена полнотой указанных диапазонов")
     if result.pti_band.value in {"high", "very_high"}:
         public.append("Ориентировочная долговая нагрузка повышена")
-    public.append("Без данных БКИ оценка предварительная")
-    public.append("Условия определяются банком; результат не является решением банка")
+    public.append("Без данных БКИ подбор носит предварительный характер")
+    public.append("Условия определяет партнёр; финальное решение принимает банк")
     return public
 
 

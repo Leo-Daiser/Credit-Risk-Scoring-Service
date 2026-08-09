@@ -70,46 +70,49 @@ export function CommercialWorkspace() {
     <div className="commercial-stack">
       <section className="commercial-hero">
         <div>
-          <span className="section-kicker"><BarChart3 size={15} /> Product feedback loop</span>
-          <h2>Воронка, качество офферов и неудовлетворённый спрос.</h2>
+          <span className="section-kicker"><BarChart3 size={15} /> Бизнес-показатели</span>
+          <h2>Аналитика партнёрских переходов</h2>
           <p>
-            Внутренний контур показывает агрегаты без исходных анкет и postback payload.
-            Revenue proxy — ориентир для продукта, а не обещание дохода или одобрения.
+            Воронка от подбора до партнёрского события, качество предложений и сегменты,
+            для которых не хватает подходящих вариантов. Исходные анкеты не отображаются.
           </p>
         </div>
-        <div className="operator-boundary"><ShieldCheck size={18} /> API key остаётся в BFF</div>
+        <div className="operator-boundary"><ShieldCheck size={18} /> Внутренний доступ</div>
       </section>
 
       {loading ? <div className="commercial-state"><LoaderCircle className="spin" /> Загружаем агрегаты…</div> : null}
       {error ? <div className="connection-banner" role="alert"><AlertTriangle size={18} /><div><strong>Коммерческая аналитика недоступна.</strong><span>{error}</span></div><button className="button button-mini" type="button" onClick={load}><RefreshCw size={15} /> Повторить</button></div> : null}
 
-      <section className="commercial-metrics" aria-label="Commercial Analytics">
-        <Metric label="Профили" value={summary?.total_profile_scores ?? 0} />
+      <section className="commercial-metrics" aria-label="Аналитика партнёрских переходов">
+        <Metric label="Заявки" value={summary?.total_profile_scores ?? 0} />
         <Metric label="Подборы" value={summary?.total_match_requests ?? 0} />
         <Metric label="Показы" value={summary?.total_offer_impressions ?? 0} />
-        <Metric label="Клики" value={summary?.total_offer_clicks ?? 0} />
+        <Metric label="Переходы" value={summary?.total_offer_clicks ?? 0} />
         <Metric label="CTR" value={formatPercent(summary?.ctr_overall ?? 0)} />
         <Metric label="Без офферов" value={formatPercent(summary?.no_eligible_offers_rate ?? 0)} />
         <Metric label="Выдано" value={formatPercent(summary?.issued_rate ?? 0)} />
-        <Metric label="Recorded revenue" value={formatMoney(summary?.estimated_revenue ?? 0)} />
+        <Metric label="Зафиксированная выручка" value={formatMoney(summary?.estimated_revenue ?? 0)} />
+        <Metric label="Доход на переход" value={formatMoney(summary?.epc_proxy ?? 0)} />
+        <Metric label="CTR рекомендации" value={formatPercent(summary?.recommended_offer_ctr ?? 0)} />
+        <Metric label="Ошибки перехода" value={summary?.partner_redirect_failures ?? 0} />
       </section>
 
       <section className="commercial-grid">
-        <ReportPanel title="Качество предложений" kicker="Offer Quality">
+        <ReportPanel title="Качество предложений" kicker="Контроль каталога">
           {data?.quality.offers.length ? <div className="commercial-table">{data.quality.offers.map((offer) => <div className="commercial-row" key={offer.offer_id}><div><strong>{offer.product_name}</strong><small>{offer.bank_id} · {offer.status}</small></div><span>{formatPercent(offer.ctr)}</span><div className="quality-flags">{offer.quality_flags.length ? offer.quality_flags.map((flag) => <i key={flag}>{flag}</i>) : <i className="ok">без флагов</i>}</div><b>{offer.recommendation}</b></div>)}</div> : <Empty text="Предложения ещё не загружены." />}
         </ReportPanel>
 
-        <ReportPanel title="Неудовлетворённые сегменты" kicker="Segment Opportunities">
+        <ReportPanel title="Где не хватает предложений" kicker="Потерянный спрос">
           {data?.segments.opportunities.length ? <div className="commercial-table">{data.segments.opportunities.slice(0, 10).map((segment) => <div className="commercial-row segment" key={`${segment.segment_key}-${segment.segment_value}`}><div><strong>{segment.segment_key}: {segment.segment_value}</strong><small>{segment.requests} запросов · lost clicks {segment.estimated_lost_clicks}</small></div><span>{formatPercent(segment.eligible_offer_rate)}</span><b>{segment.recommendation}</b></div>)}</div> : <Empty text="Сегментные возможности появятся после первых подборов." />}
         </ReportPanel>
       </section>
 
       <section className="commercial-grid">
-        <ReportPanel title="Варианты ранжирования" kicker="Experiments">
+        <ReportPanel title="Варианты порядка предложений" kicker="Эксперименты">
           {data?.analytics.experiment_metrics.length ? <div className="commercial-table">{data.analytics.experiment_metrics.map((variant) => <div className="commercial-row segment" key={variant.variant}><div><strong>{variant.variant}</strong><small>{variant.impressions} показов · {variant.clicks} кликов</small></div><span>{formatPercent(variant.ctr)}</span><b>{variant.issued} issued</b></div>)}</div> : <Empty text="Эксперименты выключены: весь трафик использует rules_v1." />}
         </ReportPanel>
 
-        <ReportPanel title="Click и postback события" kicker="Event Debug">
+        <ReportPanel title="Журнал партнёрских событий" kicker="Журнал событий">
           {data?.debug.events.length ? <div className="commercial-table">{data.debug.events.map((event, index) => <div className="commercial-row event" key={`${event.event_type}-${event.click_id}-${index}`}><div><strong>{event.event_type}</strong><small>{event.click_id ?? "без click id"} · {formatDate(event.occurred_at)}</small></div><span>{event.status ?? event.hmac_validation_status ?? "—"}</span><b>{event.experiment_variant}</b></div>)}</div> : <Empty text="Событий пока нет. Raw payload намеренно не отображается." />}
         </ReportPanel>
       </section>

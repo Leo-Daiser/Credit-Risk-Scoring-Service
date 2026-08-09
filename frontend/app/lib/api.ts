@@ -129,6 +129,7 @@ export interface RankedOffer {
   product_name: string;
   product_type: string;
   advertiser_name: string;
+  is_demo: boolean;
   min_amount: number;
   max_amount: number;
   min_term_months: number;
@@ -138,6 +139,11 @@ export interface RankedOffer {
   disclosure: string;
   ad_disclosure: string;
   confidence_level: string;
+  main_benefit: string | null;
+  full_cost_range_text: string | null;
+  compensation_disclosure: string;
+  legal_disclaimer: string;
+  cta_text: string;
   redirect_url: string;
 }
 
@@ -158,11 +164,12 @@ export interface CommercialAnalytics {
     total_offer_impressions: number; total_offer_clicks: number;
     ctr_overall: number; no_eligible_offers_rate: number;
     postback_conversion_rate: number; approval_rate: number; issued_rate: number;
-    estimated_revenue: number;
+    estimated_revenue: number; epc_proxy: number; recommended_offer_ctr: number;
+    top_card_ctr: number; partner_redirect_failures: number;
   };
   offer_metrics: Array<{
     offer_id: number; product_name: string; impressions: number; clicks: number;
-    ctr: number; approvals: number; issued: number; estimated_revenue: number;
+    ctr: number; approvals: number; issued: number; estimated_revenue: number; epc_proxy: number;
     expected_revenue_proxy: number; revenue_estimate_source: string;
   }>;
   experiment_metrics: Array<{
@@ -206,6 +213,12 @@ export interface OperatorOffer {
   ad_label_text: string;
   erid: string | null;
   legal_disclaimer: string;
+  full_cost_range_text: string | null;
+  compensation_disclosure: string;
+  partner_terms_url: string | null;
+  main_benefit: string | null;
+  display_warnings: string[];
+  cta_text: string;
   partner_id: string;
   affiliate_url_template_key: string | null;
   commission_type: "none" | "fixed" | "percent";
@@ -254,7 +267,7 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
     },
   });
   if (!response.ok) {
-    let message = `API вернул ${response.status}`;
+    let message = `Сервис временно недоступен (код ${response.status}).`;
     try {
       const payload = (await response.json()) as {
         detail?: string | { message?: string; errors?: string[] };

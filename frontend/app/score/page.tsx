@@ -4,12 +4,12 @@ import { CalculatorWorkspace } from "../components/CalculatorWorkspace";
 
 export const metadata: Metadata = {
   title: "Кредитный калькулятор",
-  description: "Расчёт кредитной нагрузки и предварительная ML-оценка риска.",
+  description: "Ориентировочный платёж, общая стоимость и долговая нагрузка без отправки введённых значений.",
 };
 
 export default function ScorePage() {
   return (
-    <AppShell active="score" eyebrow="Personal calculator · ML scoring" title="Кредитный калькулятор">
+    <AppShell active="score" eyebrow="Расчёт платежа" title="Кредитный калькулятор">
       <CalculatorWorkspace />
     </AppShell>
   );

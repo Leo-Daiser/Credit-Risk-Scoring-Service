@@ -145,6 +145,6 @@ API ожидает database health, применяет Alembic migration и за
 Readiness требует доступный PostgreSQL и валидный локальный bundle. Batch и monitoring
 остаются отдельными CLI processes на host/container по необходимости.
 
-Такой runtime достаточен для single-host portfolio MVP. Horizontal scaling потребует
+Такой runtime достаточен для single-host deployment. Horizontal scaling потребует
 external artifact storage, secrets management, TLS/auth gateway, rate limiting и
 проверки database connection capacity.

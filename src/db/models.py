@@ -166,6 +166,14 @@ class BankOffer(Base):
     erid: Mapped[str | None] = mapped_column(String(128), nullable=True)
     ad_label_text: Mapped[str] = mapped_column(String(255), nullable=False)
     legal_disclaimer: Mapped[str] = mapped_column(Text, nullable=False)
+    full_cost_range_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    compensation_disclosure: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    partner_terms_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    main_benefit: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    display_warnings: Mapped[list[str]] = mapped_column(JSON_TYPE, nullable=False, default=list)
+    cta_text: Mapped[str] = mapped_column(
+        String(64), nullable=False, default="Посмотреть условия"
+    )
     commission_type: Mapped[str] = mapped_column(String(32), nullable=False, default="none")
     commission_amount: Mapped[float | None] = mapped_column(Numeric(14, 2), nullable=True)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

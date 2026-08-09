@@ -3,9 +3,9 @@ import { AppShell } from "../../components/AppShell";
 import { ScoreWorkspace } from "../../components/ScoreWorkspace";
 import { requireOperatorUi } from "../../lib/access";
 
-export const metadata: Metadata = { title: "Внутренний ML-скоринг" };
+export const metadata: Metadata = { title: "Расчётный модуль" };
 
 export default function OperatorScorePage() {
   requireOperatorUi();
-  return <AppShell operator active="score" eyebrow="Operator · raw model" title="ML-скоринг"><ScoreWorkspace /></AppShell>;
+  return <AppShell operator active="score" eyebrow="Внутренние операции" title="Расчётный модуль"><ScoreWorkspace /></AppShell>;
 }

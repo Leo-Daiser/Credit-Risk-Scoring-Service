@@ -1,6 +1,6 @@
 # Operational readiness and local SLO targets
 
-This document describes portfolio-service operating expectations. Targets below
+This document describes service operating expectations. Targets below
 are design objectives for a controlled deployment, not measured guarantees for
 arbitrary hardware or a banking SLA.
 
@@ -10,7 +10,7 @@ operator UI or catch-all backend access in `APP_ENV=public`.
 
 ## Service objectives
 
-| Signal | Local portfolio objective | Measurement |
+| Signal | Local service objective | Measurement |
 |---|---:|---|
 | Availability | 99.5% per month | successful `/ready` probes |
 | Scoring errors | 0% in load smoke | HTTP status from `/score` |
@@ -20,7 +20,7 @@ operator UI or catch-all backend access in `APP_ENV=public`.
 
 The latency target includes feature alignment, calibrated inference, local reason
 codes and synchronous PostgreSQL audit logging. It is intentionally modest for a
-single-container portfolio deployment. Capacity must be re-measured after changing
+single-container deployment. Capacity must be re-measured after changing
 hardware, worker count, model bundle or reason-code implementation.
 Exact CatBoost SHAP computation is limited to one thread per request to avoid
 nested CPU oversubscription when several API requests are handled concurrently.

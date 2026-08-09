@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import UTC, datetime
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -40,6 +41,12 @@ IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 RAW_SECRET_URL_PATTERN = re.compile(
     r"(?i)https?://[^\s]*(?:token|secret|api[_-]?key|password)="
 )
+RATE_DISPLAY_PATTERN = re.compile(r"(?i)(?:ставк|процент|\d(?:[\s.,]\d)?\s*%)")
+ALLOWED_CTA_TEXT = {
+    "Посмотреть условия",
+    "Перейти к предложению",
+    "Продолжить у партнёра",
+}
 
 
 class OfferWritable(BaseModel):
@@ -65,6 +72,12 @@ class OfferWritable(BaseModel):
     ad_label_text: str = Field(default="", max_length=255)
     erid: str | None = Field(default=None, max_length=128)
     legal_disclaimer: str = Field(default="", max_length=4000)
+    full_cost_range_text: str | None = Field(default=None, max_length=1000)
+    compensation_disclosure: str = Field(default="", max_length=1000)
+    partner_terms_url: str | None = Field(default=None, max_length=1000)
+    main_benefit: str | None = Field(default=None, max_length=255)
+    display_warnings: list[str] = Field(default_factory=list, max_length=8)
+    cta_text: str = Field(default="Посмотреть условия", max_length=64)
     partner_id: str = Field(min_length=1, max_length=64)
     affiliate_url_template_key: str | None = Field(default=None, max_length=128)
     commission_type: Literal["none", "fixed", "percent"] = "none"
@@ -139,6 +152,33 @@ class OfferWritable(BaseModel):
             raise ValueError("must contain supported risk bands")
         return cleaned
 
+    @field_validator("partner_terms_url")
+    @classmethod
+    def validate_partner_terms_url(cls, value: str | None) -> str | None:
+        if value is None or not value:
+            return None
+        parsed = urlsplit(value)
+        if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+            raise ValueError("must be a public HTTPS partner terms URL")
+        if parsed.query or parsed.fragment or RAW_SECRET_URL_PATTERN.search(value):
+            raise ValueError("must not contain query, fragment, or token material")
+        return value
+
+    @field_validator("display_warnings")
+    @classmethod
+    def validate_display_warnings(cls, value: list[str]) -> list[str]:
+        cleaned = list(dict.fromkeys(item.strip() for item in value if item.strip()))
+        if any(len(item) > 255 for item in cleaned):
+            raise ValueError("display warning is too long")
+        return cleaned
+
+    @field_validator("cta_text")
+    @classmethod
+    def validate_cta_text(cls, value: str) -> str:
+        if value not in ALLOWED_CTA_TEXT:
+            raise ValueError("must use an approved transparent CTA")
+        return value
+
     @model_validator(mode="after")
     def validate_offer_contract(self) -> OfferWritable:
         if self.max_amount < self.min_amount:
@@ -146,11 +186,21 @@ class OfferWritable(BaseModel):
         if self.max_term_months < self.min_term_months:
             raise ValueError("max_term_months must be greater than or equal to min_term_months")
         if self.is_active and (
-            not self.advertiser_name or not self.ad_label_text or not self.legal_disclaimer
+            not self.advertiser_name
+            or not self.ad_label_text
+            or not self.legal_disclaimer
+            or not self.compensation_disclosure
         ):
             raise ValueError("active offer requires advertiser and disclosure fields")
         if self.partner_id != "demo" and self.is_active and not self.affiliate_url_template_key:
             raise ValueError("active real offer requires affiliate_url_template_key")
+        if self.partner_id != "demo" and self.is_active and not self.partner_terms_url:
+            raise ValueError("active real offer requires partner_terms_url")
+        display_copy = " ".join(
+            filter(None, (self.product_name, self.main_benefit, self.ad_label_text))
+        )
+        if self.is_active and RATE_DISPLAY_PATTERN.search(display_copy) and not self.full_cost_range_text:
+            raise ValueError("rate display requires full_cost_range_text")
         if self.commission_type == "none" and self.commission_amount not in {None, 0}:
             raise ValueError("commission_amount conflicts with commission_type")
         if self.commission_type != "none" and (
@@ -172,6 +222,11 @@ class OfferWritable(BaseModel):
             self.advertiser_name,
             self.ad_label_text,
             self.legal_disclaimer,
+            self.full_cost_range_text or "",
+            self.compensation_disclosure,
+            self.partner_terms_url or "",
+            self.main_benefit or "",
+            *self.display_warnings,
             self.erid or "",
         ):
             if RAW_SECRET_URL_PATTERN.search(value):
@@ -202,6 +257,12 @@ class OfferPatch(BaseModel):
     ad_label_text: str | None = Field(default=None, max_length=255)
     erid: str | None = Field(default=None, max_length=128)
     legal_disclaimer: str | None = Field(default=None, max_length=4000)
+    full_cost_range_text: str | None = Field(default=None, max_length=1000)
+    compensation_disclosure: str | None = Field(default=None, max_length=1000)
+    partner_terms_url: str | None = Field(default=None, max_length=1000)
+    main_benefit: str | None = Field(default=None, max_length=255)
+    display_warnings: list[str] | None = None
+    cta_text: str | None = Field(default=None, max_length=64)
     partner_id: str | None = None
     affiliate_url_template_key: str | None = Field(default=None, max_length=128)
     commission_type: Literal["none", "fixed", "percent"] | None = None
@@ -237,6 +298,12 @@ class OperatorOfferResponse(BaseModel):
     ad_label_text: str
     erid: str | None
     legal_disclaimer: str
+    full_cost_range_text: str | None
+    compensation_disclosure: str
+    partner_terms_url: str | None
+    main_benefit: str | None
+    display_warnings: list[str]
+    cta_text: str
     partner_id: str
     affiliate_url_template_key: str | None
     commission_type: str

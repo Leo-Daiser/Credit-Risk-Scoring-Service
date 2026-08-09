@@ -30,6 +30,7 @@ LIST_FIELDS = {
     "allowed_employment_types",
     "allowed_credit_history_bands",
     "risk_band_policy",
+    "display_warnings",
 }
 EXPORT_FIELDS = [
     "bank_id",
@@ -51,6 +52,12 @@ EXPORT_FIELDS = [
     "ad_label_text",
     "erid",
     "legal_disclaimer",
+    "full_cost_range_text",
+    "compensation_disclosure",
+    "partner_terms_url",
+    "main_benefit",
+    "display_warnings",
+    "cta_text",
     "partner_id",
     "affiliate_url_template_key",
     "commission_type",
@@ -85,6 +92,18 @@ class OfferImportRow(BaseModel):
     ad_label_text: str = Field(min_length=1, max_length=255)
     erid: str | None = Field(default=None, max_length=128)
     legal_disclaimer: str = Field(min_length=1)
+    full_cost_range_text: str | None = Field(default=None, max_length=1000)
+    compensation_disclosure: str = Field(
+        default="Сервис может получить вознаграждение за переход.",
+        min_length=1,
+        max_length=1000,
+    )
+    partner_terms_url: str | None = Field(default=None, max_length=1000)
+    main_benefit: str | None = Field(default=None, max_length=255)
+    display_warnings: list[str] = Field(default_factory=list)
+    cta_text: Literal[
+        "Посмотреть условия", "Перейти к предложению", "Продолжить у партнёра"
+    ] = "Посмотреть условия"
     partner_id: str = Field(min_length=1, max_length=64)
     affiliate_url_template_key: str | None = Field(default=None, max_length=128)
     commission_type: Literal["none", "fixed", "percent"] = "none"
@@ -95,7 +114,7 @@ class OfferImportRow(BaseModel):
     @classmethod
     def require_non_empty_members(cls, value: list[str], info) -> list[str]:
         cleaned = [str(item).strip() for item in value if str(item).strip()]
-        if info.field_name != "allowed_regions" and not cleaned:
+        if info.field_name not in {"allowed_regions", "display_warnings"} and not cleaned:
             raise ValueError("list must not be empty")
         return sorted(set(cleaned))
 
@@ -115,6 +134,8 @@ class OfferImportRow(BaseModel):
                 raise ValueError("active offer is expired")
         if self.partner_id != "demo" and self.is_active and not self.affiliate_url_template_key:
             raise ValueError("active real offer requires affiliate_url_template_key")
+        if self.partner_id != "demo" and self.is_active and not self.partner_terms_url:
+            raise ValueError("active real offer requires partner_terms_url")
         if self.affiliate_url_template_key and not ENV_KEY_PATTERN.fullmatch(
             self.affiliate_url_template_key
         ):
@@ -189,7 +210,23 @@ def _validate_no_secret_material(row: dict[str, Any], index: int) -> None:
     }
     if forbidden_fields.intersection(row):
         raise OfferImportValidationError(f"Row {index}: secret or URL field is forbidden")
-    for value in row.values():
+    terms_url = row.get("partner_terms_url")
+    if terms_url:
+        parsed = urlsplit(str(terms_url))
+        if (
+            parsed.scheme != "https"
+            or not parsed.netloc
+            or parsed.query
+            or parsed.fragment
+            or parsed.username
+            or parsed.password
+        ):
+            raise OfferImportValidationError(
+                f"Row {index}: partner terms URL must be public HTTPS without parameters"
+            )
+    for key, value in row.items():
+        if key == "partner_terms_url":
+            continue
         values = value if isinstance(value, list) else [value]
         if any(SENSITIVE_TEXT_PATTERN.search(str(item)) for item in values if item is not None):
             raise OfferImportValidationError(f"Row {index}: URL or secret-like value is forbidden")
@@ -204,7 +241,15 @@ def _normalize_row(raw: dict[str, Any], index: int) -> OfferImportRow:
                 normalized[field] = _parse_list(normalized[field])
             except Exception as exc:
                 raise OfferImportValidationError(f"Row {index}: invalid list field {field}") from exc
-    for nullable in ("erid", "affiliate_url_template_key", "commission_amount", "expires_at"):
+    for nullable in (
+        "erid",
+        "affiliate_url_template_key",
+        "commission_amount",
+        "expires_at",
+        "full_cost_range_text",
+        "partner_terms_url",
+        "main_benefit",
+    ):
         if normalized.get(nullable) == "":
             normalized[nullable] = None
     try:

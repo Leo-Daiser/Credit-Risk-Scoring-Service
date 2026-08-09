@@ -23,6 +23,10 @@ class CommercialSummaryMetrics(BaseModel):
     approval_rate: float = 0.0
     issued_rate: float = 0.0
     estimated_revenue: float = 0.0
+    epc_proxy: float = 0.0
+    recommended_offer_ctr: float = 0.0
+    top_card_ctr: float = 0.0
+    partner_redirect_failures: int = 0
     ctr_by_offer: dict[str, float] = Field(default_factory=dict)
     ctr_by_risk_band: dict[str, float] = Field(default_factory=dict)
     ctr_by_pti_band: dict[str, float] = Field(default_factory=dict)
@@ -47,6 +51,7 @@ class OfferAnalyticsMetric(BaseModel):
     approval_rate: float = 0.0
     issued_rate: float = 0.0
     estimated_revenue: float = 0.0
+    epc_proxy: float = 0.0
     expected_revenue_proxy: float = 0.0
     revenue_estimate_source: str = "conservative_prior"
     revenue_estimate_confidence: str = "low"

@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from src.db.models import BankOffer
 from src.offers.analytics import CommercialAnalyticsService
+from src.offers.operator_offer_schemas import RATE_DISPLAY_PATTERN
 from src.offers.operator_schemas import (
     OfferQualityItem,
     OfferQualityReport,
@@ -36,7 +37,15 @@ def _rules_are_narrow(offer: BankOffer) -> bool:
 
 
 def _recommendation(flags: list[str], offer: BankOffer) -> QualityRecommendation:
-    if "missing_disclosure" in flags or "missing_advertiser_name" in flags:
+    if any(
+        flag in flags
+        for flag in (
+            "missing_disclosure",
+            "missing_advertiser_name",
+            "missing_compensation_disclosure",
+            "missing_full_cost_range",
+        )
+    ):
         return "missing_disclosure"
     if "eligibility_too_broad" in flags or "eligibility_too_narrow" in flags:
         return "review_rules"
@@ -64,6 +73,17 @@ def build_offer_quality_report(session: Session, *, days: int) -> OfferQualityRe
             flags.append("demo_only")
         if not offer.ad_label_text.strip() or not offer.legal_disclaimer.strip():
             flags.append("missing_disclosure")
+        if not offer.compensation_disclosure.strip():
+            flags.append("missing_compensation_disclosure")
+        display_copy = " ".join(
+            filter(None, (offer.product_name, offer.main_benefit, offer.ad_label_text))
+        )
+        if RATE_DISPLAY_PATTERN.search(display_copy) and not offer.full_cost_range_text:
+            flags.append("missing_full_cost_range")
+        if offer.is_active and not offer.erid:
+            flags.append("erid_not_configured")
+        if offer.partner_id != "demo" and offer.is_active and not offer.partner_terms_url:
+            flags.append("missing_partner_terms_url")
         if not offer.advertiser_name.strip():
             flags.append("missing_advertiser_name")
         if offer.partner_id != "demo" and not offer.affiliate_url_template_key:

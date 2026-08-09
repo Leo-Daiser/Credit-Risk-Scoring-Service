@@ -14,8 +14,8 @@ export default function OperatorOffersPage() {
     <AppShell
       operator
       active="offerManagement"
-      eyebrow="Operator · catalog"
-      title="Управление офферами"
+      eyebrow="Кабинет оператора"
+      title="Офферы"
     >
       <OfferManagementWorkspace />
     </AppShell>

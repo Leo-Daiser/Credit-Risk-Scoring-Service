@@ -113,6 +113,12 @@ def operator_offer_payload(**overrides):
         "ad_label_text": "Advertising. Operator demo offer.",
         "erid": None,
         "legal_disclaimer": "Preliminary conditions. Final decision is made by the bank.",
+        "full_cost_range_text": None,
+        "compensation_disclosure": "Service may receive compensation for a referral.",
+        "partner_terms_url": None,
+        "main_benefit": "Flexible amount and term",
+        "display_warnings": [],
+        "cta_text": "Посмотреть условия",
         "partner_id": "demo",
         "affiliate_url_template_key": None,
         "commission_type": "none",
@@ -217,6 +223,11 @@ def test_operator_offer_create_patch_validate_and_deactivate(growth_client):
     [
         {"min_amount": 500_000, "max_amount": 100_000},
         {"is_active": True, "ad_label_text": ""},
+        {"is_active": True, "compensation_disclosure": ""},
+        {
+            "main_benefit": "Ставка 10%",
+            "full_cost_range_text": None,
+        },
         {
             "advertiser_name": "https://partner.example/?token=raw-secret",
         },
@@ -254,6 +265,7 @@ def test_operator_offer_rejects_enabled_real_partner_without_secret(
         json=operator_offer_payload(
             partner_id="real_operator",
             affiliate_url_template_key="REAL_OPERATOR_AFFILIATE_TEMPLATE",
+            partner_terms_url="https://partner.example/terms",
         ),
     )
     assert response.status_code == 422
@@ -319,6 +331,9 @@ def test_empty_analytics_returns_zeros_and_is_operator_protected(growth_client):
     assert summary["total_profile_scores"] == 0
     assert summary["total_offer_impressions"] == 0
     assert summary["ctr_overall"] == 0
+    assert summary["epc_proxy"] == 0
+    assert summary["recommended_offer_ctr"] == 0
+    assert summary["partner_redirect_failures"] == 0
     assert response.json()["time_window"]["days"] == 7
 
 
@@ -336,12 +351,21 @@ def test_funnel_ctr_postback_revenue_and_public_privacy(growth_client):
     offer = body["offers"][0]
     assert offer["positive_reasons"]
     assert offer["disclosure"]
+    assert offer["ad_disclosure"]
+    assert offer["compensation_disclosure"]
+    assert offer["legal_disclaimer"]
+    assert offer["cta_text"] in {
+        "Посмотреть условия",
+        "Перейти к предложению",
+        "Продолжить у партнёра",
+    }
     assert "score_breakdown" not in offer
     assert "expected_revenue_proxy" not in offer
     assert "commission" not in str(body).lower()
     assert offer["product_type"]
     assert offer["min_amount"] < offer["max_amount"]
     assert "affiliate_url_template" not in str(body)
+    assert "partner_terms_url" not in str(body)
     click = client.post(
         f"/v1/offers/{offer['offer_id']}/click",
         json={"profile_id": body["profile_result"]["anonymous_profile_id"]},
@@ -376,6 +400,10 @@ def test_funnel_ctr_postback_revenue_and_public_privacy(growth_client):
     assert analytics["summary"]["approval_rate"] == 1
     assert analytics["summary"]["issued_rate"] == 1
     assert analytics["summary"]["estimated_revenue"] == 1250
+    assert analytics["summary"]["epc_proxy"] == 1250
+    assert analytics["summary"]["recommended_offer_ctr"] == 1
+    assert analytics["summary"]["top_card_ctr"] == 1
+    assert analytics["summary"]["partner_redirect_failures"] == 0
     assert analytics["summary"]["public_event_counts"]["profile_submitted"] == 1
     assert analytics["summary"]["public_event_counts"]["result_viewed"] == 1
     assert analytics["summary"]["public_event_counts"]["offer_card_viewed"] >= 1
@@ -404,7 +432,8 @@ def test_no_eligible_offer_event_and_safe_suggestions(growth_client):
     assert body["no_eligible_offers"] is True
     assert body["offers"] == []
     assert body["suggestions"]
-    assert "отказ" in body["user_explanation"].lower()
+    assert "отказ" not in body["user_explanation"].lower()
+    assert "плох" not in body["user_explanation"].lower()
     with testing_session() as session:
         events = list(
             session.scalars(

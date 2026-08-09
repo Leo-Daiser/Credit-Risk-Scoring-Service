@@ -40,6 +40,7 @@ FUNNEL_EVENT_TYPES = {
     "offer_card_viewed",
     "no_eligible_offers",
     "no_eligible_offers_viewed",
+    "partner_redirect_failed",
 }
 
 
@@ -202,6 +203,19 @@ class CommercialAnalyticsService:
                         ),
                         2,
                     ),
+                    epc_proxy=(
+                        round(
+                            sum(
+                                value
+                                for (revenue_offer_id, _), value in revenue_by_click.items()
+                                if revenue_offer_id == current_offer_id
+                            )
+                            / click_count,
+                            2,
+                        )
+                        if click_count
+                        else 0.0
+                    ),
                     expected_revenue_proxy=estimate.expected_revenue_proxy,
                     revenue_estimate_source=estimate.source,
                     revenue_estimate_confidence=estimate.confidence,
@@ -291,6 +305,11 @@ class CommercialAnalyticsService:
         total_issued = len(
             {item.click_id for item in postbacks if item.status == "issued"}
         )
+        top_impressions = [item for item in impressions if item.rank == 1]
+        top_pairs = {(item.profile_id, item.offer_id) for item in top_impressions}
+        top_clicks = sum(
+            1 for item in clicks if (item.profile_id, item.offer_id) in top_pairs
+        )
         top_by_clicks = sorted(
             offer_metrics, key=lambda item: (-item.clicks, item.offer_id)
         )
@@ -338,6 +357,12 @@ class CommercialAnalyticsService:
             approval_rate=safe_rate(total_approvals, total_postback_clicks),
             issued_rate=safe_rate(total_issued, total_postback_clicks),
             estimated_revenue=round(sum(revenue_by_click.values()), 2),
+            epc_proxy=(
+                round(sum(revenue_by_click.values()) / len(clicks), 2) if clicks else 0.0
+            ),
+            recommended_offer_ctr=safe_rate(top_clicks, len(top_impressions)),
+            top_card_ctr=safe_rate(top_clicks, len(top_impressions)),
+            partner_redirect_failures=event_counts["partner_redirect_failed"],
             ctr_by_offer={str(item.offer_id): item.ctr for item in offer_metrics},
             ctr_by_risk_band=ctr_by_risk_band,
             ctr_by_pti_band=ctr_by_pti_band,

@@ -47,6 +47,7 @@ export function calculateCreditScenario(
   const totalRepayment = payment * months;
   const overpayment = Math.max(0, totalRepayment - principal);
   const allMonthlyPayments = payment + existingPayments;
+  const remainingBudget = monthlyIncome - allMonthlyPayments;
   const pti = monthlyIncome > 0 ? allMonthlyPayments / monthlyIncome : null;
   const affordabilityBand = pti === null
     ? "unknown"
@@ -57,5 +58,13 @@ export function calculateCreditScenario(
         : pti <= 0.7
           ? "stretched"
           : "high";
-  return { payment, totalRepayment, overpayment, allMonthlyPayments, pti, affordabilityBand };
+  return {
+    payment,
+    totalRepayment,
+    overpayment,
+    allMonthlyPayments,
+    remainingBudget,
+    pti,
+    affordabilityBand,
+  };
 }

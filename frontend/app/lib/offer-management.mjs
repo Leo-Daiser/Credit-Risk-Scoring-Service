@@ -19,6 +19,12 @@ export const initialOfferDraft = Object.freeze({
   adLabelText: "Реклама. Условия предварительные.",
   erid: "",
   legalDisclaimer: "Финальное решение и индивидуальные условия определяет банк.",
+  fullCostRangeText: "",
+  compensationDisclosure: "Сервис может получить вознаграждение за переход.",
+  partnerTermsUrl: "",
+  mainBenefit: "",
+  displayWarnings: "",
+  ctaText: "Посмотреть условия",
   partnerId: "demo",
   affiliateTemplateKey: "",
   commissionType: "none",
@@ -52,14 +58,26 @@ export function validateOfferDraft(draft) {
   if (draft.isActive && (!draft.advertiserName.trim() || !draft.adLabelText.trim() || !draft.legalDisclaimer.trim())) {
     errors.push("Активному офферу нужны рекламодатель и disclosure.");
   }
+  if (draft.isActive && !draft.compensationDisclosure.trim()) {
+    errors.push("Добавьте информацию о возможном вознаграждении сервиса.");
+  }
+  if (/ставк|процент|\d(?:[\s.,]\d)?\s*%/i.test(`${draft.productName} ${draft.mainBenefit} ${draft.adLabelText}`) && !draft.fullCostRangeText.trim()) {
+    errors.push("При упоминании ставки укажите диапазон полной стоимости кредита.");
+  }
   if (!SAFE_ID.test(draft.partnerId)) errors.push("Укажите корректный partner_id.");
   if (draft.partnerId !== "demo" && draft.isActive && !draft.affiliateTemplateKey.trim()) {
     errors.push("Активному real-partner нужен env-key шаблона.");
   }
+  if (draft.partnerId !== "demo" && draft.isActive && !draft.partnerTermsUrl.trim()) {
+    errors.push("Для активного партнёра нужна публичная ссылка на условия.");
+  }
   if (draft.affiliateTemplateKey && !ENV_KEY.test(draft.affiliateTemplateKey)) {
     errors.push("Шаблон задаётся только uppercase env-key reference.");
   }
-  if ([draft.productName, draft.advertiserName, draft.adLabelText, draft.legalDisclaimer].some((value) => RAW_SECRET_URL.test(value))) {
+  if (draft.partnerTermsUrl && !/^https:\/\/[^?#]+$/i.test(draft.partnerTermsUrl)) {
+    errors.push("Ссылка на условия должна использовать HTTPS и не содержать параметров.");
+  }
+  if ([draft.productName, draft.advertiserName, draft.adLabelText, draft.legalDisclaimer, draft.mainBenefit, draft.partnerTermsUrl].some((value) => RAW_SECRET_URL.test(value))) {
     errors.push("URL с token/secret параметрами запрещён.");
   }
   const commission = draft.commissionAmount === "" ? null : Number(draft.commissionAmount);
@@ -94,6 +112,12 @@ export function buildOfferPayload(draft) {
     ad_label_text: draft.adLabelText.trim(),
     erid: draft.erid.trim() || null,
     legal_disclaimer: draft.legalDisclaimer.trim(),
+    full_cost_range_text: draft.fullCostRangeText.trim() || null,
+    compensation_disclosure: draft.compensationDisclosure.trim(),
+    partner_terms_url: draft.partnerTermsUrl.trim() || null,
+    main_benefit: draft.mainBenefit.trim() || null,
+    display_warnings: splitList(draft.displayWarnings),
+    cta_text: draft.ctaText,
     partner_id: draft.partnerId.trim(),
     affiliate_url_template_key: draft.affiliateTemplateKey.trim() || null,
     commission_type: draft.commissionType,
@@ -124,6 +148,12 @@ export function offerToDraft(offer) {
     adLabelText: offer.ad_label_text,
     erid: offer.erid ?? "",
     legalDisclaimer: offer.legal_disclaimer,
+    fullCostRangeText: offer.full_cost_range_text ?? "",
+    compensationDisclosure: offer.compensation_disclosure,
+    partnerTermsUrl: offer.partner_terms_url ?? "",
+    mainBenefit: offer.main_benefit ?? "",
+    displayWarnings: offer.display_warnings.join(", "),
+    ctaText: offer.cta_text,
     partnerId: offer.partner_id,
     affiliateTemplateKey: offer.affiliate_url_template_key ?? "",
     commissionType: offer.commission_type,

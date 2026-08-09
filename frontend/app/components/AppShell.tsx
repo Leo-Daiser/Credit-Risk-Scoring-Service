@@ -17,19 +17,19 @@ import {
 type NavKey = "overview" | "score" | "offers" | "operator" | "offerManagement" | "commercial" | "batches" | "history" | "model";
 
 const publicNavigation = [
-  { key: "overview", href: "/", label: "Обзор", icon: LayoutDashboard },
+  { key: "overview", href: "/", label: "Главная", icon: LayoutDashboard },
   { key: "score", href: "/score", label: "Калькулятор", icon: ScanLine },
   { key: "offers", href: "/offers", label: "Подбор предложений", icon: BadgePercent },
 ] as const;
 
 const operatorNavigation = [
-  { key: "operator", href: "/operator", label: "Операторский обзор", icon: LayoutDashboard },
-  { key: "score", href: "/operator/score", label: "ML-скоринг", icon: ScanLine },
-  { key: "offerManagement", href: "/operator/offers", label: "Управление офферами", icon: ListChecks },
-  { key: "commercial", href: "/commercial", label: "Коммерческая аналитика", icon: TrendingUp },
-  { key: "batches", href: "/batches", label: "Пакетный скоринг", icon: Files },
-  { key: "history", href: "/history", label: "История", icon: Clock3 },
-  { key: "model", href: "/model", label: "Модель и контур", icon: ShieldCheck },
+  { key: "operator", href: "/operator", label: "Обзор бизнеса", icon: LayoutDashboard },
+  { key: "commercial", href: "/commercial", label: "Партнёрские переходы", icon: TrendingUp },
+  { key: "offerManagement", href: "/operator/offers", label: "Офферы", icon: ListChecks },
+  { key: "history", href: "/history", label: "Заявки и подборы", icon: Clock3 },
+  { key: "batches", href: "/batches", label: "Импорт и задачи", icon: Files },
+  { key: "score", href: "/operator/score", label: "Расчётный модуль", icon: ScanLine },
+  { key: "model", href: "/operator/system", label: "Состояние системы", icon: ShieldCheck },
 ] as const;
 
 interface AppShellProps {
@@ -77,14 +77,14 @@ export function AppShell({ active, eyebrow, title, children, operator = false }:
             <Activity size={18} />
           </div>
           <div>
-            <strong>{operator ? "Контур наблюдаем" : "Privacy-light подход"}</strong>
-            <span>{operator ? "API, worker и PostgreSQL" : "Без паспорта, телефона и БКИ"}</span>
+            <strong>{operator ? "Контур наблюдаем" : "Минимум данных"}</strong>
+            <span>{operator ? "Доступ только для сотрудников" : "Без паспорта, телефона и БКИ"}</span>
           </div>
         </div>
 
-        <Link className="help-link" href={operator ? "/model#contract" : "/offers"}>
+        <Link className="help-link" href={operator ? "/operator/system" : "/offers"}>
           <CircleHelp size={18} aria-hidden="true" />
-          Как подготовить данные
+          {operator ? "Помощь по системе" : "Как работает подбор"}
         </Link>
       </aside>
 
@@ -94,11 +94,11 @@ export function AppShell({ active, eyebrow, title, children, operator = false }:
             <span className="eyebrow">{eyebrow}</span>
             <h1>{title}</h1>
           </div>
-          <button className="profile-button" type="button" aria-label="Профиль среды portfolio">
-            <span className="profile-avatar">{operator ? "ML" : "RL"}</span>
+          <button className="profile-button" type="button" aria-label={operator ? "Кабинет оператора" : "Личный кабинет Riskline"}>
+            <span className="profile-avatar">RL</span>
             <span className="profile-copy">
-              <strong>{operator ? "Portfolio workspace" : "Public MVP"}</strong>
-              <small>{operator ? "внутренний контур" : "предварительный подбор"}</small>
+              <strong>{operator ? "Кабинет оператора" : "Riskline"}</strong>
+              <small>{operator ? "внутренний кабинет" : "личный кабинет"}</small>
             </span>
             <ChevronDown size={16} aria-hidden="true" />
           </button>

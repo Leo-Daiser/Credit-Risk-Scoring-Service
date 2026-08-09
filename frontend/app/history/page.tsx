@@ -4,14 +4,14 @@ import { HistoryWorkspace } from "../components/HistoryWorkspace";
 import { requireOperatorUi } from "../lib/access";
 
 export const metadata: Metadata = {
-  title: "История решений",
+  title: "Заявки и подборы",
   description: "Аудит одиночных решений кредитного скоринга.",
 };
 
 export default function HistoryPage() {
   requireOperatorUi();
   return (
-    <AppShell operator active="history" eyebrow="Audit trail" title="История решений">
+    <AppShell operator active="history" eyebrow="Журнал операций" title="Заявки и подборы">
       <HistoryWorkspace />
     </AppShell>
   );

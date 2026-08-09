@@ -23,7 +23,7 @@ python -m src.cli verify-demo
 The optional events contain event names and a synthetic marker only; no financial
 values or raw profiles are generated.
 
-## Public-safe portfolio profile
+## Public-safe product profile
 
 Copy `.env.example` to an ignored local file or inject variables through the
 deployment platform. Generate a strong `API_KEY`; do not use the template fallback.

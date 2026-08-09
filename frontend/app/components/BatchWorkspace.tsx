@@ -208,25 +208,25 @@ export function BatchWorkspace() {
 
         <aside className="contract-card">
           <div className="step-label inverse"><span>02</span> Контракт загрузки</div>
-          <h3>Сервис не переобучает модель на вашем файле</h3>
+          <h3>Файл должен соответствовать внутреннему формату</h3>
           <p>
-            Он применяет текущий production bundle к таблице с уже подготовленными
-            признаками Home Credit. Произвольный банковский экспорт не совместим со схемой.
+            Пакетная обработка предназначена для подготовленных операторских данных.
+            Произвольный банковский экспорт не совместим с форматом загрузки.
           </p>
           <ul className="check-list">
-            <li><CheckCircle2 size={18} /> Заголовки сверяются с feature schema</li>
-            <li><CheckCircle2 size={18} /> Неизвестные признаки отклоняются</li>
-            <li><CheckCircle2 size={18} /> Результат содержит ID, PD, решение и риск</li>
+            <li><CheckCircle2 size={18} /> Заголовки сверяются с контрактом данных</li>
+            <li><CheckCircle2 size={18} /> Неизвестные поля отклоняются</li>
+            <li><CheckCircle2 size={18} /> Результат содержит ID и предварительную оценку</li>
             <li><LockKeyhole size={18} /> Исходник удаляется после успешной обработки</li>
           </ul>
-          <a className="contract-link" href="/model#contract">Подробнее о формате данных →</a>
+          <a className="contract-link" href="/operator/system#contract">Подробнее о формате данных →</a>
         </aside>
       </section>
 
       <section className="panel jobs-panel">
         <div className="panel-heading">
           <div>
-            <span className="section-kicker">Durable queue</span>
+            <span className="section-kicker">Очередь обработки</span>
             <h3>Последние задания</h3>
           </div>
           <button className="icon-button" type="button" onClick={() => void loadJobs()} aria-label="Обновить очередь">

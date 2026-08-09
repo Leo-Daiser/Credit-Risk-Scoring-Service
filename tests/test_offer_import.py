@@ -53,6 +53,12 @@ def valid_offer(**overrides):
         "ad_label_text": "Advertising. Imported demo offer.",
         "erid": None,
         "legal_disclaimer": "Preliminary conditions. Final decision is made by the bank.",
+        "full_cost_range_text": None,
+        "compensation_disclosure": "Service may receive compensation for a referral.",
+        "partner_terms_url": None,
+        "main_benefit": "Flexible amount and term",
+        "display_warnings": [],
+        "cta_text": "Посмотреть условия",
         "partner_id": "demo",
         "affiliate_url_template_key": None,
         "commission_type": "none",
@@ -164,10 +170,11 @@ def test_enabled_real_partner_requires_secret_and_template_environment(tmp_path,
     write_yaml(
         offers,
         [
-            valid_offer(
-                partner_id="real-test",
-                affiliate_url_template_key="REAL_TEST_AFFILIATE_TEMPLATE",
-            )
+                valid_offer(
+                    partner_id="real-test",
+                    affiliate_url_template_key="REAL_TEST_AFFILIATE_TEMPLATE",
+                    partner_terms_url="https://partner.example/terms",
+                )
         ],
     )
     monkeypatch.setattr(settings, "partner_config_path", str(partners))

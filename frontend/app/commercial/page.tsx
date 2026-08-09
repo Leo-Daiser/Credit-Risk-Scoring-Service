@@ -4,7 +4,7 @@ import { CommercialWorkspace } from "../components/CommercialWorkspace";
 import { requireOperatorUi } from "../lib/access";
 
 export const metadata: Metadata = {
-  title: "Коммерческая аналитика",
+  title: "Аналитика партнёрских переходов",
   description: "Воронка подбора, качество предложений и сегментные возможности.",
 };
 
@@ -14,8 +14,8 @@ export default function CommercialPage() {
     <AppShell
       operator
       active="commercial"
-      eyebrow="Operator · product growth"
-      title="Коммерческая аналитика"
+      eyebrow="Кабинет оператора"
+      title="Аналитика партнёрских переходов"
     >
       <CommercialWorkspace />
     </AppShell>

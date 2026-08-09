@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
@@ -16,6 +17,13 @@ from src.offers.schemas import CreditProfileResult, OfferEligibilityResult, Rank
 
 PTI_SCORE = {"low": 1.0, "moderate": 0.8, "high": 0.55, "very_high": 0.2, "unknown": 0.45}
 RISK_SCORE = {"low": 1.0, "medium": 0.82, "high": 0.55, "very_high": 0.25, "unknown": 0.5}
+logger = logging.getLogger(__name__)
+FIT_COMPONENTS = (
+    "fit_score",
+    "affordability_score",
+    "risk_compatibility_score",
+    "product_match_score",
+)
 
 
 def _component_scores(
@@ -93,18 +101,16 @@ def rank_offers(
     base_weights = {key: float(value) for key, value in ranking_config["weights"].items()}
     fit_multiplier, revenue_multiplier = strategy_multipliers(experiment_variant)
     effective_weights = dict(base_weights)
-    for key in (
-        "fit_score",
-        "affordability_score",
-        "risk_compatibility_score",
-        "product_match_score",
-    ):
+    for key in FIT_COMPONENTS:
         effective_weights[key] *= fit_multiplier
     effective_weights["expected_revenue_proxy"] *= revenue_multiplier
     total_weight = sum(effective_weights.values())
     weights = {key: value / total_weight for key, value in effective_weights.items()}
     penalty = ranking_config["confidence_penalties"][profile.confidence_level.value]
     commercial_fit_floor = float(ranking_config.get("commercial_fit_floor", 0.55))
+    tiebreaker_tolerance = float(
+        ranking_config.get("commercial_tiebreaker_tolerance", 0.03)
+    )
     scored: list[tuple[float, int, int, BankOffer, OfferEligibilityResult, dict[str, float]]] = []
     for offer, eligibility in eligible_offers:
         if not eligibility.eligible:
@@ -121,15 +127,60 @@ def rank_offers(
         )
         weighted = {name: round(components[name] * float(weight), 8) for name, weight in weights.items()}
         final_score = round(sum(weighted.values()) * float(penalty), 8)
+        fit_weight = sum(effective_weights[name] for name in FIT_COMPONENTS)
+        fit_quality_score = sum(
+            components[name] * effective_weights[name] for name in FIT_COMPONENTS
+        ) / fit_weight
+        commercial_tiebreaker_score = (
+            weighted["commercial_score"] + weighted["expected_revenue_proxy"]
+        )
         breakdown = {
             **components,
             **{f"weighted_{name}": value for name, value in weighted.items()},
             "confidence_penalty": float(penalty),
             "pre_penalty_score": round(sum(weighted.values()), 8),
             "final_score": final_score,
+            "fit_quality_score": round(fit_quality_score, 8),
+            "commercial_tiebreaker_score": round(commercial_tiebreaker_score, 8),
+            "commercial_tiebreaker_used": 0.0,
         }
         scored.append((final_score, offer.priority, offer.id, offer, eligibility, breakdown))
-    scored.sort(key=lambda item: (-item[0], -item[1], item[2]))
+    scored.sort(key=lambda item: (-item[5]["fit_quality_score"], item[2]))
+    fit_first: list[
+        tuple[float, int, int, BankOffer, OfferEligibilityResult, dict[str, float]]
+    ] = []
+    while scored:
+        leader = scored.pop(0)
+        leader_fit = leader[5]["fit_quality_score"]
+        group = [leader]
+        if leader_fit >= commercial_fit_floor:
+            while (
+                scored
+                and scored[0][5]["fit_quality_score"] >= commercial_fit_floor
+                and leader_fit - scored[0][5]["fit_quality_score"] <= tiebreaker_tolerance
+            ):
+                group.append(scored.pop(0))
+        if len(group) > 1:
+            commercial_values = {
+                item[5]["commercial_tiebreaker_score"] for item in group
+            }
+            if len(commercial_values) > 1:
+                for item in group:
+                    item[5]["commercial_tiebreaker_used"] = 1.0
+                logger.info(
+                    "offer_ranking_commercial_tiebreaker_used",
+                    extra={"offer_ids": [item[2] for item in group]},
+                )
+            group.sort(
+                key=lambda item: (
+                    -item[5]["commercial_tiebreaker_score"],
+                    -item[5]["fit_quality_score"],
+                    -item[1],
+                    item[2],
+                )
+            )
+        fit_first.extend(group)
+    scored = fit_first
     ml_fallback = False
     if settings.offer_ranker_mode == "ml" and scored:
         try:

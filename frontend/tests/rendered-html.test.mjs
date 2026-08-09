@@ -38,19 +38,26 @@ async function render(path = "/") {
   );
 }
 
+function visibleText(html) {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ");
+}
+
 test("server-renders the public landing without operator data", async () => {
   const response = await render();
   assert.equal(response.status, 200);
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Предварительный подбор кредитных предложений · Riskline<\/title>/i);
-  assert.match(html, /Privacy-light/);
-  assert.match(html, /Демонстрационный режим/);
-  assert.match(html, /Рассчитать платёж/);
-  assert.match(html, /Проверьте кредитную нагрузку и подберите подходящие предложения без паспорта и звонков/);
+  assert.match(html, /<title>Рассчитать платёж и подобрать кредитные предложения · Riskline<\/title>/i);
+  assert.match(html, /Демо-режим/);
+  assert.match(html, /Рассчитать и подобрать/);
+  assert.match(html, /Рассчитайте платёж и сравните подходящие кредитные предложения за 2 минуты/);
   assert.match(html, /СНИЛС и ИНН/);
-  assert.match(html, /Название работодателя/);
+  assert.match(html, /Без названия работодателя/);
   assert.match(html, /Сервис не принимает кредитных решений/);
   assert.match(html, /Финальное решение принимает банк/);
   assert.doesNotMatch(html, /гарантируем одобрение|точно знаем, какой банк одобрит|банковский скоринг|официальное решение/i);
@@ -60,15 +67,15 @@ test("server-renders the public landing without operator data", async () => {
 
 test("public and enabled local operator routes render their first view", async () => {
   const cases = [
-    ["/score", /Рассчитайте платёж и долговую нагрузку/],
-    ["/offers", /Предварительный профиль и совместимые предложения/],
-    ["/operator", /Решения по риску/],
+    ["/score", /Проверьте, какой платёж подходит вашему бюджету/],
+    ["/offers", /Подберите предложения под ваш платёж и долговую нагрузку/],
+    ["/operator", /Аналитика партнёрских переходов/],
     ["/operator/score", /Оцените кредитную нагрузку до заявки/],
-    ["/operator/offers", /Каталог без ручного редактирования YAML/],
-    ["/commercial", /Воронка, качество офферов и неудовлетворённый спрос/],
+    ["/operator/offers", /Каталог партнёрских предложений/],
+    ["/commercial", /Аналитика партнёрских переходов/],
     ["/batches", /Реестр вошёл\. Решения вышли/],
     ["/history", /Каждое решение можно восстановить/],
-    ["/model", /Версия модели — часть каждого решения/],
+    ["/operator/system", /Расчётный модуль и внутренние сервисы/],
   ];
 
   for (const [path, expected] of cases) {
@@ -93,12 +100,13 @@ test("operator score route keeps the internal model questionnaire and JSON mode"
 test("public calculator does not expose raw model or operator controls", async () => {
   const response = await render("/score");
   const html = await response.text();
-  assert.match(html, /Публичный калькулятор/);
-  assert.match(html, /без отправки данных/);
+  assert.match(html, /Расчёт без регистрации/);
+  assert.match(html, /никуда не отправляются/);
   assert.match(html, /Всего к возврату/);
   assert.match(html, /Переплата/);
   assert.match(html, /Долговая нагрузка/);
-  assert.match(html, /Продолжить к privacy-light подбору/);
+  assert.match(html, /Показать предложения под этот платёж/);
+  assert.match(html, /Остаток бюджета/);
   assert.doesNotMatch(html, /Экспертный JSON|Feature payload|audit log/);
 });
 
@@ -124,6 +132,7 @@ test("every operator page applies the shared server-side UI guard", async () => 
     "../app/operator/page.tsx",
     "../app/operator/score/page.tsx",
     "../app/operator/offers/page.tsx",
+    "../app/operator/system/page.tsx",
     "../app/commercial/page.tsx",
     "../app/batches/page.tsx",
     "../app/history/page.tsx",
@@ -156,6 +165,8 @@ test("operator offer create and edit draft validation rejects unsafe values", ()
   const payload = buildOfferPayload(valid);
   assert.equal(payload.bank_id, "demo-managed");
   assert.equal(payload.affiliate_url_template_key, null);
+  assert.equal(payload.compensation_disclosure, initialOfferDraft.compensationDisclosure);
+  assert.equal(payload.cta_text, "Посмотреть условия");
   assert.ok(!Object.hasOwn(payload, "affiliate_url_template"));
 
   const invalidRange = validateOfferDraft({ ...valid, minAmount: "500000", maxAmount: "100000" });
@@ -168,10 +179,10 @@ test("operator offer page renders table states and protected actions without sec
   const response = await render("/operator/offers");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /Управление офферами/);
+  assert.match(html, /Каталог партнёрских предложений/);
   assert.match(html, /Загружаем каталог/);
   assert.match(html, /Предварительная проверка/);
-  assert.match(html, /Affiliate template env key/);
+  assert.match(html, /Ключ шаблона перехода/);
   assert.doesNotMatch(html, /PARTNER_POSTBACK_SECRET|affiliate_url_template[^_]|private token/i);
 
   const source = await readFile(
@@ -200,7 +211,7 @@ test("privacy-light offer matching exposes consent and advertising boundaries", 
   assert.match(html, /Паспорт, телефон, имя, документы, работодатель и данные БКИ не запрашиваются/);
   assert.match(html, /Согласен на обработку введённых диапазонов/);
   assert.match(html, /не принимает кредитных решений/);
-  assert.match(html, /Точные суммы используются только в текущем запросе/);
+  assert.match(html, /Точные суммы используются только во время расчёта/);
   assert.match(html, /Финальное решение принимает банк/);
   assert.match(html, /Можно указать примерные значения/);
   assert.match(html, /Точная сумма, ₽ — необязательно/);
@@ -209,6 +220,35 @@ test("privacy-light offer matching exposes consent and advertising boundaries", 
   assert.match(html, /Почему результат предварительный/);
   assert.doesNotMatch(html, /Имя пользователя|Номер телефона|Паспортные данные/);
   assert.doesNotMatch(html, /localStorage|sessionStorage/);
+});
+
+test("public pages contain no portfolio or raw technical showcase wording", async () => {
+  const publicRoutes = [
+    "/", "/score", "/offers", "/credit-calculator", "/debt-load-calculator",
+    "/loan-by-income", "/refinance-check", "/credit-history-guide",
+  ];
+  const forbidden = /portfolio|interview|pet project|kaggle|home credit|\bPD\b|default probability|вероятност\S* дефолт|ROC-AUC|PR-AUC|Brier|threshold|feature coverage|EXT_SOURCE|CODE_GENDER|ValueError|PostgreSQL|\bworker\b|model bundle|immutable bundle/i;
+  for (const path of publicRoutes) {
+    const response = await render(path);
+    assert.equal(response.status, 200, path);
+    assert.doesNotMatch(visibleText(await response.text()), forbidden, path);
+  }
+});
+
+test("offer result source keeps recommendation, disclosures and every CTA behind tracked click", async () => {
+  const source = await readFile(
+    new URL("../app/components/OfferWorkspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /Рекомендуемое предложение/);
+  assert.match(source, /Посмотреть лучшее предложение/);
+  assert.match(source, /Вы переходите к партнёру/);
+  assert.match(source, /v1\/offers\/\$\{offer\.offer_id\}\/click/);
+  assert.match(source, /Переход уже зафиксирован для аналитики/);
+  assert.match(source, /offer\.ad_disclosure/);
+  assert.match(source, /offer\.legal_disclaimer/);
+  assert.doesNotMatch(source, /offer\.commission|expected_revenue|affiliate_url_template/);
+  assert.doesNotMatch(source, /href=\{?offer\./);
 });
 
 test("SEO-ready public guides render metadata, useful copy and CTA", async () => {
@@ -246,10 +286,10 @@ test("commercial operator view renders protected analytics sections and safe sta
   const response = await render("/commercial");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /Commercial Analytics/);
-  assert.match(html, /Offer Quality/);
-  assert.match(html, /Segment Opportunities/);
-  assert.match(html, /Event Debug/);
+  assert.match(html, /Аналитика партнёрских переходов/);
+  assert.match(html, /Качество предложений/);
+  assert.match(html, /Где не хватает предложений/);
+  assert.match(html, /Журнал событий/);
   assert.match(html, /Загружаем агрегаты/);
   assert.match(html, /Пока пусто/);
   assert.doesNotMatch(html, /X-API-Key|API_KEY=|localStorage|sessionStorage/);
@@ -311,5 +351,5 @@ test("starter preview and unused persistence dependencies are removed", async ()
   assert.doesNotMatch(page, /_sites-preview|codex-preview/);
   assert.deepEqual(JSON.parse(hosting), { d1: null, r2: null });
   assert.match(packageJson, /riskline-console/);
-  assert.match(page, /Предварительный подбор/);
+  assert.match(page, /Рассчитать и подобрать/);
 });

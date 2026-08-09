@@ -220,6 +220,7 @@ class RankedOfferPublic(BaseModel):
     product_name: str
     product_type: str
     advertiser_name: str
+    is_demo: bool = False
     min_amount: float
     max_amount: float
     min_term_months: int
@@ -229,6 +230,11 @@ class RankedOfferPublic(BaseModel):
     disclosure: str
     ad_disclosure: str
     confidence_level: ConfidenceLevel
+    main_benefit: str | None = None
+    full_cost_range_text: str | None = None
+    compensation_disclosure: str
+    legal_disclaimer: str
+    cta_text: str
     redirect_url: str
 
 

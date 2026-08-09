@@ -23,7 +23,9 @@ interface OfferDraft {
   minIncomeBand: string; regions: string; employmentTypes: string;
   creditHistoryBands: string; maxPtiBand: string; riskBandPolicy: string;
   advertiserName: string; adLabelText: string; erid: string;
-  legalDisclaimer: string; partnerId: string; affiliateTemplateKey: string;
+  legalDisclaimer: string; fullCostRangeText: string; compensationDisclosure: string;
+  partnerTermsUrl: string; mainBenefit: string; displayWarnings: string; ctaText: string;
+  partnerId: string; affiliateTemplateKey: string;
   commissionType: string; commissionAmount: string; expiresAt: string;
 }
 
@@ -156,11 +158,11 @@ export function OfferManagementWorkspace() {
     <div className="offer-management-stack">
       <section className="offer-management-intro">
         <div>
-          <span className="section-kicker">Offer catalog</span>
-          <h2>Каталог без ручного редактирования YAML</h2>
+          <span className="section-kicker">Управление предложениями</span>
+          <h2>Каталог партнёрских предложений</h2>
           <p>
-            Управляйте правилами, disclosure и статусом. URL, токены и partner secrets здесь
-            не вводятся — разрешены только ссылки на переменные окружения.
+            Настраивайте условия, отображение, маркировку и отслеживание без изменения
+            конфигурационных файлов. Секретные значения здесь не вводятся.
           </p>
         </div>
         <button className="button button-dark" type="button" onClick={resetEditor}>
@@ -174,17 +176,25 @@ export function OfferManagementWorkspace() {
         <form className="operator-offer-form" onSubmit={saveOffer} noValidate>
           <div className="panel-heading">
             <div>
-              <span className="section-kicker">{editingId === null ? "Create" : `Edit #${editingId}`}</span>
+              <span className="section-kicker">{editingId === null ? "Создание" : `Предложение №${editingId}`}</span>
               <h3>{editingId === null ? "Новый оффер" : "Редактирование оффера"}</h3>
             </div>
           </div>
 
-          <div className="operator-form-grid">
-            <Field label="bank_id" value={draft.bankId} onChange={(value) => update("bankId", value)} required />
-            <Field label="Название продукта" value={draft.productName} onChange={(value) => update("productName", value)} required />
+          <section className="operator-form-section">
+            <h4>1. Основное</h4>
+            <div className="operator-form-grid">
+            <Field label="Партнёр или банк (идентификатор)" value={draft.bankId} onChange={(value) => update("bankId", value)} required />
+            <Field label="Название предложения" value={draft.productName} onChange={(value) => update("productName", value)} required />
             <Field label="Тип продукта" value={draft.productType} onChange={(value) => update("productType", value)} required />
-            <SelectField label="Статус" value={draft.isActive ? "active" : "inactive"} onChange={(value) => update("isActive", value === "active")} options={["active", "inactive"]} />
-            <Field label="Приоритет" type="number" value={draft.priority} onChange={(value) => update("priority", value)} />
+            <SelectField label="Статус" value={draft.isActive ? "Активно" : "Неактивно"} onChange={(value) => update("isActive", value === "Активно")} options={["Активно", "Неактивно"]} />
+            <Field label="Порядок показа" type="number" value={draft.priority} onChange={(value) => update("priority", value)} />
+            </div>
+          </section>
+
+          <section className="operator-form-section">
+            <h4>2. Условия</h4>
+            <div className="operator-form-grid">
             <Field label="Минимальная сумма" type="number" value={draft.minAmount} onChange={(value) => update("minAmount", value)} />
             <Field label="Максимальная сумма" type="number" value={draft.maxAmount} onChange={(value) => update("maxAmount", value)} />
             <Field label="Минимальный срок, мес." type="number" value={draft.minTermMonths} onChange={(value) => update("minTermMonths", value)} />
@@ -194,28 +204,44 @@ export function OfferManagementWorkspace() {
             <Field label="Регионы" value={draft.regions} onChange={(value) => update("regions", value)} help="Пусто — без регионального ограничения" />
             <Field label="Типы занятости" value={draft.employmentTypes} onChange={(value) => update("employmentTypes", value)} />
             <Field label="Кредитная история" value={draft.creditHistoryBands} onChange={(value) => update("creditHistoryBands", value)} />
-            <SelectField label="Максимальный PTI" value={draft.maxPtiBand} onChange={(value) => update("maxPtiBand", value)} options={["low", "moderate", "high", "very_high", "unknown"]} />
-            <Field label="Risk policy" value={draft.riskBandPolicy} onChange={(value) => update("riskBandPolicy", value)} />
+            <SelectField label="Максимальная долговая нагрузка" value={draft.maxPtiBand} onChange={(value) => update("maxPtiBand", value)} options={["low", "moderate", "high", "very_high", "unknown"]} />
+            <Field label="Допустимые категории оценки" value={draft.riskBandPolicy} onChange={(value) => update("riskBandPolicy", value)} />
+            </div>
+          </section>
+
+          <section className="operator-form-section">
+            <h4>3. Отображение и маркировка</h4>
+            <div className="operator-form-grid">
             <Field label="Рекламодатель" value={draft.advertiserName} onChange={(value) => update("advertiserName", value)} required />
             <Field label="Маркировка рекламы" value={draft.adLabelText} onChange={(value) => update("adLabelText", value)} required />
             <Field label="ERID" value={draft.erid} onChange={(value) => update("erid", value)} />
-            <Field label="partner_id" value={draft.partnerId} onChange={(value) => update("partnerId", value)} required />
-            <Field label="Affiliate template env key" value={draft.affiliateTemplateKey} onChange={(value) => update("affiliateTemplateKey", value)} help="Например: ALFA_CREDIT_AFFILIATE_TEMPLATE. Не вставляйте URL или token." />
-            <SelectField label="Тип комиссии" value={draft.commissionType} onChange={(value) => update("commissionType", value)} options={["none", "fixed", "percent"]} />
-            <Field label="Комиссия (внутреннее поле)" type="number" value={draft.commissionAmount} onChange={(value) => update("commissionAmount", value)} />
+            <Field label="Главное преимущество" value={draft.mainBenefit} onChange={(value) => update("mainBenefit", value)} />
+            <Field label="Предупреждения для клиента" value={draft.displayWarnings} onChange={(value) => update("displayWarnings", value)} help="Несколько предупреждений — через запятую" />
+            <SelectField label="Текст кнопки" value={draft.ctaText} onChange={(value) => update("ctaText", value)} options={["Посмотреть условия", "Перейти к предложению", "Продолжить у партнёра"]} />
+            <Field label="Диапазон полной стоимости" value={draft.fullCostRangeText} onChange={(value) => update("fullCostRangeText", value)} help="Обязательно, если в тексте предложения указана ставка" />
             <Field label="Действует до" type="datetime-local" value={draft.expiresAt} onChange={(value) => update("expiresAt", value)} />
-          </div>
-          <label className="operator-textarea-field">
-            <span>Юридический disclaimer</span>
-            <textarea value={draft.legalDisclaimer} onChange={(event) => update("legalDisclaimer", event.target.value)} rows={3} required />
-          </label>
+            </div>
+            <label className="operator-textarea-field"><span>Юридический текст</span><textarea value={draft.legalDisclaimer} onChange={(event) => update("legalDisclaimer", event.target.value)} rows={3} required /></label>
+            <label className="operator-textarea-field"><span>Информация о вознаграждении сервиса</span><textarea value={draft.compensationDisclosure} onChange={(event) => update("compensationDisclosure", event.target.value)} rows={2} required /></label>
+          </section>
+
+          <section className="operator-form-section">
+            <h4>4. Отслеживание и партнёрская интеграция</h4>
+            <div className="operator-form-grid">
+            <Field label="Идентификатор партнёра" value={draft.partnerId} onChange={(value) => update("partnerId", value)} required />
+            <Field label="Ключ шаблона перехода" value={draft.affiliateTemplateKey} onChange={(value) => update("affiliateTemplateKey", value)} help="Например: ALFA_CREDIT_AFFILIATE_TEMPLATE. Только имя переменной окружения, без URL и токенов." />
+            <Field label="Публичная ссылка на условия партнёра" value={draft.partnerTermsUrl} onChange={(value) => update("partnerTermsUrl", value)} help="HTTPS без параметров отслеживания" />
+            <SelectField label="Тип вознаграждения" value={draft.commissionType} onChange={(value) => update("commissionType", value)} options={["none", "fixed", "percent"]} />
+            <Field label="Размер вознаграждения (внутреннее поле)" type="number" value={draft.commissionAmount} onChange={(value) => update("commissionAmount", value)} />
+            </div>
+          </section>
 
           {preview ? (
             <div className={`validation-preview ${preview.valid ? "valid" : "invalid"}`}>
               {preview.valid ? <CheckCircle2 size={18} /> : <XCircle size={18} />}
               <div>
-                <strong>{preview.valid ? "Проверка пройдена" : "Найдены ошибки"}</strong>
-                {[...preview.errors, ...preview.warnings].map((item) => <span key={item}>{item}</span>)}
+                <strong>{preview.valid ? "Готово к публикации" : "Нужны исправления"}</strong>
+                {[...preview.errors, ...preview.warnings].map((item) => <span key={item}>{validationLabel(item)}</span>)}
               </div>
             </div>
           ) : null}
@@ -254,13 +280,13 @@ export function OfferManagementWorkspace() {
                   <div>
                     <div className="operator-offer-title">
                       <strong>{offer.product_name}</strong>
-                      <span className={offer.is_active ? "status-active" : "status-inactive"}>{offer.is_active ? "active" : "inactive"}</span>
-                      <span className={offer.validation_status === "valid" ? "status-valid" : "status-invalid"}>{offer.validation_status}</span>
+                      <span className={offer.is_active ? "status-active" : "status-inactive"}>{offer.is_active ? "активно" : "неактивно"}</span>
+                      <span className={offer.validation_status === "valid" ? "status-valid" : "status-invalid"}>{offer.validation_status === "valid" ? "готово" : "нужна проверка"}</span>
                     </div>
-                    <small>{offer.bank_id} · {offer.product_type} · priority {offer.priority}</small>
+                    <small>{offer.bank_id} · {offer.product_type} · порядок {offer.priority}</small>
                     <p>{offer.min_amount.toLocaleString("ru-RU")}–{offer.max_amount.toLocaleString("ru-RU")} ₽ · {offer.min_term_months}–{offer.max_term_months} мес.</p>
                     <div className="quality-flags">
-                      {offer.quality_flags.length ? offer.quality_flags.map((flag) => <i key={flag}>{flag}</i>) : <i className="ok">без quality flags</i>}
+                      {offer.quality_flags.length ? offer.quality_flags.map((flag) => <i key={flag}>{qualityFlagLabel(flag)}</i>) : <i className="ok">замечаний нет</i>}
                     </div>
                   </div>
                   <div className="operator-offer-actions">
@@ -296,4 +322,37 @@ function SelectField({ label, value, onChange, options }: { label: string; value
       </select>
     </label>
   );
+}
+
+const readableFlags: Record<string, string> = {
+  missing_disclosure: "Нет рекламной пометки или юридического текста",
+  missing_advertiser_name: "Не указан рекламодатель",
+  missing_compensation_disclosure: "Нет информации о вознаграждении сервиса",
+  missing_full_cost_range: "Не указан диапазон полной стоимости",
+  missing_partner_terms_url: "Нет ссылки на условия партнёра",
+  missing_affiliate_template_key: "Нет отслеживаемого перехода",
+  affiliate_template_env_missing: "Партнёрские данные не настроены",
+  placeholder_affiliate_url: "Демо-ссылка",
+  demo_only: "Демо-предложение",
+  erid_not_configured: "ERID не настроен — проверьте перед публичным размещением",
+  expired_config: "Срок действия истёк",
+  zero_impressions: "Нет показов",
+  impressions_without_clicks: "Есть показы, но нет переходов",
+  eligibility_too_broad: "Слишком широкие условия",
+  eligibility_too_narrow: "Слишком узкие условия",
+};
+
+function qualityFlagLabel(flag: string): string {
+  return readableFlags[flag] ?? flag.replaceAll("_", " ");
+}
+
+function validationLabel(value: string): string {
+  const validation: Record<string, string> = {
+    erid_not_configured: "ERID не настроен — проверьте перед публичным размещением.",
+    demo_only: "Демо-предложение.",
+    demo_link: "Используется демо-ссылка.",
+    affiliate_template_environment_missing: "Партнёрские данные не настроены.",
+    affiliate_template_click_id_missing: "Шаблон перехода не поддерживает отслеживание.",
+  };
+  return validation[value] ?? value.replaceAll("_", " ");
 }

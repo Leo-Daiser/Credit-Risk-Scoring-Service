@@ -207,6 +207,8 @@ def test_historical_signal_improves_ranking_only_for_eligible_equal_fit_offers()
         revenue_estimates={1: revenue_estimate(0.001), 2: revenue_estimate(0.02)},
     )
     assert [item.offer_id for item in ranked] == [2, 1]
+    assert ranked[0].score_breakdown["commercial_tiebreaker_used"] == 1.0
+    assert ranked[1].score_breakdown["commercial_tiebreaker_used"] == 1.0
     prior = conservative_revenue_estimate(first)
     assert prior.source == "demo_only"
     assert prior.confidence == "low"

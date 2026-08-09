@@ -10,9 +10,9 @@ export async function generateMetadata(): Promise<Metadata> {
     "localhost:3000";
   const protocol = requestHeaders.get("x-forwarded-proto") ?? "http";
   const origin = `${protocol}://${host}`;
-  const title = "Riskline — кредитный риск без ручной рутины";
+  const title = "Riskline — расчёт платежа и подбор кредитных предложений";
   const description =
-    "Privacy-light калькулятор и предварительный подбор кредитных предложений.";
+    "Рассчитайте платёж, оцените долговую нагрузку и сравните предложения партнёров без паспорта и звонков на первом шаге.";
   return {
     title: { default: title, template: "%s · Riskline" },
     description,

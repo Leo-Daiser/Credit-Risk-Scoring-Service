@@ -33,7 +33,7 @@ commission и affiliate template.
 ## Retention
 
 Целевая политика: profile/impression/click events — 90 дней, нормализованные postback —
-365 дней, если договор и применимое право не требуют иного. В текущем portfolio MVP
+365 дней, если договор и применимое право не требуют иного. В текущем single-host release
 scheduled purge ещё не реализован; оператор обязан удалять данные внешней DB policy.
 Это известное ограничение, а не заявленная гарантия.
 

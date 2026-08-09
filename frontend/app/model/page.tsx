@@ -1,18 +1,7 @@
-import type { Metadata } from "next";
-import { AppShell } from "../components/AppShell";
-import { ModelWorkspace } from "../components/ModelWorkspace";
+import { redirect } from "next/navigation";
 import { requireOperatorUi } from "../lib/access";
 
-export const metadata: Metadata = {
-  title: "Модель и контур",
-  description: "Версия production bundle, input contract и границы архитектуры.",
-};
-
-export default function ModelPage() {
+export default function LegacySystemPage() {
   requireOperatorUi();
-  return (
-    <AppShell operator active="model" eyebrow="Governance" title="Модель и контур">
-      <ModelWorkspace />
-    </AppShell>
-  );
+  redirect("/operator/system");
 }
