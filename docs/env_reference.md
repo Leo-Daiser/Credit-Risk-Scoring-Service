@@ -40,6 +40,9 @@ constructs its effective SQLAlchemy URL from those values. Do not add a second l
 |---|---|---|---|---|
 | `MODEL_BUNDLE_PATH` | path / `artifacts/models/production_model_bundle.joblib` | optional unless ML scoring is enabled | no | Mount the bundle at runtime; never commit it. |
 | `MODEL_BUNDLE_REQUIRED` | bool / `false` | set `true` only for ML-scoring/worker deployments | no | Privacy-light matching remains ready without the bundle. |
+| `MODEL_ARTIFACTS_PATH` | host path / `./artifacts/models` | optional | no | Compose source mounted read-only; directory stays outside Git/build context. |
+| `PUBLIC_PROFILE_MODEL_PATH` | path / `artifacts/models/public_profile_model_bundle.joblib` | optional unless public ML is required | no | Separate consumer-compatible Riskline model. |
+| `PUBLIC_PROFILE_MODEL_REQUIRED` | bool / `false` | optional | no | When true, readiness fails if the public bundle is absent; false keeps an observable rules fallback. |
 | `TOP_REASON_CODES` | int / `5` | optional | no | Operator model explanation limit. |
 | `MAX_BATCH_SIZE` | int / `1000` | optional | no | Synchronous batch limit. |
 | `BATCH_STORAGE_DIR`, `BATCH_OUTPUT_DIR` | paths under `artifacts/` | optional | no | Use ephemeral or protected runtime volumes. |

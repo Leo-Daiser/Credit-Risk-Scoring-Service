@@ -6,6 +6,7 @@ from secrets import compare_digest
 from fastapi import Header, HTTPException, status
 
 from src.core.config import settings
+from src.public_profile.service import PublicProfileScoringService
 from src.services.scoring import ScoringService
 
 
@@ -31,6 +32,21 @@ def get_optional_scoring_service() -> ScoringService | None:
     """Return a model when available without breaking commercial fallback behavior."""
     try:
         return _cached_scoring_service()
+    except Exception:
+        return None
+
+
+@lru_cache(maxsize=1)
+def _cached_public_profile_scoring_service() -> PublicProfileScoringService:
+    return PublicProfileScoringService.from_path(
+        settings.resolve_public_profile_model_path()
+    )
+
+
+def get_optional_public_profile_scoring_service() -> PublicProfileScoringService | None:
+    """Use the public model when mounted and expose fallback explicitly otherwise."""
+    try:
+        return _cached_public_profile_scoring_service()
     except Exception:
         return None
 

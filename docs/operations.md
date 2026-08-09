@@ -29,6 +29,14 @@ nested CPU oversubscription when several API requests are handled concurrently.
 
 Start the production-like stack with a locally generated bundle:
 
+Public consumer inference uses a separate trusted
+`public_profile_model_bundle.joblib`. Generate it with
+`python -m src.cli build-public-profile-dataset` and
+`python -m src.cli train-public-profile-model`, then keep both model files under
+the read-only `MODEL_ARTIFACTS_PATH` mount. The full bundle remains the internal
+reference/B2B scoring contract; the public bundle accepts only normalized
+questionnaire fields.
+
 ```powershell
 docker compose up -d --build
 .\.venv\Scripts\python.exe scripts\load_smoke.py --requests 50 --concurrency 2

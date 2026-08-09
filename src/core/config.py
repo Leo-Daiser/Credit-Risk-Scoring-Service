@@ -30,6 +30,10 @@ class Settings(BaseSettings):
     database_url: str | None = None
     model_bundle_path: str | None = None
     model_bundle_required: bool = False
+    public_profile_model_path: str = (
+        "artifacts/models/public_profile_model_bundle.joblib"
+    )
+    public_profile_model_required: bool = False
     inference_logging_enabled: bool = True
     database_required: bool = True
     top_reason_codes: int = 5
@@ -155,6 +159,9 @@ class Settings(BaseSettings):
     def resolve_model_bundle_path(self, configured_path: str | None = None) -> str:
         """Apply one deployment override consistently across all inference jobs."""
         return self.model_bundle_path or configured_path or DEFAULT_MODEL_BUNDLE_PATH
+
+    def resolve_public_profile_model_path(self) -> str:
+        return self.public_profile_model_path
 
 
 settings = Settings()

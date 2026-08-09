@@ -1373,6 +1373,48 @@ textarea:focus-visible,
 .public-offer-card.is-recommended .offer-payment strong { font-size: 22px; }
 .public-offer-card.is-recommended > .button { width: 100%; min-height: 52px; font-size: 14px; }
 .partner-transition-card { border: 1px solid #dfe5e0; }
+.riskline-profile-heading { display: flex; align-items: center; justify-content: space-between; gap: 22px; }
+.riskline-profile-heading h3 { max-width: 520px; }
+.riskline-index { display: grid; min-width: 112px; min-height: 92px; place-content: center; border-radius: 18px; background: #173f31; color: #fff; text-align: center; box-shadow: 0 12px 28px rgba(23, 63, 49, 0.18); }
+.riskline-index strong, .riskline-index span { display: block; }
+.riskline-index strong { color: var(--lime); font-size: 34px; line-height: 1; }
+.riskline-index span { margin-top: 5px; color: #d7e0db; font-size: 9px; }
+.riskline-index.is-fallback { background: #6c736f; }
+.riskline-index-note { margin: 14px 0 0; color: #56615b; font-size: 10px; line-height: 1.55; }
+.profile-factors, .improvement-panel, .scenario-simulator { padding: 23px; border: 1px solid #dfe5df; border-radius: 19px; background: #fff; }
+.profile-factors .public-section-heading, .improvement-panel .public-section-heading { margin-bottom: 17px; }
+.profile-factors h3, .improvement-panel h3, .scenario-simulator h3 { margin: 7px 0 0; font-size: 20px; letter-spacing: -.5px; }
+.factor-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.factor-columns > article { padding: 16px; border-radius: 14px; background: #f6f8f4; }
+.factor-columns h4 { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 12px; }
+.factor-line { display: grid; gap: 4px; padding: 10px 0; border-top: 1px solid #e1e5df; }
+.factor-line strong { font-size: 10px; }
+.factor-line span { color: var(--muted); font-size: 9px; line-height: 1.45; }
+.factor-line.is-strength strong { color: #17604a; }
+.factor-line.is-limit strong { color: #8d552e; }
+.improvement-panel .public-section-heading p, .scenario-simulator p { max-width: 690px; margin: 7px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.improvement-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.improvement-grid > article { display: flex; flex-direction: column; padding: 17px; border-radius: 15px; background: #eef5f0; }
+.improvement-grid > article > svg { color: #2d7258; }
+.improvement-grid h4 { margin: 9px 0; font-size: 14px; }
+.improvement-grid ul { margin: 12px 0; padding-left: 18px; color: #46524c; font-size: 9px; line-height: 1.6; }
+.improvement-grid p { margin: auto 0 13px; color: #6a5b43; font-size: 8px; line-height: 1.5; }
+.scenario-before-after { display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 10px; background: #fff; }
+.scenario-before-after span { flex: 1; color: var(--muted); font-size: 8px; }
+.scenario-before-after strong { display: block; margin-top: 3px; color: var(--ink); font-size: 10px; }
+.scenario-simulator { display: grid; grid-template-columns: minmax(200px, .8fr) minmax(340px, 1.4fr) auto; align-items: end; gap: 17px; background: #182f27; color: #fff; }
+.scenario-simulator .section-kicker { color: var(--lime); }
+.scenario-simulator h3 { display: flex; align-items: center; gap: 8px; }
+.scenario-simulator p { color: #b7c2bd; }
+.scenario-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.scenario-controls .field-label { color: #fff; }
+.scenario-controls .field-label small { color: #9eaaa5; }
+.scenario-controls input { background: #fff; color: var(--ink); }
+.offer-compatibility { width: fit-content; margin-top: 10px; padding: 6px 9px; border-radius: 999px; background: #e5f0ea; color: #205c45; font-size: 8px; font-weight: 750; }
+.offer-calculation-facts { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.offer-calculation-facts span { padding: 6px 8px; border: 1px solid #dce6df; border-radius: 8px; background: #fff; color: var(--ink); font-size: 9px; font-weight: 750; }
+.offer-overpayment, .offer-adjustment { margin-top: 8px; color: var(--muted); font-size: 8px; line-height: 1.45; }
+.offer-adjustment { padding: 8px; border-radius: 8px; background: #fff6dd; color: #705d2f; }
 
 @media (max-width: 960px) {
   .public-header-inner { gap: 18px; }
@@ -1411,6 +1453,12 @@ textarea:focus-visible,
   .offer-form-step { padding: 15px 12px; }
   .profile-summary-grid { grid-template-columns: repeat(2, 1fr); }
   .sticky-result-cta { bottom: 16px; }
+  .riskline-profile-heading { align-items: flex-start; }
+  .riskline-index { min-width: 88px; min-height: 78px; }
+  .riskline-index strong { font-size: 27px; }
+  .factor-columns, .improvement-grid { grid-template-columns: 1fr; }
+  .scenario-simulator { grid-template-columns: 1fr; }
+  .scenario-controls { grid-template-columns: 1fr; }
   .partner-transition { align-items: end; padding: 12px; }
   .partner-transition-card { max-height: calc(100vh - 24px); overflow-y: auto; border-radius: 22px; }
 }

@@ -13,6 +13,7 @@ from src.db.models import BankOffer
 
 DEFAULT_CONFIG_PATH = Path("configs/offers.yaml")
 AGE_ORDER = ["18_21", "22_30", "31_45", "46_60", "60_plus"]
+LEGACY_DEMO_BANK_IDS = {"demo-a", "demo-b", "demo-c"}
 
 
 def load_offer_config(path: str | Path = DEFAULT_CONFIG_PATH) -> dict[str, Any]:
@@ -57,7 +58,13 @@ class OfferRepository:
     def seed_demo(self, config_path: str | Path = DEFAULT_CONFIG_PATH) -> int:
         config = load_offer_config(config_path)
         created = 0
-        for configured_item in config.get("demo_offers", []):
+        configured_offers = config.get("demo_offers", [])
+        configured_provider_offer_ids = {
+            str(item["provider_offer_id"])
+            for item in configured_offers
+            if item.get("provider_offer_id")
+        }
+        for configured_item in configured_offers:
             item = dict(configured_item)
             age_bands = item["allowed_age_bands"]
             if not age_bands or any(value not in AGE_ORDER for value in age_bands):
@@ -97,5 +104,18 @@ class OfferRepository:
                 for duplicate in existing_items:
                     if duplicate.id != existing.id:
                         duplicate.is_active = False
+
+        managed_demo_offers = self.session.scalars(
+            select(BankOffer).where(BankOffer.partner_id == "demo")
+        )
+        for offer in managed_demo_offers:
+            is_removed_catalog_offer = (
+                offer.provider_id == "demo"
+                and offer.provider_offer_id is not None
+                and offer.provider_offer_id not in configured_provider_offer_ids
+            )
+            is_legacy_catalog_offer = offer.bank_id in LEGACY_DEMO_BANK_IDS
+            if is_removed_catalog_offer or is_legacy_catalog_offer:
+                offer.is_active = False
         self.session.commit()
         return created

@@ -9,6 +9,7 @@ const OPERATOR_BACKEND_ROUTES = [
   { method: "POST", pattern: /^score$/ },
   { method: "GET", pattern: /^(model_info|feature_schema)$/ },
   { method: "GET", pattern: /^v1\/dashboard$/ },
+  { method: "GET", pattern: /^v1\/runtime\/status$/ },
   { method: "GET", pattern: /^v1\/scoring\/history$/ },
   { method: "GET", pattern: /^v1\/offers$/ },
   { method: "GET", pattern: /^v1\/analytics\/(commercial-summary|segment-opportunities|event-debug)$/ },

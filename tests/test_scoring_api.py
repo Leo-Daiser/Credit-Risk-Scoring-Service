@@ -9,7 +9,11 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.api.dependencies import get_optional_scoring_service, get_scoring_service
+from src.api.dependencies import (
+    get_optional_public_profile_scoring_service,
+    get_optional_scoring_service,
+    get_scoring_service,
+)
 from src.api.main import app
 from src.core.config import settings
 from src.db.base import Base
@@ -105,6 +109,7 @@ def api_client(scoring_service):
 
     app.dependency_overrides[get_scoring_service] = lambda: scoring_service
     app.dependency_overrides[get_optional_scoring_service] = lambda: scoring_service
+    app.dependency_overrides[get_optional_public_profile_scoring_service] = lambda: None
     app.dependency_overrides[get_db] = override_db
     original_logging = settings.inference_logging_enabled
     original_required = settings.database_required
@@ -175,8 +180,16 @@ def test_readiness_checks_model_and_database(api_client):
         "model_version": TEST_MODEL_VERSION,
         "database": "ok",
         "model_bundle_ready": True,
+        "full_model_available": True,
+        "public_model_available": False,
+        "public_model_version": None,
+        "offer_ranker_available": False,
+        "fallback_only_mode": True,
         "commercial_matching_ready": False,
-        "warnings": ["offer_catalog_empty"],
+        "warnings": [
+            "public_profile_model_unavailable_rules_fallback_active",
+            "offer_catalog_empty",
+        ],
     }
 
 

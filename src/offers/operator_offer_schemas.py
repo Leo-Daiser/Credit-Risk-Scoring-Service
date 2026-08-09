@@ -35,7 +35,7 @@ CREDIT_HISTORY_BANDS = {
     "no_history",
     "unknown",
 }
-RISK_BANDS = {"low", "medium", "high", "unknown"}
+RISK_BANDS = {"low", "medium", "high", "very_high", "unknown"}
 PTI_BANDS = {"low", "moderate", "high", "very_high", "unknown"}
 IDENTIFIER_PATTERN = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_-]{0,63}$")
 RAW_SECRET_URL_PATTERN = re.compile(
@@ -52,6 +52,8 @@ ALLOWED_CTA_TEXT = {
 class OfferWritable(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    provider_id: str = "demo"
+    provider_offer_id: str | None = Field(default=None, max_length=128)
     bank_id: str = Field(min_length=1, max_length=64)
     product_name: str = Field(min_length=1, max_length=255)
     product_type: str = Field(min_length=1, max_length=64)
@@ -61,6 +63,10 @@ class OfferWritable(BaseModel):
     max_amount: float = Field(gt=0, le=100_000_000)
     min_term_months: int = Field(ge=3, le=360)
     max_term_months: int = Field(ge=3, le=360)
+    annual_rate_min: float | None = Field(default=None, ge=0, le=100)
+    annual_rate_max: float | None = Field(default=None, ge=0, le=100)
+    fee_disclosure: str | None = Field(default=None, max_length=1000)
+    insurance_disclosure: str | None = Field(default=None, max_length=1000)
     allowed_age_bands: list[str]
     min_income_band: str = "unknown"
     allowed_regions: list[str] = Field(default_factory=list)
@@ -84,7 +90,7 @@ class OfferWritable(BaseModel):
     commission_amount: float | None = Field(default=None, ge=0, le=100_000_000)
     expires_at: datetime | None = None
 
-    @field_validator("bank_id", "product_type", "partner_id")
+    @field_validator("provider_id", "bank_id", "product_type", "partner_id")
     @classmethod
     def validate_identifier(cls, value: str) -> str:
         if not IDENTIFIER_PATTERN.fullmatch(value):
@@ -185,6 +191,16 @@ class OfferWritable(BaseModel):
             raise ValueError("max_amount must be greater than or equal to min_amount")
         if self.max_term_months < self.min_term_months:
             raise ValueError("max_term_months must be greater than or equal to min_term_months")
+        if (self.annual_rate_min is None) != (self.annual_rate_max is None):
+            raise ValueError("both annual rate bounds are required together")
+        if (
+            self.annual_rate_min is not None
+            and self.annual_rate_max is not None
+            and self.annual_rate_max < self.annual_rate_min
+        ):
+            raise ValueError("annual_rate_max must not be lower than annual_rate_min")
+        if self.annual_rate_min is not None and not self.full_cost_range_text:
+            raise ValueError("rate display requires full_cost_range_text")
         if self.is_active and (
             not self.advertiser_name
             or not self.ad_label_text
@@ -237,6 +253,8 @@ class OfferWritable(BaseModel):
 class OfferPatch(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    provider_id: str | None = None
+    provider_offer_id: str | None = Field(default=None, max_length=128)
     bank_id: str | None = None
     product_name: str | None = None
     product_type: str | None = None
@@ -246,6 +264,10 @@ class OfferPatch(BaseModel):
     max_amount: float | None = Field(default=None, gt=0, le=100_000_000)
     min_term_months: int | None = Field(default=None, ge=3, le=360)
     max_term_months: int | None = Field(default=None, ge=3, le=360)
+    annual_rate_min: float | None = Field(default=None, ge=0, le=100)
+    annual_rate_max: float | None = Field(default=None, ge=0, le=100)
+    fee_disclosure: str | None = Field(default=None, max_length=1000)
+    insurance_disclosure: str | None = Field(default=None, max_length=1000)
     allowed_age_bands: list[str] | None = None
     min_income_band: str | None = None
     allowed_regions: list[str] | None = None
@@ -278,6 +300,8 @@ class OfferValidationResult(BaseModel):
 
 class OperatorOfferResponse(BaseModel):
     id: int
+    provider_id: str
+    provider_offer_id: str | None
     bank_id: str
     product_name: str
     product_type: str
@@ -287,6 +311,10 @@ class OperatorOfferResponse(BaseModel):
     max_amount: float
     min_term_months: int
     max_term_months: int
+    annual_rate_min: float | None
+    annual_rate_max: float | None
+    fee_disclosure: str | None
+    insurance_disclosure: str | None
     allowed_age_bands: list[str]
     min_income_band: str
     allowed_regions: list[str]

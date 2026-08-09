@@ -80,6 +80,11 @@ class ReadinessResponse(BaseModel):
     model_version: str | None
     database: Literal["ok"]
     model_bundle_ready: bool
+    full_model_available: bool
+    public_model_available: bool
+    public_model_version: str | None = None
+    offer_ranker_available: bool
+    fallback_only_mode: bool
     commercial_matching_ready: bool
     warnings: list[str]
 
@@ -90,6 +95,14 @@ class RuntimeStatusResponse(BaseModel):
     db_ready: bool
     migrations_ready: bool
     model_bundle_ready: bool
+    full_model_available: bool
+    public_model_available: bool
+    public_model_version: str | None = None
+    offer_ranker_available: bool
+    fallback_only_mode: bool
+    public_profile_scores: int
+    public_model_scoring_volume: int
+    public_model_fallback_rate: float
     commercial_matching_ready: bool
     offer_catalog_ready: bool
     partner_config_ready: bool

@@ -17,9 +17,11 @@ import {
 
 type Filter = "all" | "active" | "inactive";
 interface OfferDraft {
+  providerId: string; providerOfferId: string;
   bankId: string; productName: string; productType: string; isActive: boolean;
   priority: string; minAmount: string; maxAmount: string;
   minTermMonths: string; maxTermMonths: string; ageBands: string;
+  annualRateMin: string; annualRateMax: string; feeDisclosure: string; insuranceDisclosure: string;
   minIncomeBand: string; regions: string; employmentTypes: string;
   creditHistoryBands: string; maxPtiBand: string; riskBandPolicy: string;
   advertiserName: string; adLabelText: string; erid: string;
@@ -184,6 +186,8 @@ export function OfferManagementWorkspace() {
           <section className="operator-form-section">
             <h4>1. Основное</h4>
             <div className="operator-form-grid">
+            <Field label="Источник каталога" value={draft.providerId} onChange={(value) => update("providerId", value)} required />
+            <Field label="ID продукта у источника" value={draft.providerOfferId} onChange={(value) => update("providerOfferId", value)} help="Стабильный ID без URL и секретов" />
             <Field label="Партнёр или банк (идентификатор)" value={draft.bankId} onChange={(value) => update("bankId", value)} required />
             <Field label="Название предложения" value={draft.productName} onChange={(value) => update("productName", value)} required />
             <Field label="Тип продукта" value={draft.productType} onChange={(value) => update("productType", value)} required />
@@ -199,6 +203,10 @@ export function OfferManagementWorkspace() {
             <Field label="Максимальная сумма" type="number" value={draft.maxAmount} onChange={(value) => update("maxAmount", value)} />
             <Field label="Минимальный срок, мес." type="number" value={draft.minTermMonths} onChange={(value) => update("minTermMonths", value)} />
             <Field label="Максимальный срок, мес." type="number" value={draft.maxTermMonths} onChange={(value) => update("maxTermMonths", value)} />
+            <Field label="Ставка от, %" type="number" value={draft.annualRateMin} onChange={(value) => update("annualRateMin", value)} help="Только проверенный диапазон; требует текста ПСК" />
+            <Field label="Ставка до, %" type="number" value={draft.annualRateMax} onChange={(value) => update("annualRateMax", value)} />
+            <Field label="Комиссии продукта" value={draft.feeDisclosure} onChange={(value) => update("feeDisclosure", value)} />
+            <Field label="Страхование" value={draft.insuranceDisclosure} onChange={(value) => update("insuranceDisclosure", value)} />
             <Field label="Возрастные диапазоны" value={draft.ageBands} onChange={(value) => update("ageBands", value)} help="Через запятую: 22_30, 31_45" />
             <SelectField label="Минимальный доход" value={draft.minIncomeBand} onChange={(value) => update("minIncomeBand", value)} options={["lt_50k", "50k_100k", "100k_150k", "150k_250k", "gt_250k", "unknown"]} />
             <Field label="Регионы" value={draft.regions} onChange={(value) => update("regions", value)} help="Пусто — без регионального ограничения" />
@@ -283,8 +291,9 @@ export function OfferManagementWorkspace() {
                       <span className={offer.is_active ? "status-active" : "status-inactive"}>{offer.is_active ? "активно" : "неактивно"}</span>
                       <span className={offer.validation_status === "valid" ? "status-valid" : "status-invalid"}>{offer.validation_status === "valid" ? "готово" : "нужна проверка"}</span>
                     </div>
-                    <small>{offer.bank_id} · {offer.product_type} · порядок {offer.priority}</small>
+                    <small>{offer.bank_id} · {offer.product_type} · источник {offer.provider_id} · порядок {offer.priority}</small>
                     <p>{offer.min_amount.toLocaleString("ru-RU")}–{offer.max_amount.toLocaleString("ru-RU")} ₽ · {offer.min_term_months}–{offer.max_term_months} мес.</p>
+                    {offer.annual_rate_min !== null ? <p>Ставка {offer.annual_rate_min}–{offer.annual_rate_max}% · расчёт по диапазону продукта</p> : null}
                     <div className="quality-flags">
                       {offer.quality_flags.length ? offer.quality_flags.map((flag) => <i key={flag}>{qualityFlagLabel(flag)}</i>) : <i className="ok">замечаний нет</i>}
                     </div>

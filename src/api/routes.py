@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import text
@@ -6,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from src.api.dependencies import (
+    get_optional_public_profile_scoring_service,
     get_optional_scoring_service,
     get_scoring_service,
     require_operator_api_key,
@@ -22,6 +24,7 @@ from src.api.schemas import (
 from src.core.config import settings
 from src.db.session import get_db
 from src.offers.repository import OfferRepository
+from src.public_profile.service import PublicProfileScoringService
 from src.services.scoring import (
     DuplicateRequestError,
     ScoringService,
@@ -65,6 +68,9 @@ def feature_schema(
 @router.get("/ready", response_model=ReadinessResponse)
 def readiness(
     service: ScoringService | None = Depends(get_optional_scoring_service),
+    public_service: PublicProfileScoringService | None = Depends(
+        get_optional_public_profile_scoring_service
+    ),
     session: Session = Depends(get_db),
 ) -> ReadinessResponse:
     try:
@@ -80,10 +86,20 @@ def readiness(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Required production model is unavailable.",
         )
+    if settings.public_profile_model_required and public_service is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Required public profile model is unavailable.",
+        )
     catalog_ready = bool(OfferRepository(session).list_active())
     warnings = []
     if not model_ready:
         warnings.append("model_bundle_unavailable_operator_scoring_disabled")
+    if public_service is None:
+        warnings.append("public_profile_model_unavailable_rules_fallback_active")
+    offer_ranker_available = Path(settings.offer_ranker_model_path).is_file()
+    if settings.offer_ranker_mode == "ml" and not offer_ranker_available:
+        warnings.append("offer_ranker_unavailable_rules_fallback_active")
     if not catalog_ready:
         warnings.append("offer_catalog_empty")
     return ReadinessResponse(
@@ -91,6 +107,13 @@ def readiness(
         model_version=service.bundle.metadata["model_version"] if service else None,
         database="ok",
         model_bundle_ready=model_ready,
+        full_model_available=model_ready,
+        public_model_available=public_service is not None,
+        public_model_version=(
+            public_service.bundle.metadata["model_version"] if public_service else None
+        ),
+        offer_ranker_available=offer_ranker_available,
+        fallback_only_mode=public_service is None,
         commercial_matching_ready=catalog_ready,
         warnings=warnings,
     )

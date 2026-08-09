@@ -33,6 +33,8 @@ LIST_FIELDS = {
     "display_warnings",
 }
 EXPORT_FIELDS = [
+    "provider_id",
+    "provider_offer_id",
     "bank_id",
     "product_name",
     "product_type",
@@ -42,6 +44,10 @@ EXPORT_FIELDS = [
     "max_amount",
     "min_term_months",
     "max_term_months",
+    "annual_rate_min",
+    "annual_rate_max",
+    "fee_disclosure",
+    "insurance_disclosure",
     "allowed_age_bands",
     "allowed_regions",
     "allowed_employment_types",
@@ -73,6 +79,8 @@ class OfferImportValidationError(ValueError):
 class OfferImportRow(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
+    provider_id: str = Field(default="demo", min_length=1, max_length=64)
+    provider_offer_id: str | None = Field(default=None, max_length=128)
     bank_id: str = Field(min_length=1, max_length=64)
     product_name: str = Field(min_length=1, max_length=255)
     product_type: str = Field(min_length=1, max_length=64)
@@ -82,6 +90,10 @@ class OfferImportRow(BaseModel):
     max_amount: float = Field(gt=0)
     min_term_months: int = Field(ge=3)
     max_term_months: int = Field(ge=3)
+    annual_rate_min: float | None = Field(default=None, ge=0, le=100)
+    annual_rate_max: float | None = Field(default=None, ge=0, le=100)
+    fee_disclosure: str | None = Field(default=None, max_length=1000)
+    insurance_disclosure: str | None = Field(default=None, max_length=1000)
     allowed_age_bands: list[str]
     allowed_regions: list[str] = Field(default_factory=list)
     allowed_employment_types: list[str]
@@ -124,6 +136,16 @@ class OfferImportRow(BaseModel):
             raise ValueError("invalid amount range")
         if self.max_term_months < self.min_term_months:
             raise ValueError("invalid term range")
+        if (self.annual_rate_min is None) != (self.annual_rate_max is None):
+            raise ValueError("both annual rate bounds are required together")
+        if (
+            self.annual_rate_min is not None
+            and self.annual_rate_max is not None
+            and self.annual_rate_max < self.annual_rate_min
+        ):
+            raise ValueError("invalid annual rate range")
+        if self.annual_rate_min is not None and not self.full_cost_range_text:
+            raise ValueError("rate range requires full cost disclosure")
         if any(value not in AGE_ORDER for value in self.allowed_age_bands):
             raise ValueError("invalid age band")
         if self.is_active and self.expires_at is not None:
@@ -243,12 +265,17 @@ def _normalize_row(raw: dict[str, Any], index: int) -> OfferImportRow:
                 raise OfferImportValidationError(f"Row {index}: invalid list field {field}") from exc
     for nullable in (
         "erid",
+        "provider_offer_id",
         "affiliate_url_template_key",
         "commission_amount",
         "expires_at",
         "full_cost_range_text",
         "partner_terms_url",
         "main_benefit",
+        "annual_rate_min",
+        "annual_rate_max",
+        "fee_disclosure",
+        "insurance_disclosure",
     ):
         if normalized.get(nullable) == "":
             normalized[nullable] = None

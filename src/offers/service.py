@@ -5,6 +5,7 @@ from datetime import datetime
 from uuid import uuid4
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from src.core.config import settings
@@ -26,15 +27,17 @@ from src.offers.affordability import (
     estimate_income_from_band,
 )
 from src.offers.analytics import record_funnel_event
+from src.offers.calculations import calculate_offer_terms, profile_compatibility_label
 from src.offers.eligibility import evaluate_offer_eligibility
 from src.offers.experiments import assign_experiment_variant
 from src.offers.partners.base import PartnerPostbackEnvelope
 from src.offers.partners.registry import get_partner_adapter
 from src.offers.partners.signatures import canonical_payload_bytes
+from src.offers.providers.registry import get_offer_provider
 from src.offers.ranking import rank_offers
 from src.offers.repository import OfferRepository
 from src.offers.revenue import build_revenue_estimates
-from src.offers.risk_profile import ScoringProtocol, assess_risk_profile
+from src.offers.scenarios import build_improvement_scenarios
 from src.offers.schemas import (
     STANDARD_DISCLAIMERS,
     ClickRequest,
@@ -48,6 +51,10 @@ from src.offers.schemas import (
     PartnerPostbackResponse,
     ProfileBands,
     RankedOfferPublic,
+)
+from src.public_profile.service import (
+    PublicProfileAssessment,
+    PublicProfileScoringService,
 )
 
 
@@ -80,12 +87,12 @@ def _confidence(profile: CreditProfileInput, risk_coverage: float) -> tuple[floa
 
 def build_profile_result(
     profile: CreditProfileInput,
-    scoring_service: ScoringProtocol | None = None,
+    scoring_service: PublicProfileScoringService | None = None,
     *,
     profile_id: str | None = None,
 ) -> CreditProfileResult:
     amount = profile.requested_amount or estimate_amount_from_band(profile.requested_amount_band)
-    income = estimate_income_from_band(profile.income_band)
+    income = profile.monthly_income or estimate_income_from_band(profile.income_band)
     existing_payments = (
         profile.existing_monthly_payments
         if profile.existing_monthly_payments is not None
@@ -102,20 +109,36 @@ def build_profile_result(
         else None
     )
     pti_band = assign_pti_band(pti)
-    risk = assess_risk_profile(profile, scoring_service)
+    risk = (
+        scoring_service.score(profile)
+        if scoring_service is not None
+        else PublicProfileAssessment(
+            warnings=[
+                "Персонализированная оценка временно недоступна: результат построен по прозрачным правилам."
+            ]
+        )
+    )
     coverage, confidence = _confidence(profile, risk.data_coverage)
     warnings = list(risk.warnings)
-    warnings.append("No credit bureau data or bank underwriting data is used")
+    warnings.append("Данные БКИ и банковский андеррайтинг не используются.")
     if pti_band.value in {"high", "very_high"}:
-        warnings.append("Approximate debt burden is high")
+        warnings.append("Ориентировочная долговая нагрузка повышена.")
     if pti is None:
-        warnings.append("PTI is unavailable because income or existing payments are unknown")
+        warnings.append("Долговая нагрузка не рассчитана из-за неизвестного дохода или платежей.")
+    identifier = profile_id or str(uuid4())
     return CreditProfileResult(
-        anonymous_profile_id=profile_id or str(uuid4()),
+        anonymous_profile_id=identifier,
+        profile_id=identifier,
+        model_available=risk.model_available,
+        ml_personalized=risk.ml_personalized,
         risk_band=risk.risk_band,
-        risk_score_available=risk.risk_score_available,
-        risk_score=risk.risk_score,
+        risk_score_available=risk.model_available,
+        risk_score=risk.default_probability,
         risk_model_version=risk.model_version,
+        requested_amount=amount,
+        risk_signal=_public_risk_signal(risk.risk_band),
+        riskline_index=risk.riskline_index,
+        profile_band=risk.profile_band,
         affordability_band=assign_affordability_band(
             pti, profile.requested_amount_band, profile.income_band
         ),
@@ -124,6 +147,9 @@ def build_profile_result(
         pti_band=pti_band,
         data_coverage=coverage,
         confidence_level=confidence,
+        strengths=risk.strengths,
+        limiting_factors=risk.limiting_factors,
+        actionable_factors=risk.actionable_factors,
         warnings=warnings,
         disclaimers=STANDARD_DISCLAIMERS,
         profile_bands=ProfileBands(
@@ -138,6 +164,15 @@ def build_profile_result(
             loan_purpose=profile.loan_purpose,
         ),
     )
+
+
+def _public_risk_signal(risk_band: str) -> str:
+    return {
+        "low": "устойчивый",
+        "medium": "умеренный",
+        "high": "ограниченный",
+        "very_high": "требует внимания",
+    }.get(risk_band, "не определён")
 
 
 def ensure_anonymous_session(
@@ -157,8 +192,18 @@ def ensure_anonymous_session(
             utm_medium=context.utm_medium,
             utm_campaign=context.utm_campaign,
         )
-        session.add(anonymous)
-        session.flush()
+        try:
+            with session.begin_nested():
+                session.add(anonymous)
+                session.flush()
+        except IntegrityError:
+            anonymous = session.scalar(
+                select(AnonymousSession).where(
+                    AnonymousSession.session_key_hash == key_hash
+                )
+            )
+            if anonymous is None:
+                raise
     else:
         anonymous.last_seen_at = datetime.now()
     return anonymous
@@ -198,7 +243,7 @@ def match_offers(
     profile: CreditProfileInput,
     limit: int,
     context: MatchContext | None,
-    scoring_service: ScoringProtocol | None = None,
+    scoring_service: PublicProfileScoringService | None = None,
 ) -> OfferMatchResponse:
     result = build_profile_result(profile, scoring_service)
     profile_event = persist_profile_event(session, result, context)
@@ -221,8 +266,9 @@ def match_offers(
             pti_band=result.pti_band.value,
             experiment_variant=experiment_variant,
         )
-    repository = OfferRepository(session)
-    active_offers = repository.list_active()
+    active_offers = [
+        normalized.record for normalized in get_offer_provider(session).list_offers()
+    ]
     evaluated = [
         (offer, evaluate_offer_eligibility(result, offer)) for offer in active_offers
     ]
@@ -258,6 +304,15 @@ def match_offers(
     )
     record_funnel_event(
         session,
+        "profile_result_viewed",
+        anonymous_session_id=profile_event.anonymous_session_id,
+        profile_id=result.anonymous_profile_id,
+        risk_band=result.risk_band,
+        pti_band=result.pti_band.value,
+        experiment_variant=experiment_variant,
+    )
+    record_funnel_event(
+        session,
         "result_viewed",
         anonymous_session_id=profile_event.anonymous_session_id,
         profile_id=result.anonymous_profile_id,
@@ -276,6 +331,17 @@ def match_offers(
             pti_band=result.pti_band.value,
             experiment_variant=experiment_variant,
         )
+    if ranked:
+        record_funnel_event(
+            session,
+            "recommended_offer_viewed",
+            anonymous_session_id=profile_event.anonymous_session_id,
+            profile_id=result.anonymous_profile_id,
+            offer_id=ranked[0].offer_id,
+            risk_band=result.risk_band,
+            pti_band=result.pti_band.value,
+            experiment_variant=experiment_variant,
+        )
     if not ranked:
         record_funnel_event(
             session,
@@ -286,7 +352,6 @@ def match_offers(
             pti_band=result.pti_band.value,
             experiment_variant=experiment_variant,
         )
-    session.commit()
     offer_map = {offer.id: offer for offer in active_offers}
     public_offers = [
         RankedOfferPublic(
@@ -330,9 +395,28 @@ def match_offers(
             legal_disclaimer=offer_map[item.offer_id].legal_disclaimer,
             cta_text=offer_map[item.offer_id].cta_text,
             redirect_url=item.redirect_url,
+            profile_compatibility=profile_compatibility_label(
+                result.risk_band, result.model_available
+            ),
+            calculation=calculate_offer_terms(profile, offer_map[item.offer_id]),
         )
         for item in ranked
     ]
+    improvement_scenarios = build_improvement_scenarios(
+        profile, result, active_offers, scoring_service
+    )
+    if improvement_scenarios:
+        record_funnel_event(
+            session,
+            "improvement_viewed",
+            anonymous_session_id=profile_event.anonymous_session_id,
+            profile_id=result.anonymous_profile_id,
+            risk_band=result.risk_band,
+            pti_band=result.pti_band.value,
+            experiment_variant=experiment_variant,
+            event_value=str(len(improvement_scenarios)),
+        )
+    session.commit()
     return OfferMatchResponse(
         profile_result=result,
         offers=public_offers,
@@ -363,6 +447,7 @@ def match_offers(
                 "Мы не показываем заведомо несовместимые рекламные предложения.",
             ]
         ),
+        improvement_scenarios=improvement_scenarios,
     )
 
 
@@ -455,6 +540,17 @@ def create_click(session: Session, offer_id: int, payload: ClickRequest) -> Clic
             utm_campaign=payload.utm_campaign,
             experiment_variant=experiment_variant,
         )
+    )
+    record_funnel_event(
+        session,
+        "offer_clicked",
+        anonymous_session_id=profile_event.anonymous_session_id,
+        profile_id=payload.profile_id,
+        offer_id=offer_id,
+        click_id=click_id,
+        risk_band=profile_event.risk_band,
+        pti_band=profile_event.pti_band,
+        experiment_variant=experiment_variant,
     )
     session.commit()
     return ClickResponse(click_id=click_id, redirect_url=redirect_url, duplicate=False)

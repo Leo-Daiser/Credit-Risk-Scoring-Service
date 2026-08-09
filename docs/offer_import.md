@@ -7,6 +7,12 @@ affiliate URL и токенов в Git или базе данных. В ката
 
 ## Формат YAML
 
+Normalized catalog также принимает `provider_id`, стабильный `provider_offer_id`,
+`annual_rate_min`, `annual_rate_max`, `fee_disclosure` и
+`insurance_disclosure`. Диапазон ставки задаётся только парой и требует
+`full_cost_range_text`; эти поля используются для offer-specific расчёта, а не для
+обещания фактических условий банка.
+
 ```yaml
 offers:
   - bank_id: alfa

@@ -88,9 +88,17 @@ export interface ScoreResult {
 
 export interface CreditProfileInput {
   age_band: "18_21" | "22_30" | "31_45" | "46_60" | "60_plus";
+  age?: number;
   region?: string;
   income_band: "lt_50k" | "50k_100k" | "100k_150k" | "150k_250k" | "gt_250k" | "unknown";
+  monthly_income?: number;
   employment_type: "employee" | "self_employed" | "individual_entrepreneur" | "pensioner" | "unofficial" | "unemployed" | "unknown";
+  employment_years?: number;
+  family_members?: number;
+  children?: number;
+  housing_type?: "owned" | "rent" | "family" | "municipal" | "employer" | "other" | "unknown";
+  owns_car?: boolean;
+  owns_realty?: boolean;
   requested_amount_band: "lt_100k" | "100k_300k" | "300k_700k" | "700k_1_5m" | "gt_1_5m";
   requested_amount?: number;
   term_months: number;
@@ -104,15 +112,23 @@ export interface CreditProfileInput {
 
 export interface CreditProfileResult {
   anonymous_profile_id: string;
+  profile_id: string | null;
+  model_available: boolean;
+  ml_personalized: boolean;
   risk_band: string;
   risk_score_available: boolean;
-  risk_score: number | null;
+  risk_signal: string;
+  riskline_index: number | null;
+  profile_band: string;
   affordability_band: string;
   estimated_monthly_payment: number | null;
   pti_value: number | null;
   pti_band: string;
   data_coverage: number;
   confidence_level: string;
+  strengths: PublicProfileFactor[];
+  limiting_factors: PublicProfileFactor[];
+  actionable_factors: PublicProfileFactor[];
   warnings: string[];
   disclaimers: string[];
   profile_bands: {
@@ -120,6 +136,67 @@ export interface CreditProfileResult {
     requested_amount_band: string; term_months: number; existing_monthly_payments_band: string;
     credit_history_band: string; loan_purpose: string;
   };
+}
+
+export interface RuntimeStatus {
+  app_env: "local" | "demo" | "public";
+  core_api_ready: boolean;
+  db_ready: boolean;
+  migrations_ready: boolean;
+  model_bundle_ready: boolean;
+  full_model_available: boolean;
+  public_model_available: boolean;
+  public_model_version: string | null;
+  offer_ranker_available: boolean;
+  fallback_only_mode: boolean;
+  public_profile_scores: number;
+  public_model_scoring_volume: number;
+  public_model_fallback_rate: number;
+  commercial_matching_ready: boolean;
+  warnings: string[];
+}
+
+export interface PublicProfileFactor {
+  code: string;
+  label: string;
+  message: string;
+  actionable: boolean;
+}
+
+export interface OfferCalculation {
+  selected_amount: number;
+  selected_term_months: number;
+  annual_rate_min: number | null;
+  annual_rate_max: number | null;
+  monthly_payment_min: number | null;
+  monthly_payment_max: number | null;
+  total_repayment_min: number | null;
+  total_repayment_max: number | null;
+  overpayment_min: number | null;
+  overpayment_max: number | null;
+  full_cost_range_text: string | null;
+  adjustments: string[];
+  assumptions: string[];
+}
+
+export interface ImprovementScenario {
+  scenario_id: string;
+  factor: "amount" | "term" | "payments" | "refinance";
+  title: string;
+  current_state: string;
+  suggested_state: string;
+  expected_direction: string;
+  effects: string[];
+  trade_off: string;
+  amount: number;
+  term_months: number;
+  existing_monthly_payments: number;
+  estimated_monthly_payment: number;
+  pti_value: number | null;
+  affordability_band: string;
+  riskline_index: number | null;
+  profile_band: string;
+  eligible_offer_count: number;
 }
 
 export interface RankedOffer {
@@ -145,6 +222,8 @@ export interface RankedOffer {
   legal_disclaimer: string;
   cta_text: string;
   redirect_url: string;
+  profile_compatibility: string;
+  calculation: OfferCalculation | null;
 }
 
 export interface OfferMatchResult {
@@ -156,6 +235,7 @@ export interface OfferMatchResult {
   user_explanation: string | null;
   suggestions: string[];
   why_not_reasons: string[];
+  improvement_scenarios: ImprovementScenario[];
 }
 
 export interface CommercialAnalytics {
@@ -193,6 +273,8 @@ export interface OfferQualityReport {
 
 export interface OperatorOffer {
   id: number;
+  provider_id: string;
+  provider_offer_id: string | null;
   bank_id: string;
   product_name: string;
   product_type: string;
@@ -202,6 +284,10 @@ export interface OperatorOffer {
   max_amount: number;
   min_term_months: number;
   max_term_months: number;
+  annual_rate_min: number | null;
+  annual_rate_max: number | null;
+  fee_disclosure: string | null;
+  insurance_disclosure: string | null;
   allowed_age_bands: string[];
   min_income_band: string;
   allowed_regions: string[];

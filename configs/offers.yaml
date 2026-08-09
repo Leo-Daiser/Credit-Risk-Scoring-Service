@@ -15,12 +15,16 @@ ranking:
     medium: 0.92
     high: 1.00
 
+# All products below are synthetic. Names and terms are intentionally fictional.
 demo_offers:
-  - bank_id: demo-a
+  - &cash_flexible
+    provider_id: demo
+    provider_offer_id: demo-cash-flexible-v1
+    bank_id: aurora-finance-demo
     partner_id: demo
-    product_name: Гибкий кредит — демо
+    product_name: Гибкий кредит «Аврора» — демо
     product_type: cash
-    priority: 60
+    priority: 64
     allowed_age_bands: ["22_30", "31_45", "46_60"]
     allowed_regions: []
     allowed_employment_types: [employee, self_employed, individual_entrepreneur]
@@ -29,68 +33,204 @@ demo_offers:
     max_amount: 700000
     min_term_months: 6
     max_term_months: 60
+    annual_rate_min: 17.9
+    annual_rate_max: 31.9
     min_income_band: 50k_100k
     max_pti_band: high
     risk_band_policy: [low, medium, unknown]
-    affiliate_url_template: https://example.invalid/demo-a?click_id={click_id}
-    advertiser_name: Демо Банк А
-    ad_label_text: Реклама. Демо-предложение.
-    legal_disclaimer: Условия и финальное решение определяет партнёр.
+    affiliate_url_template: https://example.invalid/aurora?click_id={click_id}
+    advertiser_name: Аврора Финанс (демо)
+    ad_label_text: Реклама. Синтетическое демо-предложение.
+    legal_disclaimer: Условия и финальное решение определяет партнёр. Предложение недоступно для реальной заявки.
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 17,9–34,5% годовых.
+    fee_disclosure: Комиссия за выдачу не моделируется.
+    insurance_disclosure: Страхование не включено в расчёт.
     compensation_disclosure: Сервис может получить вознаграждение за переход.
     main_benefit: Гибкий диапазон суммы и срока
-    display_warnings: ["Демо-предложение — недоступно для реальной заявки"]
+    display_warnings: [Демо-предложение — недоступно для реальной заявки]
     cta_text: Посмотреть условия
     commission_type: fixed
     commission_amount: 1000
-  - bank_id: demo-b
-    partner_id: demo
-    product_name: Кредит с умеренной нагрузкой — демо
-    product_type: cash
-    priority: 50
-    allowed_age_bands: ["31_45", "46_60", "60_plus"]
-    allowed_regions: []
-    allowed_employment_types: [employee, pensioner]
-    allowed_credit_history_bands: [good, average, no_history]
+  - <<: *cash_flexible
+    provider_offer_id: demo-cash-stable-v1
+    bank_id: horizon-demo
+    product_name: Кредит «Стабильный платёж» — демо
+    priority: 58
     min_amount: 100000
     max_amount: 1500000
     min_term_months: 12
     max_term_months: 84
-    min_income_band: 50k_100k
+    annual_rate_min: 15.4
+    annual_rate_max: 27.8
     max_pti_band: moderate
     risk_band_policy: [low, medium, unknown]
-    affiliate_url_template: https://example.invalid/demo-b?click_id={click_id}
-    advertiser_name: Демо Банк Б
-    ad_label_text: Реклама. Демо-предложение.
-    legal_disclaimer: Условия и финальное решение определяет партнёр.
-    compensation_disclosure: Сервис может получить вознаграждение за переход.
-    main_benefit: Консервативные ограничения долговой нагрузки
-    display_warnings: ["Демо-предложение — недоступно для реальной заявки"]
-    cta_text: Посмотреть условия
-    commission_type: fixed
+    allowed_employment_types: [employee, pensioner]
+    allowed_credit_history_bands: [good, average, no_history]
+    advertiser_name: Горизонт (демо)
+    affiliate_url_template: https://example.invalid/horizon?click_id={click_id}
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 15,4–30,2% годовых.
+    main_benefit: Консервативная долговая нагрузка
     commission_amount: 800
-  - bank_id: demo-c
-    partner_id: demo
-    product_name: Рефинансирование — демо
+  - <<: *cash_flexible
+    provider_offer_id: demo-cash-start-v1
+    bank_id: start-line-demo
+    product_name: Небольшой кредит «Старт» — демо
+    priority: 54
+    min_amount: 20000
+    max_amount: 250000
+    min_term_months: 3
+    max_term_months: 36
+    annual_rate_min: 21.0
+    annual_rate_max: 39.0
+    min_income_band: lt_50k
+    risk_band_policy: [low, medium, high, unknown]
+    allowed_age_bands: ["18_21", "22_30", "31_45", "46_60", "60_plus"]
+    allowed_employment_types: [employee, self_employed, individual_entrepreneur, pensioner, unofficial]
+    advertiser_name: Старт Лайн (демо)
+    affiliate_url_template: https://example.invalid/start?click_id={click_id}
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 21,0–43,0% годовых.
+    main_benefit: Небольшая сумма и короткий срок
+    commission_amount: 600
+  - <<: *cash_flexible
+    provider_offer_id: demo-cash-business-v1
+    bank_id: vector-business-demo
+    product_name: Кредит для самостоятельной занятости — демо
+    priority: 49
+    min_amount: 100000
+    max_amount: 1000000
+    min_term_months: 12
+    max_term_months: 72
+    annual_rate_min: 19.2
+    annual_rate_max: 33.4
+    min_income_band: 100k_150k
+    allowed_employment_types: [self_employed, individual_entrepreneur]
+    advertiser_name: Вектор Бизнес (демо)
+    affiliate_url_template: https://example.invalid/vector?click_id={click_id}
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 19,2–36,8% годовых.
+    main_benefit: Учитывает самостоятельную занятость
+    commission_amount: 1100
+  - <<: *cash_flexible
+    provider_offer_id: demo-refinance-balance-v1
+    bank_id: balance-demo
+    product_name: Рефинансирование «Баланс» — демо
     product_type: refinance
-    priority: 40
-    allowed_age_bands: ["22_30", "31_45", "46_60"]
-    allowed_regions: []
-    allowed_employment_types: [employee, self_employed, individual_entrepreneur]
-    allowed_credit_history_bands: [good, average, minor_overdues]
-    min_amount: 300000
+    priority: 63
+    min_amount: 200000
     max_amount: 3000000
     min_term_months: 12
     max_term_months: 120
+    annual_rate_min: 14.8
+    annual_rate_max: 25.9
+    min_income_band: 50k_100k
+    risk_band_policy: [low, medium, high, unknown]
+    allowed_credit_history_bands: [good, average, minor_overdues]
+    advertiser_name: Баланс Партнёр (демо)
+    affiliate_url_template: https://example.invalid/balance?click_id={click_id}
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 14,8–28,1% годовых.
+    main_benefit: Сценарий объединения текущих платежей
+    commission_amount: 1500
+  - <<: *cash_flexible
+    provider_offer_id: demo-refinance-care-v1
+    bank_id: new-course-demo
+    product_name: Рефинансирование «Новый курс» — демо
+    product_type: refinance
+    priority: 47
+    min_amount: 300000
+    max_amount: 1800000
+    min_term_months: 24
+    max_term_months: 84
+    annual_rate_min: 16.1
+    annual_rate_max: 28.5
     min_income_band: 100k_150k
     max_pti_band: high
     risk_band_policy: [low, medium, high, unknown]
-    affiliate_url_template: https://example.invalid/demo-c?click_id={click_id}
-    advertiser_name: Демо Банк В
-    ad_label_text: Реклама. Демо-предложение.
-    legal_disclaimer: Условия и финальное решение определяет партнёр.
-    compensation_disclosure: Сервис может получить вознаграждение за переход.
-    main_benefit: Подходит для объединения текущих платежей
-    display_warnings: ["Демо-предложение — недоступно для реальной заявки"]
-    cta_text: Продолжить у партнёра
-    commission_type: fixed
-    commission_amount: 1500
+    allowed_employment_types: [employee, self_employed]
+    advertiser_name: Новый Курс (демо)
+    affiliate_url_template: https://example.invalid/new-course?click_id={click_id}
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 16,1–31,0% годовых.
+    main_benefit: Длинный срок для сравнения нагрузки
+    commission_amount: 1250
+  - <<: *cash_flexible
+    provider_offer_id: demo-card-everyday-v1
+    bank_id: everyday-demo
+    product_name: Карта «На каждый день» — демо
+    product_type: credit_card
+    priority: 41
+    min_amount: 30000
+    max_amount: 300000
+    min_term_months: 12
+    max_term_months: 60
+    annual_rate_min: 24.9
+    annual_rate_max: 44.9
+    min_income_band: lt_50k
+    max_pti_band: high
+    risk_band_policy: [low, medium, high, unknown]
+    allowed_age_bands: ["22_30", "31_45", "46_60", "60_plus"]
+    allowed_employment_types: [employee, self_employed, individual_entrepreneur, pensioner]
+    advertiser_name: Каждый День (демо)
+    affiliate_url_template: https://example.invalid/everyday?click_id={click_id}
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 24,9–49,9% годовых.
+    main_benefit: Небольшой возобновляемый лимит
+    commission_amount: 500
+  - <<: *cash_flexible
+    provider_offer_id: demo-card-reserve-v1
+    bank_id: reserve-demo
+    product_name: Карта «Резерв» — демо
+    product_type: credit_card
+    priority: 38
+    min_amount: 50000
+    max_amount: 500000
+    min_term_months: 12
+    max_term_months: 60
+    annual_rate_min: 22.5
+    annual_rate_max: 40.0
+    min_income_band: 50k_100k
+    max_pti_band: moderate
+    risk_band_policy: [low, medium, unknown]
+    advertiser_name: Резерв Финанс (демо)
+    affiliate_url_template: https://example.invalid/reserve?click_id={click_id}
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 22,5–45,2% годовых.
+    main_benefit: Лимит для регулярных расходов
+    commission_amount: 550
+  - <<: *cash_flexible
+    provider_offer_id: demo-auto-road-v1
+    bank_id: road-demo
+    product_name: Автокредит «Дорога» — демо
+    product_type: car
+    priority: 52
+    min_amount: 400000
+    max_amount: 3500000
+    min_term_months: 12
+    max_term_months: 84
+    annual_rate_min: 13.9
+    annual_rate_max: 25.0
+    min_income_band: 100k_150k
+    max_pti_band: moderate
+    risk_band_policy: [low, medium, unknown]
+    allowed_credit_history_bands: [good, average]
+    advertiser_name: Дорога Финанс (демо)
+    affiliate_url_template: https://example.invalid/road?click_id={click_id}
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 13,9–28,0% годовых.
+    insurance_disclosure: КАСКО и иные страховые продукты не включены в расчёт.
+    main_benefit: Расчёт для цели «автомобиль»
+    commission_amount: 1400
+  - <<: *cash_flexible
+    provider_offer_id: demo-cash-family-v1
+    bank_id: family-budget-demo
+    product_name: Кредит «Семейный бюджет» — демо
+    priority: 44
+    min_amount: 150000
+    max_amount: 900000
+    min_term_months: 12
+    max_term_months: 72
+    annual_rate_min: 16.8
+    annual_rate_max: 29.6
+    min_income_band: 100k_150k
+    max_pti_band: moderate
+    risk_band_policy: [low, medium, unknown]
+    allowed_age_bands: ["31_45", "46_60"]
+    advertiser_name: Семейный Бюджет (демо)
+    affiliate_url_template: https://example.invalid/family?click_id={click_id}
+    full_cost_range_text: Полная стоимость кредита (демо-диапазон) 16,8–32,4% годовых.
+    main_benefit: Умеренный диапазон суммы
+    commission_amount: 900

@@ -33,6 +33,16 @@ class EmploymentType(StrEnum):
     UNKNOWN = "unknown"
 
 
+class HousingType(StrEnum):
+    OWNED = "owned"
+    RENT = "rent"
+    FAMILY = "family"
+    MUNICIPAL = "municipal"
+    EMPLOYER = "employer"
+    OTHER = "other"
+    UNKNOWN = "unknown"
+
+
 class AmountBand(StrEnum):
     LT_100K = "lt_100k"
     FROM_100K_TO_300K = "100k_300k"
@@ -96,9 +106,17 @@ class CreditProfileInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     age_band: AgeBand
+    age: int | None = Field(default=None, ge=18, le=75)
     region: str | None = Field(default=None, min_length=1, max_length=64)
     income_band: IncomeBand
+    monthly_income: float | None = Field(default=None, gt=0, le=10_000_000)
     employment_type: EmploymentType
+    employment_years: float | None = Field(default=None, ge=0, le=60)
+    family_members: int | None = Field(default=None, ge=1, le=20)
+    children: int | None = Field(default=None, ge=0, le=15)
+    housing_type: HousingType = HousingType.UNKNOWN
+    owns_car: bool | None = None
+    owns_realty: bool | None = None
     requested_amount_band: AmountBand
     requested_amount: float | None = Field(default=None, gt=0, le=10_000_000)
     term_months: int = Field(ge=3, le=120)
@@ -113,6 +131,23 @@ class CreditProfileInput(BaseModel):
     def validate_consent(self) -> CreditProfileInput:
         if not self.consent_to_process:
             raise ValueError("consent_to_process must be true for server-side matching")
+        age_ranges = {
+            AgeBand.AGE_18_21: (18, 21),
+            AgeBand.AGE_22_30: (22, 30),
+            AgeBand.AGE_31_45: (31, 45),
+            AgeBand.AGE_46_60: (46, 60),
+            AgeBand.AGE_60_PLUS: (61, 75),
+        }
+        if self.age is not None:
+            lower, upper = age_ranges[self.age_band]
+            if not lower <= self.age <= upper:
+                raise ValueError("age does not match age_band")
+        if (
+            self.family_members is not None
+            and self.children is not None
+            and self.children >= self.family_members
+        ):
+            raise ValueError("children must be fewer than family_members")
         amount_ranges = {
             AmountBand.LT_100K: (0, 100_000),
             AmountBand.FROM_100K_TO_300K: (100_000, 300_000),
@@ -154,21 +189,77 @@ class ProfileBands(BaseModel):
     loan_purpose: LoanPurpose
 
 
-class CreditProfileResult(BaseModel):
+class PublicProfileFactor(BaseModel):
+    code: str
+    label: str
+    message: str
+    actionable: bool = False
+
+
+class RisklineProfileResult(BaseModel):
     anonymous_profile_id: str
+    profile_id: str | None = None
+    model_available: bool = False
+    ml_personalized: bool = False
     risk_band: str
     risk_score_available: bool
-    risk_score: float | None = Field(default=None, ge=0, le=1)
-    risk_model_version: str | None = None
+    risk_score: float | None = Field(default=None, ge=0, le=1, exclude=True)
+    risk_model_version: str | None = Field(default=None, exclude=True)
+    requested_amount: float | None = Field(default=None, ge=0, exclude=True)
+    risk_signal: str = "unknown"
+    riskline_index: int | None = Field(default=None, ge=0, le=100)
+    profile_band: str = "insufficient_data"
     affordability_band: AffordabilityBand
     estimated_monthly_payment: float | None = Field(default=None, ge=0)
     pti_value: float | None = Field(default=None, ge=0)
     pti_band: PtiBand
     data_coverage: float = Field(ge=0, le=1)
     confidence_level: ConfidenceLevel
+    strengths: list[PublicProfileFactor] = Field(default_factory=list)
+    limiting_factors: list[PublicProfileFactor] = Field(default_factory=list)
+    actionable_factors: list[PublicProfileFactor] = Field(default_factory=list)
     warnings: list[str]
     disclaimers: list[str]
     profile_bands: ProfileBands
+
+
+CreditProfileResult = RisklineProfileResult
+
+
+class OfferCalculation(BaseModel):
+    selected_amount: float = Field(ge=0)
+    selected_term_months: int = Field(ge=1)
+    annual_rate_min: float | None = Field(default=None, ge=0)
+    annual_rate_max: float | None = Field(default=None, ge=0)
+    monthly_payment_min: float | None = Field(default=None, ge=0)
+    monthly_payment_max: float | None = Field(default=None, ge=0)
+    total_repayment_min: float | None = Field(default=None, ge=0)
+    total_repayment_max: float | None = Field(default=None, ge=0)
+    overpayment_min: float | None = Field(default=None, ge=0)
+    overpayment_max: float | None = Field(default=None, ge=0)
+    full_cost_range_text: str | None = None
+    adjustments: list[str] = Field(default_factory=list)
+    assumptions: list[str] = Field(default_factory=list)
+
+
+class ImprovementScenario(BaseModel):
+    scenario_id: str
+    factor: str
+    title: str
+    current_state: str
+    suggested_state: str
+    expected_direction: str
+    effects: list[str]
+    trade_off: str
+    amount: float
+    term_months: int
+    existing_monthly_payments: float
+    estimated_monthly_payment: float
+    pti_value: float | None = None
+    affordability_band: AffordabilityBand
+    riskline_index: int | None = None
+    profile_band: str
+    eligible_offer_count: int = Field(ge=0)
 
 
 class OfferPublic(BaseModel):
@@ -236,12 +327,23 @@ class RankedOfferPublic(BaseModel):
     legal_disclaimer: str
     cta_text: str
     redirect_url: str
+    profile_compatibility: str = "Совместимо по базовым параметрам"
+    calculation: OfferCalculation | None = None
 
 
 PublicEventType = Literal[
     "landing_viewed",
     "calculator_used",
     "calculator_continue_clicked",
+    "profile_started",
+    "profile_completed",
+    "profile_scored",
+    "profile_result_viewed",
+    "improvement_viewed",
+    "scenario_changed",
+    "scenario_applied",
+    "recommended_offer_viewed",
+    "offer_clicked",
 ]
 
 
@@ -252,7 +354,11 @@ class PublicAnalyticsEventRequest(BaseModel):
 
     event_type: PublicEventType
     anonymous_session_id: str | None = Field(default=None, min_length=8, max_length=128)
-    page: Literal["landing", "credit_calculator"]
+    page: Literal["landing", "credit_calculator", "offers", "result", "scenario"]
+    profile_band: str | None = Field(default=None, max_length=32)
+    pti_band: str | None = Field(default=None, max_length=32)
+    scenario_type: Literal["amount", "term", "payments", "refinance"] | None = None
+    offer_position: Literal["recommended", "alternative"] | None = None
 
 
 class PublicAnalyticsEventResponse(BaseModel):
@@ -286,6 +392,7 @@ class OfferMatchResponse(BaseModel):
     user_explanation: str | None = None
     suggestions: list[str] = Field(default_factory=list)
     why_not_reasons: list[str] = Field(default_factory=list)
+    improvement_scenarios: list[ImprovementScenario] = Field(default_factory=list)
 
 
 class ClickRequest(BaseModel):
@@ -333,9 +440,9 @@ class PartnerPostbackResponse(BaseModel):
 
 
 STANDARD_DISCLAIMERS = [
-    "The service does not make credit decisions.",
-    "Final decision is made by the bank.",
-    "The result is preliminary and based only on the information provided.",
-    "Some offers are advertising/referral offers.",
-    "We may receive compensation for a referral.",
+    "Сервис не принимает кредитных решений.",
+    "Финальное решение принимает банк.",
+    "Результат предварительный и основан только на указанных данных.",
+    "Некоторые предложения являются рекламными или партнёрскими.",
+    "Сервис может получить вознаграждение за переход.",
 ]

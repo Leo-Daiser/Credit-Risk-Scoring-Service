@@ -131,16 +131,31 @@ class BankOffer(Base):
     __tablename__ = "bank_offers"
     __table_args__ = (
         UniqueConstraint("bank_id", "product_name", name="uq_bank_offers_bank_product"),
+        UniqueConstraint(
+            "provider_id",
+            "provider_offer_id",
+            name="uq_bank_offers_provider_offer",
+        ),
         CheckConstraint("min_amount > 0 AND max_amount >= min_amount", name="ck_bank_offers_amount"),
         CheckConstraint(
             "min_term_months >= 3 AND max_term_months >= min_term_months",
             name="ck_bank_offers_term",
         ),
         CheckConstraint("priority >= 0 AND priority <= 100", name="ck_bank_offers_priority"),
+        CheckConstraint(
+            "annual_rate_min IS NULL OR (annual_rate_min >= 0 AND annual_rate_min <= 100)",
+            name="ck_bank_offers_rate_min",
+        ),
+        CheckConstraint(
+            "annual_rate_max IS NULL OR (annual_rate_max >= annual_rate_min AND annual_rate_max <= 100)",
+            name="ck_bank_offers_rate_max",
+        ),
         Index("ix_bank_offers_active_priority", "is_active", "priority"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
+    provider_id: Mapped[str] = mapped_column(String(64), nullable=False, default="demo")
+    provider_offer_id: Mapped[str | None] = mapped_column(String(128), nullable=True)
     partner_id: Mapped[str] = mapped_column(String(64), nullable=False, default="demo")
     bank_id: Mapped[str] = mapped_column(String(64), nullable=False)
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -157,6 +172,10 @@ class BankOffer(Base):
     max_amount: Mapped[float] = mapped_column(Float, nullable=False)
     min_term_months: Mapped[int] = mapped_column(Integer, nullable=False)
     max_term_months: Mapped[int] = mapped_column(Integer, nullable=False)
+    annual_rate_min: Mapped[float | None] = mapped_column(Float, nullable=True)
+    annual_rate_max: Mapped[float | None] = mapped_column(Float, nullable=True)
+    fee_disclosure: Mapped[str | None] = mapped_column(Text, nullable=True)
+    insurance_disclosure: Mapped[str | None] = mapped_column(Text, nullable=True)
     min_income_band: Mapped[str] = mapped_column(String(32), nullable=False)
     max_pti_band: Mapped[str] = mapped_column(String(32), nullable=False)
     risk_band_policy: Mapped[list[str]] = mapped_column(JSON_TYPE, nullable=False)

@@ -1,14 +1,28 @@
 # Demo deployment
 
-The deployment profiles do not need raw training CSV files or a production
-model bundle. Privacy-light profile and offer matching continue to work; raw ML
-`/score` remains unavailable until a trusted bundle is mounted.
+Deployment profiles never need raw training CSV files. Full and public model bundles
+remain outside Git and may be mounted read-only. Matching can degrade to explicit
+rules fallback, but runtime never reports ML as active when the public artifact is absent.
 
 ## Local Docker demo
 
 ```powershell
 docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.demo.yml ps
+```
+
+Compose mounts `${MODEL_ARTIFACTS_PATH:-./artifacts/models}` read-only at
+`/app/artifacts/models`. Expected optional files are:
+
+- `production_model_bundle.joblib` — Full Credit Risk Model for internal scoring;
+- `public_profile_model_bundle.joblib` — public Riskline profile;
+- `offer_ranker.joblib` — optional future outcome ranker; rules remain default.
+
+To build the public artifact from locally available ignored source data:
+
+```powershell
+python -m src.cli build-public-profile-dataset
+python -m src.cli train-public-profile-model
 ```
 
 `demo-setup` applies Alembic migrations and idempotently seeds only synthetic

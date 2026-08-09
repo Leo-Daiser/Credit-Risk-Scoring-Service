@@ -86,6 +86,22 @@ Model version детерминированно выводится из fingerpri
 безопасным форматом для недоверенных файлов, поэтому bundle должен поступать только из
 контролируемого training pipeline.
 
+## Два risk-контура
+
+`Full Credit Risk Model` сохраняет богатую feature schema для внутреннего B2B
+scoring, benchmark и batch-операций. `Riskline Public Profile Model` обучается и
+работает на отдельной provider-neutral consumer schema:
+
+```text
+questionnaire -> normalized features -> public ML signal -> explanations
+              -> counterfactual scenarios -> hard eligibility
+              -> offer-specific calculations -> fit-first ranking
+```
+
+Модели имеют разные artifacts и availability flags. Offer ranker является третьим,
+отдельным artifact и по умолчанию выключен до появления реальных outcome labels.
+Подробный contract и provenance: [public_profile_model.md](public_profile_model.md).
+
 ## API serving
 
 FastAPI загружает и валидирует bundle перед readiness/scoring через cached dependency.

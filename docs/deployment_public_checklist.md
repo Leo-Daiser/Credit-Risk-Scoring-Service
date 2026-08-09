@@ -10,7 +10,8 @@ Complete every item before exposing the frontend:
 - [ ] Expose the frontend through TLS; keep backend and PostgreSQL on a private network or loopback.
 - [ ] Configure reverse-proxy/WAF request-size and rate limits; do not rely on the in-memory limiter across replicas.
 - [ ] Keep `/commercial`, `/operator`, operator BFF, `/docs`, `/openapi.json`, `/metrics` and runtime diagnostics inaccessible.
-- [ ] Mount a trusted model bundle only if ML `/score` is intentionally deployed; do not bake or commit it.
+- [ ] Mount trusted full/public model bundles read-only from a controlled artifact source; do not bake or commit them.
+- [ ] Confirm `/ready` and operator system status show the public model as available; otherwise communicate the explicit rules fallback.
 - [ ] Confirm the image contains no raw/processed data, reports, uploads, predictions, `.env`, host `node_modules`, `dist` or `.next`.
 - [ ] Run all three Compose config checks, backend/frontend tests and Docker builds.
 - [ ] Run `python -m src.cli setup-demo`, `verify-demo` and the public smoke script.

@@ -13,6 +13,8 @@ Supported commands:
     train-baseline
     train-catboost
     prepare-production-model
+    build-public-profile-dataset
+    train-public-profile-model
     batch-score
     monitor-drift
     seed-demo-offers
@@ -42,6 +44,10 @@ from src.offers.importer import OfferImportValidationError, export_offers, impor
 from src.offers.repository import OfferRepository
 from src.offers.train_offer_ranker import evaluate_offer_ranker, train_offer_ranker
 from src.offers.training_dataset import build_offer_ranking_dataset
+from src.public_profile.training import (
+    build_normalized_training_dataset,
+    train_public_profile_model,
+)
 from src.services.batch import run_batch_scoring
 from src.services.demo_setup import setup_demo, verify_demo
 from src.services.monitoring import run_drift_monitoring
@@ -50,6 +56,7 @@ DATA_CONFIG_PATH = "configs/data.yaml"
 FEATURE_CONFIG_PATH = "configs/features.yaml"
 TRAIN_CONFIG_PATH = "configs/train.yaml"
 SERVICE_CONFIG_PATH = "configs/service.yaml"
+PUBLIC_PROFILE_CONFIG_PATH = "configs/public_profile_model.yaml"
 
 AVAILABLE_COMMANDS = (
     "init-db",
@@ -61,6 +68,8 @@ AVAILABLE_COMMANDS = (
     "train-baseline",
     "train-catboost",
     "prepare-production-model",
+    "build-public-profile-dataset",
+    "train-public-profile-model",
     "batch-score",
     "monitor-drift",
     "seed-demo-offers",
@@ -198,6 +207,25 @@ def cmd_prepare_production_model() -> None:
     print(f"Metadata saved to: {summary['metadata_output_path']}")
 
 
+def cmd_build_public_profile_dataset() -> None:
+    """Map provider-specific source columns into the normalized public schema."""
+    summary = build_normalized_training_dataset(PUBLIC_PROFILE_CONFIG_PATH)
+    print("Normalized public profile training dataset built.")
+    print(f"Rows: {summary['rows']}")
+    print(f"Output: {summary['output_path']}")
+
+
+def cmd_train_public_profile_model() -> None:
+    """Train, calibrate, validate, and package the public profile model."""
+    summary = train_public_profile_model(PUBLIC_PROFILE_CONFIG_PATH)
+    print("Riskline Public Profile Model trained.")
+    print(f"Model version: {summary['model_version']}")
+    print(f"Selected candidate: {summary['selected_candidate']}")
+    print(f"Rows: {summary['rows']}")
+    print(f"Acceptance status: {summary['acceptance_status']}")
+    print(f"Bundle saved to: {summary['bundle_path']}")
+
+
 def cmd_train_catboost() -> None:
     """Train and persist the CatBoost challenger."""
     summary = train_catboost_challenger(config_path=TRAIN_CONFIG_PATH)
@@ -310,6 +338,10 @@ def cmd_verify_demo() -> None:
     print(f"Commercial matching ready: {runtime['commercial_matching_ready']}")
     print(f"Matching probe ready: {report['matching_probe_ready']}")
     print(f"Model bundle ready: {runtime['model_bundle_ready']}")
+    print(f"Full Credit Risk Model ready: {runtime['full_model_available']}")
+    print(f"Public Profile Model ready: {runtime['public_model_available']}")
+    print(f"Offer ranker ready: {runtime['offer_ranker_available']}")
+    print(f"Fallback-only mode: {runtime['fallback_only_mode']}")
     for warning in runtime["warnings"]:
         print(f"Warning: {warning}")
     if not report["ok"]:
@@ -326,6 +358,8 @@ COMMANDS = {
     "train-baseline": cmd_train_baseline,
     "train-catboost": cmd_train_catboost,
     "prepare-production-model": cmd_prepare_production_model,
+    "build-public-profile-dataset": cmd_build_public_profile_dataset,
+    "train-public-profile-model": cmd_train_public_profile_model,
     "batch-score": cmd_batch_score,
     "monitor-drift": cmd_monitor_drift,
     "seed-demo-offers": cmd_seed_demo_offers,

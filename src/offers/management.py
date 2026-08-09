@@ -101,6 +101,8 @@ def validate_offer_payload(data: dict[str, Any]) -> tuple[OfferWritable | None, 
 
 def _offer_payload(offer: BankOffer) -> dict[str, Any]:
     return {
+        "provider_id": offer.provider_id,
+        "provider_offer_id": offer.provider_offer_id,
         "bank_id": offer.bank_id,
         "product_name": offer.product_name,
         "product_type": offer.product_type,
@@ -110,6 +112,10 @@ def _offer_payload(offer: BankOffer) -> dict[str, Any]:
         "max_amount": offer.max_amount,
         "min_term_months": offer.min_term_months,
         "max_term_months": offer.max_term_months,
+        "annual_rate_min": offer.annual_rate_min,
+        "annual_rate_max": offer.annual_rate_max,
+        "fee_disclosure": offer.fee_disclosure,
+        "insurance_disclosure": offer.insurance_disclosure,
         "allowed_age_bands": offer.allowed_age_bands,
         "min_income_band": offer.min_income_band,
         "allowed_regions": offer.allowed_regions,

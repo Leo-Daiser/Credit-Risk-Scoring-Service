@@ -4,7 +4,9 @@
 
 Публичный matching contract принимает только диапазоны: возраст, доход, текущие
 платежи, запрашиваемую сумму, тип занятости, кредитную историю, цель, срок и
-необязательный регион. Точная сумма кредита и точный текущий платёж допускаются API
+необязательный регион. Для более полного ML-профиля пользователь может добровольно
+уточнить возраст, доход, стаж, размер семьи, жильё и признаки собственности.
+Точная сумма кредита и точный текущий платёж допускаются API
 как transient inputs. Frontend предлагает их только как необязательные поля текущего
 matching-запроса; БД их не хранит и browser storage не используется.
 
@@ -48,10 +50,10 @@ structured logs. Без данных БКИ и полного feature contract c
 
 ## Public analytics events
 
-Frontend отправляет только allowlisted `landing_viewed`, `calculator_used` и
-`calculator_continue_clicked` с названием публичной страницы и ephemeral anonymous
-session ID. Matching backend добавляет `profile_started`, `profile_submitted`,
-`result_viewed`, `offer_card_viewed` и `no_eligible_offers_viewed` из уже
+Frontend отправляет только allowlisted события страницы и сценария с ephemeral
+anonymous session ID и banded metadata. Matching backend добавляет `profile_started`,
+`profile_completed`, `profile_scored`, `profile_result_viewed`, `improvement_viewed`,
+`recommended_offer_viewed`, `offer_clicked` и no-offer события из уже
 нормализованного band-only контекста. Event contract запрещает extra fields: точные
 суммы, доход, ставка, телефон, email и имя в него не принимаются.
 

@@ -19,11 +19,16 @@ Open `http://localhost:3000`.
 2. Open the calculator and change amount, term, rate, income, and existing payments.
 3. Confirm that payment, repayment, overpayment, remaining budget, and debt load update
    without a network request.
-4. Continue to offer matching and complete only the approximate profile fields.
+4. Continue to offer matching and complete the approximate profile; optionally
+   уточните возраст, доход и стаж.
 5. Confirm that consent is empty by default and required before matching.
-6. Inspect the result summary, recommended offer, comparison explanation, advertising
+6. Confirm that the result contains Riskline Index, strengths and limiting factors,
+   without raw probability or provider feature names.
+7. Apply an improvement scenario and verify that payment, PTI, profile and eligible
+   offer count change consistently.
+8. Inspect the recommended offer-specific payment/rate/overpayment range, advertising
    label, partner warning, and compensation disclosure.
-7. Start an offer transition and confirm the transparent partner-transition screen.
+9. Start an offer transition and confirm the transparent partner-transition screen.
 
 All synthetic offers must display `Демо-предложение` and must not imply real availability.
 

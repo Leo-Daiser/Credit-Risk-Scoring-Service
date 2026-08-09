@@ -9,7 +9,10 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.api.dependencies import get_optional_scoring_service
+from src.api.dependencies import (
+    get_optional_public_profile_scoring_service,
+    get_optional_scoring_service,
+)
 from src.api.main import app
 from src.api.rate_limit import InMemoryRateLimiter, limiter
 from src.core.config import Settings, settings
@@ -76,6 +79,7 @@ def growth_client():
     limiter.reset()
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_optional_scoring_service] = lambda: None
+    app.dependency_overrides[get_optional_public_profile_scoring_service] = lambda: None
     try:
         yield TestClient(app), testing_session
     finally:

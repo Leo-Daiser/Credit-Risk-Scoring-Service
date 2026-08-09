@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from src.api.dependencies import (
-    get_optional_scoring_service,
+    get_optional_public_profile_scoring_service,
     require_local_demo_operator_api_key,
 )
 from src.api.metrics import (
@@ -55,7 +55,7 @@ from src.offers.service import (
     record_postback,
     validate_postback_signature,
 )
-from src.services.scoring import ScoringService
+from src.public_profile.service import PublicProfileScoringService
 
 router = APIRouter(prefix="/v1", tags=["commercial"])
 logger = logging.getLogger(__name__)
@@ -90,7 +90,13 @@ def public_analytics_event(
         session,
         payload.event_type,
         anonymous_session_id=anonymous.id if anonymous else None,
-        event_value=payload.page,
+        risk_band=payload.profile_band,
+        pti_band=payload.pti_band,
+        event_value=": ".join(
+            value
+            for value in (payload.page, payload.scenario_type, payload.offer_position)
+            if value
+        ),
     )
     session.commit()
     return PublicAnalyticsEventResponse()
@@ -104,7 +110,9 @@ def public_analytics_event(
 def score_profile(
     payload: CreditProfileInput,
     session: Session = Depends(get_db),
-    service: ScoringService | None = Depends(get_optional_scoring_service),
+    service: PublicProfileScoringService | None = Depends(
+        get_optional_public_profile_scoring_service
+    ),
 ) -> CreditProfileResult:
     result = build_profile_result(payload, service)
     for event_type in ("profile_started", "profile_completed", "profile_scored"):
@@ -137,7 +145,9 @@ def score_profile(
 def match(
     payload: OfferMatchRequest,
     session: Session = Depends(get_db),
-    service: ScoringService | None = Depends(get_optional_scoring_service),
+    service: PublicProfileScoringService | None = Depends(
+        get_optional_public_profile_scoring_service
+    ),
 ) -> OfferMatchResponse:
     result = match_offers(session, payload.profile, payload.limit, payload.context, service)
     OFFER_MATCH_REQUESTS.inc()

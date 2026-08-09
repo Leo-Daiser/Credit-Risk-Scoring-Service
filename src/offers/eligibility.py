@@ -23,7 +23,9 @@ def evaluate_offer_eligibility(
     warnings: list[str] = []
     matched: dict[str, object] = {}
     bands = profile.profile_bands
-    amount = estimate_amount_from_band(bands.requested_amount_band)
+    amount = profile.requested_amount or estimate_amount_from_band(
+        bands.requested_amount_band
+    )
 
     if not offer.is_active:
         blocking.append("offer_inactive")

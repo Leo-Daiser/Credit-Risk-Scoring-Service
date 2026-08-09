@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 from typing import Any, Protocol
+from uuid import uuid4
 
 
 @dataclass(frozen=True)
@@ -129,8 +130,9 @@ def run_smoke(
     _expect(click, {200}, "tracked click")
     checks.extend(("api:profile", "api:match", "api:click"))
 
+    smoke_run_id = uuid4().hex
     postback = {
-        "postback_id": "smoke-postback-v1",
+        "postback_id": f"smoke-postback-{smoke_run_id}",
         "partner_id": "demo",
         "click_id": click.body["click_id"],
         "status": "application_started",
@@ -166,7 +168,7 @@ def run_smoke(
         invalid = client.request(
             "POST",
             base + "/v1/partner/postback",
-            payload={**postback, "postback_id": "smoke-postback-invalid-v1"},
+            payload={**postback, "postback_id": f"smoke-postback-invalid-{smoke_run_id}"},
             headers={"X-Postback-Signature": "invalid"},
         )
         _expect(invalid, {401, 429}, "invalid demo postback")

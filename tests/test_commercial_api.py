@@ -9,7 +9,10 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from src.api.dependencies import get_optional_scoring_service
+from src.api.dependencies import (
+    get_optional_public_profile_scoring_service,
+    get_optional_scoring_service,
+)
 from src.api.main import app
 from src.core.config import settings
 from src.db.base import Base
@@ -42,7 +45,7 @@ def commercial_client():
     Base.metadata.create_all(engine)
     testing_session = sessionmaker(bind=engine, autoflush=False, autocommit=False)
     with testing_session() as session:
-        assert OfferRepository(session).seed_demo() == 3
+        assert OfferRepository(session).seed_demo() == 10
 
     def override_db():
         with testing_session() as session:
@@ -54,6 +57,7 @@ def commercial_client():
     settings.api_key = SecretStr("operator-test-key")
     app.dependency_overrides[get_db] = override_db
     app.dependency_overrides[get_optional_scoring_service] = lambda: None
+    app.dependency_overrides[get_optional_public_profile_scoring_service] = lambda: None
     try:
         yield TestClient(app), testing_session
     finally:
@@ -84,7 +88,7 @@ def test_demo_seed_reconciles_legacy_duplicate(commercial_client):
     _, testing_session = commercial_client
     with testing_session() as session:
         configured = session.scalar(
-            select(BankOffer).where(BankOffer.bank_id == "demo-a")
+            select(BankOffer).where(BankOffer.bank_id == "aurora-finance-demo")
         )
         legacy_values = {
             column.name: getattr(configured, column.name)
@@ -92,6 +96,7 @@ def test_demo_seed_reconciles_legacy_duplicate(commercial_client):
             if column.name not in {"id", "created_at", "updated_at"}
         }
         legacy_values.update(
+            provider_offer_id=None,
             product_name="Legacy English demo offer",
             advertiser_name="Legacy demo bank",
             ad_label_text="Advertising",
@@ -104,13 +109,39 @@ def test_demo_seed_reconciles_legacy_duplicate(commercial_client):
         active_items = list(
             session.scalars(
                 select(BankOffer).where(
-                    BankOffer.bank_id == "demo-a",
+                    BankOffer.bank_id == "aurora-finance-demo",
                     BankOffer.is_active.is_(True),
                 )
             )
         )
         assert len(active_items) == 1
-        assert active_items[0].product_name == "Гибкий кредит — демо"
+        assert active_items[0].product_name == "Гибкий кредит «Аврора» — демо"
+
+
+def test_demo_seed_deactivates_removed_managed_offer(commercial_client):
+    _, testing_session = commercial_client
+    with testing_session() as session:
+        template = session.scalar(
+            select(BankOffer).where(BankOffer.bank_id == "aurora-finance-demo")
+        )
+        values = {
+            column.name: getattr(template, column.name)
+            for column in BankOffer.__table__.columns
+            if column.name not in {"id", "created_at", "updated_at"}
+        }
+        values.update(
+            provider_offer_id="demo-removed-v1",
+            bank_id="removed-demo",
+            product_name="Removed managed demo offer",
+            is_active=True,
+        )
+        removed = BankOffer(**values)
+        session.add(removed)
+        session.commit()
+
+        assert OfferRepository(session).seed_demo() == 0
+        session.refresh(removed)
+        assert removed.is_active is False
 
 
 def test_match_requires_consent_and_persists_bands_only(commercial_client):

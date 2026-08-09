@@ -19,9 +19,10 @@ def test_classify_schema_rejects_partial_legacy_schema():
         classify_schema(["model_registry", "scoring_requests"])
 
 
-def test_alembic_chain_contains_offer_import_and_saas_disclosure_revisions():
+def test_alembic_chain_contains_normalized_offer_terms_revision():
     scripts = ScriptDirectory.from_config(Config("alembic.ini"))
     head = scripts.get_current_head()
-    assert head == "20260809_08"
-    assert scripts.get_revision(head).down_revision == "20260808_07"
+    assert head == "20260810_09"
+    assert scripts.get_revision(head).down_revision == "20260809_08"
+    assert scripts.get_revision("20260809_08").down_revision == "20260808_07"
     assert scripts.get_revision("20260808_07").down_revision == "20260808_06"

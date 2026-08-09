@@ -16,22 +16,27 @@ import {
   apiFetch,
   type FeatureSchema,
   type ModelInfo,
+  type RuntimeStatus,
   formatPercent,
 } from "../lib/api";
 
 export function ModelWorkspace() {
   const [model, setModel] = useState<ModelInfo | null>(null);
   const [schema, setSchema] = useState<FeatureSchema | null>(null);
+  const [runtime, setRuntime] = useState<RuntimeStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    Promise.all([
+    Promise.allSettled([
+      apiFetch<RuntimeStatus>("v1/runtime/status"),
       apiFetch<ModelInfo>("model_info"),
       apiFetch<FeatureSchema>("feature_schema"),
     ])
-      .then(([modelInfo, featureSchema]) => {
-        setModel(modelInfo);
-        setSchema(featureSchema);
+      .then(([runtimeResult, modelResult, schemaResult]) => {
+        if (runtimeResult.status === "fulfilled") setRuntime(runtimeResult.value);
+        if (modelResult.status === "fulfilled") setModel(modelResult.value);
+        if (schemaResult.status === "fulfilled") setSchema(schemaResult.value);
+        if (runtimeResult.status === "rejected") throw runtimeResult.reason;
       })
       .catch((reason: Error) => setError(reason.message));
   }, []);
@@ -58,6 +63,13 @@ export function ModelWorkspace() {
       </section>
 
       {error ? <div className="form-error" role="alert"><TriangleAlert size={18} /> {error}</div> : null}
+
+      <section className="model-metrics runtime-model-grid">
+        <article><span>Публичный профиль</span><strong>{runtime?.public_model_available ? "Доступен" : "Fallback"}</strong><small>{runtime?.public_model_version ?? "правила без ML"}</small></article>
+        <article><span>Полная модель</span><strong>{runtime?.full_model_available ? "Доступна" : "Недоступна"}</strong><small>внутренний B2B-контур</small></article>
+        <article><span>Ранжирование офферов</span><strong>{runtime?.offer_ranker_available ? "ML доступен" : "Правила"}</strong><small>правила — безопасный default</small></article>
+        <article><span>Fallback профилей</span><strong>{formatPercent(runtime?.public_model_fallback_rate ?? null, 0)}</strong><small>{runtime?.public_model_scoring_volume ?? 0} из {runtime?.public_profile_scores ?? 0} с публичной моделью</small></article>
+      </section>
 
       <details className="panel system-technical-details">
         <summary>Технические детали</summary>

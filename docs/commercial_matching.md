@@ -34,18 +34,19 @@ template. Если display copy содержит ставку, обязател�
 ## Архитектура
 
 ```text
-короткий анонимный профиль
-  -> approximate annuity + PTI
-  -> адаптер текущего credit-risk bundle
-       `-> unknown/low coverage без имитации полного score
-  -> прозрачные eligibility rules
+нормализованный анонимный профиль
+  -> annuity + PTI + derived ratios
+  -> Riskline Public Profile Model
+  -> объяснения + actionability + counterfactual scenarios
+  -> hard eligibility
+  -> offer-specific financial calculation
   -> deterministic ranker (production default)
   -> impression -> tracked click -> signed partner postback
   -> analytics/quality/segment loop
   -> offline ranking dataset -> optional ML ranker
 ```
 
-Credit-risk модель и offer ranker решают разные задачи. Первая оценивает риск дефолта
+Public Profile Model и offer ranker решают разные задачи. Первая формирует риск-сигнал
 в терминах исходной исследовательской выборки. Вторая должна в будущем оценивать outcome
 конкретного предложения по фактическим impression/click/application/approval/issued
 событиям. Риск дефолта не является вероятностью одобрения.
@@ -53,7 +54,11 @@ Credit-risk модель и offer ranker решают разные задачи.
 ## Компоненты
 
 - `src/offers/affordability.py` — консервативные оценки диапазонов, аннуитет и PTI;
-- `src/offers/risk_profile.py` — ограниченный адаптер bundle с безопасной деградацией;
+- `src/public_profile/` — normalized schema, training adapter, versioned bundle,
+  inference и privacy-safe explainability;
+- `src/offers/scenarios.py` — actionability и counterfactual сценарии;
+- `src/offers/providers/` — provider-neutral offer contract и demo provider;
+- `src/offers/calculations.py` — расчёт диапазона платежа по условиям оффера;
 - `src/offers/eligibility.py` — блокирующие и мягкие правила с reason codes;
 - `src/offers/ranking.py` — rules formula и opt-in загрузка ML artifact;
 - `src/offers/revenue.py` — conservative priors, smoothed history и revenue proxy;
@@ -105,7 +110,8 @@ offer никогда не попадает в ranker. Public response не со�
 
 ## Monetization и learning loop
 
-Demo catalog содержит только `Demo Bank A/B/C` и домен `example.invalid`. Для реального
+Demo catalog содержит 10 синтетических продуктов вымышленных партнёров и домен
+`example.invalid`. Для реального
 партнёра affiliate template загружается из защищённой конфигурации/БД; приватные
 токены нельзя коммитить. Outcome labels строятся из подписанных postback:
 `clicked`, `application_started`, `application_submitted`, `approved`, `issued` и
@@ -160,7 +166,8 @@ fail closed без server-side API key и доступны frontend только
 ## Ограничения
 
 - PTI приблизительный, не нормативный и не учитывает все расходы/страховки;
-- короткий профиль покрывает малую часть 622-feature bundle;
+- Public Profile Model использует отдельную consumer-compatible схему; полный
+  622-feature контур остаётся внутренним и не подменяет публичную модель;
 - исходная исследовательская выборка не соответствует конкретному российскому банку;
 - demo offers не являются реальными продуктами;
 - автоматическое удаление событий по retention schedule пока не реализовано;

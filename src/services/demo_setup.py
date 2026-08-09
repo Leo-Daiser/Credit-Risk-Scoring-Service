@@ -18,6 +18,7 @@ from src.offers.eligibility import evaluate_offer_eligibility
 from src.offers.repository import OfferRepository
 from src.offers.schemas import CreditProfileInput
 from src.offers.service import build_profile_result
+from src.public_profile.service import PublicProfileScoringService
 
 SessionFactory = Callable[[], Session]
 
@@ -101,7 +102,12 @@ def verify_demo(
                     "consent_to_process": True,
                 }
             )
-            result = build_profile_result(profile, scoring_service=None)
+            scoring_service = None
+            if status["public_model_available"]:
+                scoring_service = PublicProfileScoringService.from_path(
+                    config.resolve_public_profile_model_path()
+                )
+            result = build_profile_result(profile, scoring_service=scoring_service)
             matching_probe_ready = any(
                 evaluate_offer_eligibility(result, offer).eligible
                 for offer in OfferRepository(session).list_active()

@@ -287,7 +287,22 @@ test("public calculation and transient matching values are never persisted in br
   assert.doesNotMatch(`${calculator}${offers}${analytics}`, /localStorage|sessionStorage/);
   assert.match(calculator, /calculateCreditScenario/);
   assert.match(calculator, /continueToMatching/);
-  assert.doesNotMatch(analytics, /amount|income|payment|debt|rate/i);
+  assert.doesNotMatch(analytics, /monthly_income|requested_amount|existing_monthly_payments|raw_payload/i);
+  assert.match(analytics, /scenario_type/);
+});
+
+test("offer flow renders ML profile value, safe explanations and what-if controls", async () => {
+  const source = await readFile(
+    new URL("../app/components/OfferWorkspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /Riskline Index/);
+  assert.match(source, /Сильные стороны/);
+  assert.match(source, /Что ограничивает/);
+  assert.match(source, /Что можно улучшить/);
+  assert.match(source, /Интерактивный сценарий/);
+  assert.match(source, /Расчёт по условиям предложения/);
+  assert.doesNotMatch(source, /default_probability|SHAP|AMT_CREDIT|DAYS_EMPLOYED/);
 });
 
 test("commercial operator view renders protected analytics sections and safe states", async () => {
