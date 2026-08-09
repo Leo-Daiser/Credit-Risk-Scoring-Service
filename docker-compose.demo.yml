@@ -8,7 +8,11 @@ services:
       OPERATOR_UI_ENABLED: ${OPERATOR_UI_ENABLED:-true}
       PUBLIC_AUTH_STRICT: "false"
       PUBLIC_SAFE_DEMO_ADAPTER_ENABLED: "false"
-      DATABASE_URL: postgresql+psycopg2://credit_user:credit_pass@db:5432/credit_risk
+      POSTGRES_USER: ${POSTGRES_USER:-credit_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-credit_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-credit_risk}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: "5432"
       API_KEY: ${API_KEY:-demo-only-operator-key}
       PARTNER_POSTBACKS_ENABLED: "true"
       PARTNER_POSTBACK_SECRET: ${PARTNER_POSTBACK_SECRET:-demo-only-postback-secret}
@@ -18,8 +22,8 @@ services:
       EXPERIMENT_CONFIG_PATH: configs/experiments.yaml
       REAL_PARTNER_ENABLED: "false"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     command: ["python", "-m", "src.cli", "setup-demo"]
 
   api:
@@ -27,6 +31,9 @@ services:
     depends_on:
       demo-setup:
         condition: service_completed_successfully
+
+  migrate:
+    environment: *demo-environment
 
   frontend:
     environment:

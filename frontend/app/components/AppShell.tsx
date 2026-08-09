@@ -41,6 +41,46 @@ interface AppShellProps {
 }
 
 export function AppShell({ active, eyebrow, title, children, operator = false }: AppShellProps) {
+  if (!operator) {
+    return (
+      <div className="public-site-frame">
+        <header className="public-header">
+          <div className="public-header-inner">
+            <Link className="brand public-brand" href="/" aria-label="Riskline — на главную">
+              <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
+              <span>riskline</span>
+            </Link>
+            <nav className="public-nav" aria-label="Навигация по сервису">
+              <Link className={active === "score" ? "is-active" : ""} href="/score">Калькулятор</Link>
+              <Link className={active === "offers" ? "is-active" : ""} href="/offers">Подбор предложений</Link>
+              <Link href="/#how-it-works">Как это работает</Link>
+            </nav>
+            <Link className="button button-dark public-header-cta" href="/score">
+              Рассчитать и подобрать
+            </Link>
+          </div>
+        </header>
+        <main className="public-workspace" data-page-title={title} data-page-section={eyebrow}>
+          {children}
+        </main>
+        <footer className="public-footer">
+          <div>
+            <Link className="brand public-brand" href="/" aria-label="Riskline — на главную">
+              <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
+              <span>riskline</span>
+            </Link>
+            <p>Расчёт платежа и предварительный подбор предложений без лишних данных.</p>
+          </div>
+          <nav aria-label="Информация о сервисе">
+            <Link href="/credit-calculator">О расчёте</Link>
+            <Link href="/debt-load-calculator">О долговой нагрузке</Link>
+            <Link href="/credit-history-guide">Кредитная история</Link>
+          </nav>
+          <p className="public-footer-disclosure">Сервис не принимает кредитных решений. Некоторые предложения являются рекламными; Riskline может получить вознаграждение за переход. Финальное решение принимает банк.</p>
+        </footer>
+      </div>
+    );
+  }
   const navigation = operator ? operatorNavigation : publicNavigation;
   return (
     <div className="app-frame">

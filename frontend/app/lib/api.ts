@@ -258,6 +258,15 @@ export interface EventDebugReport {
   raw_payloads_exposed: false;
 }
 
+const UNSAFE_PUBLIC_ERROR = /valueerror|traceback|sqlalchemy|postgres|select\s+.+\s+from|model[_\s-]bundle|ext_source|code_gender|amt_annuity/i;
+
+function safePublicError(message: string, fallback: string): string {
+  const normalized = message.trim();
+  return normalized && normalized.length <= 240 && !UNSAFE_PUBLIC_ERROR.test(normalized)
+    ? normalized
+    : fallback;
+}
+
 export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/backend/${path.replace(/^\//, "")}`, {
     ...init,
@@ -272,10 +281,10 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
       const payload = (await response.json()) as {
         detail?: string | { message?: string; errors?: string[] };
       };
-      if (typeof payload.detail === "string") message = payload.detail;
+      if (typeof payload.detail === "string") message = safePublicError(payload.detail, message);
       if (payload.detail && typeof payload.detail === "object") {
         const parts = [payload.detail.message, ...(payload.detail.errors ?? [])].filter(Boolean);
-        if (parts.length) message = parts.join(" ");
+        if (parts.length) message = safePublicError(parts.join(" "), message);
       }
     } catch {
       // Keep the HTTP fallback when the response is not JSON.

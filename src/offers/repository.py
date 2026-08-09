@@ -68,15 +68,34 @@ class OfferRepository:
                 raise ValueError("Every offer must define partner_id")
             item["min_age_band"] = min(age_bands, key=AGE_ORDER.index)
             item["max_age_band"] = max(age_bands, key=AGE_ORDER.index)
-            existing = self.session.scalar(
-                select(BankOffer).where(
-                    BankOffer.bank_id == item["bank_id"],
-                    BankOffer.product_name == item["product_name"],
+            existing_items = list(
+                self.session.scalars(
+                    select(BankOffer)
+                    .where(
+                        BankOffer.bank_id == item["bank_id"],
+                        BankOffer.partner_id == "demo",
+                    )
+                    .order_by(BankOffer.id.asc())
                 )
             )
-            if existing is not None:
-                continue
-            self.session.add(BankOffer(is_active=True, erid=None, **item))
-            created += 1
+            existing = next(
+                (
+                    offer
+                    for offer in existing_items
+                    if offer.product_name == item["product_name"]
+                ),
+                existing_items[0] if existing_items else None,
+            )
+            if existing is None:
+                self.session.add(BankOffer(is_active=True, erid=None, **item))
+                created += 1
+            else:
+                for field, value in item.items():
+                    setattr(existing, field, value)
+                existing.is_active = True
+                existing.erid = None
+                for duplicate in existing_items:
+                    if duplicate.id != existing.id:
+                        duplicate.is_active = False
         self.session.commit()
         return created

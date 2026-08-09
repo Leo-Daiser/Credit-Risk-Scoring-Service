@@ -1,10 +1,17 @@
+x-postgres-environment: &postgres-environment
+  POSTGRES_USER: ${POSTGRES_USER:-credit_user}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-credit_pass}
+  POSTGRES_DB: ${POSTGRES_DB:-credit_risk}
+
 x-app-environment: &app-environment
+  <<: *postgres-environment
+  POSTGRES_HOST: db
+  POSTGRES_PORT: "5432"
   APP_ENV: ${APP_ENV:-local}
   DEMO_MODE: ${DEMO_MODE:-true}
   OPERATOR_UI_ENABLED: ${OPERATOR_UI_ENABLED:-true}
   PUBLIC_AUTH_STRICT: ${PUBLIC_AUTH_STRICT:-false}
   PUBLIC_SAFE_DEMO_ADAPTER_ENABLED: ${PUBLIC_SAFE_DEMO_ADAPTER_ENABLED:-false}
-  DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://credit_user:credit_pass@db:5432/credit_risk}
   API_KEY: ${API_KEY:-local-only-operator-key}
   PARTNER_POSTBACKS_ENABLED: ${PARTNER_POSTBACKS_ENABLED:-true}
   PARTNER_POSTBACK_SECRET: ${PARTNER_POSTBACK_SECRET:-local-demo-postback-secret}
@@ -19,10 +26,7 @@ services:
   db:
     image: postgres:16
     restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-credit_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-credit_pass}
-      POSTGRES_DB: ${POSTGRES_DB:-credit_risk}
+    environment: *postgres-environment
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
@@ -33,18 +37,25 @@ services:
       timeout: 5s
       retries: 10
 
+  migrate:
+    build: .
+    restart: "no"
+    environment: *app-environment
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "src.db.migrate"]
+
   api:
     build: .
     restart: unless-stopped
     environment: *app-environment
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:${APP_PORT:-8000}:8000"
-    command: >-
-      sh -c "python -m src.db.migrate &&
-      exec uvicorn src.api.main:app --host 0.0.0.0 --port 8000 --no-access-log"
+    command: ["uvicorn", "src.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready', timeout=3)"]
       interval: 10s

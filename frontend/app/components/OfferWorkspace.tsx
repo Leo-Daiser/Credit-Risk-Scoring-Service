@@ -175,26 +175,41 @@ export function OfferWorkspace() {
       <section className="offers-intro">
         <div>
           <span className="section-kicker">Предварительный подбор</span>
-          <h2>Подберите предложения под ваш платёж и долговую нагрузку.</h2>
+          <h1>Подберите предложения под ваш платёж и долговую нагрузку.</h1>
           <p>Можно указать примерные значения. Чем больше неизвестных полей, тем ниже уверенность результата. Паспорт, телефон, имя, документы, работодатель и данные БКИ не запрашиваются. Финальное решение принимает банк.</p>
         </div>
         <div className="privacy-chip"><ShieldCheck size={20} aria-hidden="true" /> Точные суммы используются только во время расчёта</div>
       </section>
 
-      <section className="offers-layout">
+      <section className={`offers-layout ${result ? "has-results" : ""}`}>
         <article className="panel offer-profile-form">
-          <div className="panel-heading"><div><span className="section-kicker">Минимум данных</span><h3>Параметры подбора</h3></div></div>
-          <div className="offer-fields">
-            <SelectField id="offer-age" label="Возрастной диапазон" help="Нужен для проверки базовых возрастных ограничений." value={profile.age_band} onChange={(value) => update("age_band", value as CreditProfileInput["age_band"])} options={[["18_21", "18–21"], ["22_30", "22–30"], ["31_45", "31–45"], ["46_60", "46–60"], ["60_plus", "Старше 60"]]} />
-            <SelectField id="offer-income" label="Доход в месяц" help="Достаточно примерного диапазона; точный доход не нужен." value={profile.income_band} onChange={(value) => update("income_band", value as CreditProfileInput["income_band"])} options={[["lt_50k", "До 50 тыс."], ["50k_100k", "50–100 тыс."], ["100k_150k", "100–150 тыс."], ["150k_250k", "150–250 тыс."], ["gt_250k", "Более 250 тыс."], ["unknown", "Не знаю / не указывать"]]} />
-            <SelectField id="offer-employment" label="Тип занятости" help="Используется только как категория совместимости." value={profile.employment_type} onChange={(value) => update("employment_type", value as CreditProfileInput["employment_type"])} options={[["employee", "По найму"], ["self_employed", "Самозанятый"], ["individual_entrepreneur", "ИП"], ["pensioner", "Пенсионер"], ["unofficial", "Неофициально"], ["unemployed", "Без работы"], ["unknown", "Не знаю / не указывать"]]} />
-            <SelectField id="offer-amount-band" label="Диапазон суммы" help="По нему проверяются лимиты продукта." value={profile.requested_amount_band} onChange={(value) => { update("requested_amount_band", value as CreditProfileInput["requested_amount_band"]); setAmountDraft(""); }} options={[["lt_100k", "До 100 тыс."], ["100k_300k", "100–300 тыс."], ["300k_700k", "300–700 тыс."], ["700k_1_5m", "700 тыс.–1,5 млн"], ["gt_1_5m", "Более 1,5 млн"]]} />
-            <NumberField id="offer-exact-amount" label="Точная сумма, ₽ — необязательно" help="Только для текущего расчёта; не сохраняется." value={amountDraft} onChange={setAmountDraft} min={1} />
-            <NumberField id="offer-term-months" label="Срок, месяцев" help="Проверяет совместимость со сроком оффера." value={termDraft} onChange={setTermDraft} min={3} max={120} step={1} />
-            <SelectField id="offer-payments-band" label="Текущие платежи" help="Нужны для приблизительной оценки долговой нагрузки." value={profile.existing_monthly_payments_band} onChange={(value) => { update("existing_monthly_payments_band", value as CreditProfileInput["existing_monthly_payments_band"]); setPaymentsDraft(""); }} options={[["zero", "Нет"], ["lt_10k", "До 10 тыс."], ["10k_30k", "10–30 тыс."], ["30k_60k", "30–60 тыс."], ["gt_60k", "Более 60 тыс."], ["unknown", "Не знаю / не указывать"]]} />
-            <NumberField id="offer-exact-payments" label="Точный платёж, ₽ — необязательно" help="Только для текущего расчёта; не сохраняется." value={paymentsDraft} onChange={setPaymentsDraft} min={0} />
-            <SelectField id="offer-history" label="Кредитная история" help="Самооценка диапазона; БКИ не запрашивается." value={profile.credit_history_band} onChange={(value) => update("credit_history_band", value as CreditProfileInput["credit_history_band"])} options={[["good", "Хорошая"], ["average", "Средняя"], ["minor_overdues", "Небольшие просрочки"], ["serious_overdues", "Серьёзные просрочки"], ["no_history", "Нет истории"], ["unknown", "Не знаю / не указывать"]]} />
-            <SelectField id="offer-purpose" label="Цель кредита" help="Помогает поднять релевантный тип продукта." value={profile.loan_purpose} onChange={(value) => update("loan_purpose", value as CreditProfileInput["loan_purpose"])} options={[["cash", "Наличные"], ["refinance", "Рефинансирование"], ["car", "Автомобиль"], ["repair", "Ремонт"], ["education", "Образование"], ["medical", "Лечение"], ["other", "Другое"]]} />
+          <div className="panel-heading"><div><span className="section-kicker">Три коротких шага</span><h3>Расскажите о нужном варианте</h3></div></div>
+          <div className="offer-form-steps">
+            <fieldset className="offer-form-step">
+              <legend><span>1</span><strong>Что вам нужно?</strong></legend>
+              <div className="offer-fields">
+                <SelectField id="offer-amount-band" label="Диапазон суммы" help="По нему проверяются лимиты предложения." value={profile.requested_amount_band} onChange={(value) => { update("requested_amount_band", value as CreditProfileInput["requested_amount_band"]); setAmountDraft(""); }} options={[["lt_100k", "До 100 тыс."], ["100k_300k", "100–300 тыс."], ["300k_700k", "300–700 тыс."], ["700k_1_5m", "700 тыс.–1,5 млн"], ["gt_1_5m", "Более 1,5 млн"]]} />
+                <NumberField id="offer-term-months" label="Срок, месяцев" help="Нужен для сравнения доступных сроков." value={termDraft} onChange={setTermDraft} min={3} max={120} step={1} />
+                <SelectField id="offer-purpose" label="Цель" help="Помогает показать более подходящий тип продукта." value={profile.loan_purpose} onChange={(value) => update("loan_purpose", value as CreditProfileInput["loan_purpose"])} options={[["cash", "Наличные"], ["refinance", "Рефинансирование"], ["car", "Автомобиль"], ["repair", "Ремонт"], ["education", "Образование"], ["medical", "Лечение"], ["other", "Другое"]]} />
+              </div>
+              <details className="precision-fields"><summary>Указать сумму точнее</summary><NumberField id="offer-exact-amount" label="Точная сумма, ₽ — необязательно" help="Используется только для текущего расчёта и не сохраняется." value={amountDraft} onChange={setAmountDraft} min={1} /></details>
+            </fieldset>
+            <fieldset className="offer-form-step">
+              <legend><span>2</span><strong>Немного о вас</strong></legend>
+              <div className="offer-fields">
+                <SelectField id="offer-age" label="Возраст" help="Для базовых возрастных ограничений." value={profile.age_band} onChange={(value) => update("age_band", value as CreditProfileInput["age_band"])} options={[["18_21", "18–21"], ["22_30", "22–30"], ["31_45", "31–45"], ["46_60", "46–60"], ["60_plus", "Старше 60"]]} />
+                <SelectField id="offer-income" label="Доход в месяц" help="Достаточно примерного диапазона." value={profile.income_band} onChange={(value) => update("income_band", value as CreditProfileInput["income_band"])} options={[["lt_50k", "До 50 тыс."], ["50k_100k", "50–100 тыс."], ["100k_150k", "100–150 тыс."], ["150k_250k", "150–250 тыс."], ["gt_250k", "Более 250 тыс."], ["unknown", "Не знаю / не указывать"]]} />
+                <SelectField id="offer-employment" label="Занятость" help="Используется как категория совместимости." value={profile.employment_type} onChange={(value) => update("employment_type", value as CreditProfileInput["employment_type"])} options={[["employee", "По найму"], ["self_employed", "Самозанятый"], ["individual_entrepreneur", "ИП"], ["pensioner", "Пенсионер"], ["unofficial", "Неофициально"], ["unemployed", "Без работы"], ["unknown", "Не знаю / не указывать"]]} />
+              </div>
+            </fieldset>
+            <fieldset className="offer-form-step">
+              <legend><span>3</span><strong>Текущая нагрузка</strong></legend>
+              <div className="offer-fields">
+                <SelectField id="offer-payments-band" label="Текущие платежи" help="Для приблизительной оценки нагрузки." value={profile.existing_monthly_payments_band} onChange={(value) => { update("existing_monthly_payments_band", value as CreditProfileInput["existing_monthly_payments_band"]); setPaymentsDraft(""); }} options={[["zero", "Нет"], ["lt_10k", "До 10 тыс."], ["10k_30k", "10–30 тыс."], ["30k_60k", "30–60 тыс."], ["gt_60k", "Более 60 тыс."], ["unknown", "Не знаю / не указывать"]]} />
+                <SelectField id="offer-history" label="Кредитная история" help="Самооценка; данные БКИ не запрашиваются." value={profile.credit_history_band} onChange={(value) => update("credit_history_band", value as CreditProfileInput["credit_history_band"])} options={[["good", "Хорошая"], ["average", "Средняя"], ["minor_overdues", "Небольшие просрочки"], ["serious_overdues", "Серьёзные просрочки"], ["no_history", "Нет истории"], ["unknown", "Не знаю / не указывать"]]} />
+              </div>
+              <details className="precision-fields"><summary>Указать текущий платёж точнее</summary><NumberField id="offer-exact-payments" label="Точный платёж, ₽ — необязательно" help="Используется только для текущего расчёта и не сохраняется." value={paymentsDraft} onChange={setPaymentsDraft} min={0} /></details>
+            </fieldset>
           </div>
           <label className="consent-row" htmlFor="offer-consent">
             <input id="offer-consent" type="checkbox" checked={profile.consent_to_process} onChange={(event) => update("consent_to_process", event.target.checked)} aria-describedby="offer-consent-help" />
@@ -207,7 +222,7 @@ export function OfferWorkspace() {
           {error ? <div className="form-error" role="alert" id="offer-form-error"><AlertTriangle size={18} aria-hidden="true" /> {error}</div> : null}
           <button className="button button-dark button-full" type="button" onClick={submit} disabled={loading} aria-describedby="offer-form-error">
             {loading ? <LoaderCircle className="spin" size={18} aria-hidden="true" /> : <BadgePercent size={18} aria-hidden="true" />}
-            {loading ? "Подбираем предложения…" : "Показать подходящие предложения"}
+            {loading ? "Подбираем предложения…" : "Показать предложения"}
           </button>
           <p className="model-disclaimer">Сервис не принимает кредитных решений. Финальное решение принимает банк; предложения могут быть рекламными.</p>
         </article>
@@ -267,7 +282,7 @@ export function OfferWorkspace() {
             <p><strong>{transition.partner}</strong> · {transition.offer}</p>
             <ul>
               <li>Условия и решение определяет партнёр.</li>
-              <li>Переход уже зафиксирован для аналитики.</li>
+              <li>Riskline учитывает переход, чтобы улучшать качество подбора.</li>
               <li>Riskline может получить вознаграждение за переход.</li>
             </ul>
             <button className="button button-dark button-full" type="button" onClick={() => window.location.assign(transition.url)}>Продолжить у партнёра <ArrowRight size={17} /></button>
@@ -343,7 +358,7 @@ function OfferCard({ offer, clicking, onOpen, recommended = false, payment }: { 
 
 function NoOffers({ result }: { result: OfferMatchResult }) {
   return (
-    <div className="offer-empty no-offers"><AlertTriangle size={24} aria-hidden="true" /><strong>Сейчас нет подходящих предложений</strong><span>{result.user_explanation}</span><ul>{result.suggestions.map((suggestion) => <li key={suggestion}>{suggestion}</li>)}<li>Проверьте предложения позже — каталог может обновиться.</li></ul><small>Результат относится только к указанным параметрам и может измениться после их уточнения.</small></div>
+    <div className="offer-empty no-offers"><AlertTriangle size={24} aria-hidden="true" /><strong>Пока не нашли подходящего предложения</strong><span>{result.user_explanation} Это не означает решение банка.</span><ul>{result.suggestions.map((suggestion) => <li key={suggestion}>{suggestion}</li>)}<li>Проверьте предложения позже — каталог может обновиться.</li></ul><small>Результат относится только к указанным параметрам и может измениться после их уточнения.</small></div>
   );
 }
 

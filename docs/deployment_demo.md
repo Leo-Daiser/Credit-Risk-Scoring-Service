@@ -1,6 +1,6 @@
 # Demo deployment
 
-The deployment profiles do not need raw Home Credit CSV files or a production
+The deployment profiles do not need raw training CSV files or a production
 model bundle. Privacy-light profile and offer matching continue to work; raw ML
 `/score` remains unavailable until a trusted bundle is mounted.
 
@@ -22,6 +22,31 @@ python -m src.cli verify-demo
 
 The optional events contain event names and a synthetic marker only; no financial
 values or raw profiles are generated.
+
+Local and demo modes use the `POSTGRES_*` variables as one credential source for
+PostgreSQL, migrations and the API. Copying `.env.example` to `.env` therefore produces
+a consistent Compose configuration. Always use `--build` after pulling migrations so
+the one-shot `migrate` image contains the complete Alembic chain.
+
+### Existing local volume recovery
+
+Changing `POSTGRES_PASSWORD` does not change credentials already stored in a PostgreSQL
+volume. Normal schema upgrades do not require deleting the volume. Restore the original
+password in `.env`, start the database and update the role password deliberately if the
+data must be preserved.
+
+Only for a disposable development database, verify the exact volume first and then
+recreate it manually:
+
+```powershell
+docker compose down
+docker volume inspect credit-risk-scoring_postgres_data
+docker volume rm credit-risk-scoring_postgres_data
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+```
+
+`docker volume rm` permanently removes the local database and is never executed by
+setup scripts.
 
 ## Public-safe product profile
 

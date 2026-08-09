@@ -44,6 +44,10 @@ python -m src.cli setup-demo
 uvicorn src.api.main:app --reload
 ```
 
+For host-side PostgreSQL replace `POSTGRES_HOST=db` with `POSTGRES_HOST=localhost` in
+the ignored `.env`. With Docker Compose keep `db`; the same `POSTGRES_*` values configure
+the database, migrations and API.
+
 В отдельном терминале:
 
 ```powershell
@@ -64,6 +68,9 @@ python scripts/smoke_public_demo.py --base-url http://localhost:8000 --frontend-
 
 Демо-предложения синтетические и явно помечаются в интерфейсе. Они не являются
 актуальными банковскими продуктами.
+
+Recovery для старого локального PostgreSQL volume описан в
+[`docs/deployment_demo.md`](docs/deployment_demo.md). Volume никогда не удаляется автоматически.
 
 ## Управление предложениями
 

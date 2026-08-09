@@ -34,6 +34,11 @@ docker compose up -d --build
 .\.venv\Scripts\python.exe scripts\load_smoke.py --requests 50 --concurrency 2
 ```
 
+Compose runs Alembic in the one-shot `migrate` service before starting the API. If a
+migration fails, inspect `docker compose logs migrate`; the API remains stopped instead
+of repeatedly restarting. After pulling a commit with new migration files, keep
+`--build` so the migration image cannot remain stale.
+
 If the deployment enables `API_KEY`, expose it only in the current process
 environment before running the command:
 

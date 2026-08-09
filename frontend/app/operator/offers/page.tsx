@@ -4,7 +4,7 @@ import { OfferManagementWorkspace } from "../../components/OfferManagementWorksp
 import { requireOperatorUi } from "../../lib/access";
 
 export const metadata: Metadata = {
-  title: "Управление офферами · Riskline",
+  title: "Управление офферами",
   description: "Защищённое управление каталогом кредитных предложений.",
 };
 

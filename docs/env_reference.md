@@ -14,7 +14,7 @@ the platform secret store and must not bake them into an image.
 | `PUBLIC_AUTH_STRICT` | bool / `false` | optional | optional | `true` | no | `true` / `false` in public |
 | `PUBLIC_SAFE_DEMO_ADAPTER_ENABLED` | bool / `false` | optional | optional | optional | no | `false`; set `true` only for the bundled `example.invalid` catalog |
 | `APP_HOST`, `APP_PORT` | string,int / `0.0.0.0`,`8000` | optional | optional | optional | no | internal listener / directly exposed backend |
-| `APP_NAME` | string | optional | optional | optional | no | `Credit Risk Scoring Service` |
+| `APP_NAME` | string | optional | optional | optional | no | `Riskline` |
 | `BACKEND_URL` | URL / Compose `http://api:8000` | optional | required by frontend | required by frontend | no | private service URL / public operator backend |
 | `FRONTEND_PORT` | int / `3000` | optional | optional | optional | no | `3000` |
 
@@ -22,12 +22,17 @@ the platform secret store and must not bake them into an image.
 
 | Variable | Type / default | local | demo | public | Secret | Safe example / unsafe example |
 |---|---|---|---|---|---|---|
-| `DATABASE_URL` | SQLAlchemy URL / composed PostgreSQL fields | optional | required in containers | required | yes | secret-managed DSN / committed password |
+| `DATABASE_URL` | SQLAlchemy URL / composed PostgreSQL fields | optional | optional | required | yes | secret-managed DSN / committed password |
 | `POSTGRES_USER`, `POSTGRES_DB`, `POSTGRES_HOST`, `POSTGRES_PORT` | strings,int | optional | Compose defaults | platform-specific | partly | dedicated DB role / superuser role |
 | `POSTGRES_PASSWORD` | string / local `credit_pass` | optional | replace for shared demo | required | yes | random secret / `change-me-public-db` |
 | `API_KEY` | string / none | needed for operator API | needed when operator UI is on | required and non-placeholder | yes | random 32+ bytes / `change-me`, `demo`, `secret` |
 | `DATABASE_REQUIRED` | bool / `true` | optional | `true` | `true` | no | `true` |
 | `INFERENCE_LOGGING_ENABLED` | bool / `true` | optional | optional | policy decision | no | `true` with retention controls |
+
+Local/demo Compose uses `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`,
+`POSTGRES_HOST` and `POSTGRES_PORT` as the single source of truth. The application
+constructs its effective SQLAlchemy URL from those values. Do not add a second local
+`DATABASE_URL`; public mode intentionally requires an explicit secret-managed DSN.
 
 ## Model, batch and worker
 

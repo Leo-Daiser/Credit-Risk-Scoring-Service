@@ -32,7 +32,7 @@ raw loader + schema/FK validation
 
 ## Raw data layer
 
-`configs/data.yaml` описывает восемь Home Credit tables, filenames, required columns,
+`configs/data.yaml` описывает восемь исходных research tables, filenames, required columns,
 unique keys и relationships. Loader работает с относительными путями. Validation
 проверяет наличие/непустоту таблиц, schema contracts, key uniqueness и foreign-key
 orphans. Для известного несоответствия `bureau_balance` CLI использует report mode,
@@ -64,7 +64,7 @@ Feature builders разделены по источникам:
 
 Оба используют один deterministic stratified split. Trainers сохраняют estimator,
 metrics и feature schema только после реального fit. Synthetic unit tests проверяют
-pipeline без private Kaggle data.
+pipeline без приватных исходных данных.
 
 ## Production bundle
 
@@ -141,7 +141,8 @@ PostgreSQL 16 <--- FastAPI container
                      `--- read-only ./artifacts mount
 ```
 
-API ожидает database health, применяет Alembic migration и запускается без `--reload`.
+Одноразовый Compose-сервис `migrate` ожидает database health и применяет Alembic.
+API запускается только после успешной миграции и не входит в restart loop при ошибке схемы.
 Readiness требует доступный PostgreSQL и валидный локальный bundle. Batch и monitoring
 остаются отдельными CLI processes на host/container по необходимости.
 

@@ -55,13 +55,16 @@ test("server-renders the public landing without operator data", async () => {
   assert.match(html, /<title>Рассчитать платёж и подобрать кредитные предложения · Riskline<\/title>/i);
   assert.match(html, /Демо-режим/);
   assert.match(html, /Рассчитать и подобрать/);
-  assert.match(html, /Рассчитайте платёж и сравните подходящие кредитные предложения за 2 минуты/);
+  assert.match(html, /Рассчитайте платёж и сравните подходящие кредитные предложения/);
+  assert.match(html, /Как это работает/);
+  assert.match(html, /Сначала поймите платёж/);
   assert.match(html, /СНИЛС и ИНН/);
   assert.match(html, /Без названия работодателя/);
   assert.match(html, /Сервис не принимает кредитных решений/);
   assert.match(html, /Финальное решение принимает банк/);
   assert.doesNotMatch(html, /гарантируем одобрение|точно знаем, какой банк одобрит|банковский скоринг|официальное решение/i);
   assert.doesNotMatch(html, /Пакетный скоринг|Коммерческая аналитика|История/);
+  assert.doesNotMatch(html, /Публичный сервис|Личный кабинет Riskline/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton|Your site is taking shape/i);
 });
 
@@ -107,6 +110,7 @@ test("public calculator does not expose raw model or operator controls", async (
   assert.match(html, /Долговая нагрузка/);
   assert.match(html, /Показать предложения под этот платёж/);
   assert.match(html, /Остаток бюджета/);
+  assert.match(html, /calculator-primary-fact/);
   assert.doesNotMatch(html, /Экспертный JSON|Feature payload|audit log/);
 });
 
@@ -218,6 +222,10 @@ test("privacy-light offer matching exposes consent and advertising boundaries", 
   assert.match(html, /Кредитная история/);
   assert.match(html, /Что такое долговая нагрузка/);
   assert.match(html, /Почему результат предварительный/);
+  assert.match(html, /Что вам нужно/);
+  assert.match(html, /Немного о вас/);
+  assert.match(html, /Текущая нагрузка/);
+  assert.match(html, /Указать сумму точнее/);
   assert.doesNotMatch(html, /Имя пользователя|Номер телефона|Паспортные данные/);
   assert.doesNotMatch(html, /localStorage|sessionStorage/);
 });
@@ -244,7 +252,7 @@ test("offer result source keeps recommendation, disclosures and every CTA behind
   assert.match(source, /Посмотреть лучшее предложение/);
   assert.match(source, /Вы переходите к партнёру/);
   assert.match(source, /v1\/offers\/\$\{offer\.offer_id\}\/click/);
-  assert.match(source, /Переход уже зафиксирован для аналитики/);
+  assert.match(source, /Riskline учитывает переход, чтобы улучшать качество подбора/);
   assert.match(source, /offer\.ad_disclosure/);
   assert.match(source, /offer\.legal_disclaimer/);
   assert.doesNotMatch(source, /offer\.commission|expected_revenue|affiliate_url_template/);

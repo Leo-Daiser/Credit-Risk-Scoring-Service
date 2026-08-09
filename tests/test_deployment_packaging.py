@@ -4,6 +4,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
+import yaml
 from pydantic import SecretStr, ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -12,8 +13,35 @@ from sqlalchemy.pool import StaticPool
 from scripts.smoke_public_demo import HttpResult, band_only_profile, run_smoke
 from src import cli
 from src.core.config import Settings
+from src.core.runtime import tracked_generated_artifacts
 from src.db.base import Base
 from src.services.demo_setup import setup_demo, verify_demo
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_artifact_tracking_check_skips_minimal_image_without_git_metadata(tmp_path):
+    assert tracked_generated_artifacts(tmp_path) == []
+
+
+def test_env_example_is_consistent_for_local_compose():
+    config = Settings(_env_file=ROOT / ".env.example")
+    assert config.app_env == "local"
+    assert config.database_url is None
+    assert config.resolved_database_url == (
+        "postgresql+psycopg2://credit_user:credit_pass@db:5432/credit_risk"
+    )
+
+
+def test_compose_migration_gate_prevents_api_restart_loop():
+    compose = yaml.safe_load((ROOT / "docker-compose.yml").read_text(encoding="utf-8"))
+    services = compose["services"]
+    assert services["migrate"]["restart"] == "no"
+    assert services["migrate"]["command"] == ["python", "-m", "src.db.migrate"]
+    assert services["api"]["depends_on"]["migrate"]["condition"] == (
+        "service_completed_successfully"
+    )
+    assert services["api"]["command"][0] == "uvicorn"
 
 
 def test_public_config_rejects_missing_callback_secret():

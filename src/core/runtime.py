@@ -30,13 +30,18 @@ FORBIDDEN_TRACKED_ROOTS = (
 
 def tracked_generated_artifacts(project_root: Path = Path(".")) -> list[str]:
     """List forbidden generated files tracked by Git without reading their contents."""
-    result = subprocess.run(
-        ["git", "ls-files", "--", *FORBIDDEN_TRACKED_ROOTS, ".env", "frontend/.env"],
-        cwd=project_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
+    if not (project_root / ".git").exists():
+        return []
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--", *FORBIDDEN_TRACKED_ROOTS, ".env", "frontend/.env"],
+            cwd=project_root,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+    except FileNotFoundError:
+        return ["git_tracking_check_failed"]
     if result.returncode != 0:
         return ["git_tracking_check_failed"]
     return sorted(

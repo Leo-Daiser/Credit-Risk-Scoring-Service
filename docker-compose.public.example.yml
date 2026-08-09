@@ -25,8 +25,8 @@ services:
       EXPERIMENT_CONFIG_PATH: configs/experiments.yaml
       REAL_PARTNER_ENABLED: "false"
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     command: ["python", "-m", "src.cli", "setup-demo"]
 
   api:
@@ -36,6 +36,9 @@ services:
         condition: service_completed_successfully
     ports: !override
       - "127.0.0.1:${APP_PORT:-8000}:8000"
+
+  migrate:
+    environment: *public-environment
 
   frontend:
     environment:

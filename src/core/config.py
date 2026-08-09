@@ -90,6 +90,9 @@ class Settings(BaseSettings):
             "prod": "public",
             "production": "public",
         }.get(app_env, app_env)
+        analytics_days = normalized.get("analytics_default_days")
+        if isinstance(analytics_days, str) and analytics_days.isdecimal():
+            normalized["analytics_default_days"] = int(analytics_days)
         return normalized
 
     @model_validator(mode="after")

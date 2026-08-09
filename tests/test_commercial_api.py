@@ -13,7 +13,13 @@ from src.api.dependencies import get_optional_scoring_service
 from src.api.main import app
 from src.core.config import settings
 from src.db.base import Base
-from src.db.models import CreditProfileEvent, OfferClick, OfferImpression, PartnerPostback
+from src.db.models import (
+    BankOffer,
+    CreditProfileEvent,
+    OfferClick,
+    OfferImpression,
+    PartnerPostback,
+)
 from src.db.session import get_db
 from src.offers.repository import OfferRepository
 from src.offers.schemas import PartnerPostbackRequest
@@ -72,6 +78,39 @@ def profile_payload(consent=True):
         "loan_purpose": "cash",
         "consent_to_process": consent,
     }
+
+
+def test_demo_seed_reconciles_legacy_duplicate(commercial_client):
+    _, testing_session = commercial_client
+    with testing_session() as session:
+        configured = session.scalar(
+            select(BankOffer).where(BankOffer.bank_id == "demo-a")
+        )
+        legacy_values = {
+            column.name: getattr(configured, column.name)
+            for column in BankOffer.__table__.columns
+            if column.name not in {"id", "created_at", "updated_at"}
+        }
+        legacy_values.update(
+            product_name="Legacy English demo offer",
+            advertiser_name="Legacy demo bank",
+            ad_label_text="Advertising",
+            is_active=True,
+        )
+        session.add(BankOffer(**legacy_values))
+        session.commit()
+
+        assert OfferRepository(session).seed_demo() == 0
+        active_items = list(
+            session.scalars(
+                select(BankOffer).where(
+                    BankOffer.bank_id == "demo-a",
+                    BankOffer.is_active.is_(True),
+                )
+            )
+        )
+        assert len(active_items) == 1
+        assert active_items[0].product_name == "Гибкий кредит — демо"
 
 
 def test_match_requires_consent_and_persists_bands_only(commercial_client):

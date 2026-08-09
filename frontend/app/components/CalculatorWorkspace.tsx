@@ -68,7 +68,7 @@ export function CalculatorWorkspace() {
       <section className="page-intro score-intro">
         <div>
           <span className="section-kicker">Расчёт без регистрации</span>
-          <h2>Проверьте, какой платёж подходит вашему бюджету.</h2>
+          <h1>Проверьте, какой платёж подходит вашему бюджету.</h1>
           <p>Все вычисления выполняются на этой странице. Введённые значения никуда не отправляются и не сохраняются.</p>
         </div>
       </section>
@@ -86,11 +86,18 @@ export function CalculatorWorkspace() {
           {error ? <div className="form-error" role="alert" id="calculator-error"><AlertTriangle size={18} aria-hidden="true" />{error}</div> : null}
         </article>
         <aside className="panel calculator-result" aria-live="polite">
-          <div className="panel-heading"><h3>Предварительный результат</h3><ShieldCheck size={24} aria-hidden="true" /></div>
+          <div className="panel-heading"><div><span className="section-kicker">Ваш ориентир</span><h3>Предварительный результат</h3></div><ShieldCheck size={24} aria-hidden="true" /></div>
           {result ? (
             <>
+              <div className="calculator-primary-fact">
+                <span>Платёж в месяц</span>
+                <strong>{money.format(result.payment)}</strong>
+                <small>ориентировочно по указанным параметрам</small>
+              </div>
+              <button className="button button-dark button-full" type="button" onClick={continueToMatching}>
+                Показать предложения под этот платёж <ArrowRight size={17} aria-hidden="true" />
+              </button>
               <dl className="calculator-facts">
-                <div><dt>Платёж в месяц</dt><dd>{money.format(result.payment)}</dd></div>
                 <div><dt>Всего к возврату</dt><dd>{money.format(result.totalRepayment)}</dd></div>
                 <div><dt>Переплата</dt><dd>{money.format(result.overpayment)}</dd></div>
                 <div><dt>Долговая нагрузка</dt><dd>{result.pti === null ? "—" : `${(result.pti * 100).toFixed(1)}%`}</dd></div>
@@ -100,9 +107,6 @@ export function CalculatorWorkspace() {
               {result.pti !== null && result.pti > 0.5 ? (
                 <div className="pti-warning" role="status"><AlertTriangle size={18} aria-hidden="true" />Расчётная нагрузка повышена. Проверьте более длинный срок или меньшую сумму.</div>
               ) : null}
-              <button className="button button-dark button-full" type="button" onClick={continueToMatching}>
-                Показать предложения под этот платёж <ArrowRight size={17} aria-hidden="true" />
-              </button>
               <button className="button button-ghost button-full" type="button" onClick={() => document.getElementById("public-amount")?.focus()}>
                 Изменить параметры
               </button>

@@ -9,7 +9,7 @@ export function SeoGuidePage({ kicker, title, lead, points, cta = "Открыт�
     <AppShell active="score" eyebrow="Справочный материал" title={kicker}>
       <article className="seo-guide">
         <span className="section-kicker">{kicker}</span>
-        <h2>{title}</h2>
+        <h1>{title}</h1>
         <p className="seo-lead">{lead}</p>
         <ul>{points.map((point) => <li key={point}><CheckCircle2 size={18} aria-hidden="true" />{point}</li>)}</ul>
         <div className="public-disclaimer"><strong>Предварительная оценка</strong><p>Материал не является обещанием одобрения. Финальное решение и индивидуальные условия определяет банк.</p></div>
