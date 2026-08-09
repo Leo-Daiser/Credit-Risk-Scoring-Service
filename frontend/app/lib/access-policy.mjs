@@ -13,6 +13,10 @@ const OPERATOR_BACKEND_ROUTES = [
   { method: "GET", pattern: /^v1\/offers$/ },
   { method: "GET", pattern: /^v1\/analytics\/(commercial-summary|segment-opportunities|event-debug)$/ },
   { method: "GET", pattern: /^v1\/offers\/quality-report$/ },
+  { method: "GET", pattern: /^v1\/operator\/offers(?:\/\d+)?$/ },
+  { method: "POST", pattern: /^v1\/operator\/offers$/ },
+  { method: "PATCH", pattern: /^v1\/operator\/offers\/\d+$/ },
+  { method: "POST", pattern: /^v1\/operator\/offers\/\d+\/(?:deactivate|validate)$/ },
   { method: "GET", pattern: /^v1\/batch\/(jobs(?:\/[^/]+(?:\/result)?)?|template\.csv)$/ },
   { method: "POST", pattern: /^v1\/batch\/jobs$/ },
 ];

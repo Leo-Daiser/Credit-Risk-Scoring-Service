@@ -7,13 +7,14 @@ import {
   Clock3,
   Files,
   LayoutDashboard,
+  ListChecks,
   BadgePercent,
   ScanLine,
   ShieldCheck,
   TrendingUp,
 } from "lucide-react";
 
-type NavKey = "overview" | "score" | "offers" | "operator" | "commercial" | "batches" | "history" | "model";
+type NavKey = "overview" | "score" | "offers" | "operator" | "offerManagement" | "commercial" | "batches" | "history" | "model";
 
 const publicNavigation = [
   { key: "overview", href: "/", label: "Обзор", icon: LayoutDashboard },
@@ -24,6 +25,7 @@ const publicNavigation = [
 const operatorNavigation = [
   { key: "operator", href: "/operator", label: "Операторский обзор", icon: LayoutDashboard },
   { key: "score", href: "/operator/score", label: "ML-скоринг", icon: ScanLine },
+  { key: "offerManagement", href: "/operator/offers", label: "Управление офферами", icon: ListChecks },
   { key: "commercial", href: "/commercial", label: "Коммерческая аналитика", icon: TrendingUp },
   { key: "batches", href: "/batches", label: "Пакетный скоринг", icon: Files },
   { key: "history", href: "/history", label: "История", icon: Clock3 },

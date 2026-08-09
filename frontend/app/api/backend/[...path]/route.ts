@@ -65,3 +65,4 @@ async function proxy(request: NextRequest, context: RouteContext): Promise<Respo
 
 export const GET = proxy;
 export const POST = proxy;
+export const PATCH = proxy;

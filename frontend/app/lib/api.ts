@@ -184,6 +184,50 @@ export interface OfferQualityReport {
   }>;
 }
 
+export interface OperatorOffer {
+  id: number;
+  bank_id: string;
+  product_name: string;
+  product_type: string;
+  is_active: boolean;
+  priority: number;
+  min_amount: number;
+  max_amount: number;
+  min_term_months: number;
+  max_term_months: number;
+  allowed_age_bands: string[];
+  min_income_band: string;
+  allowed_regions: string[];
+  allowed_employment_types: string[];
+  allowed_credit_history_bands: string[];
+  max_pti_band: string;
+  risk_band_policy: string[];
+  advertiser_name: string;
+  ad_label_text: string;
+  erid: string | null;
+  legal_disclaimer: string;
+  partner_id: string;
+  affiliate_url_template_key: string | null;
+  commission_type: "none" | "fixed" | "percent";
+  commission_amount: number | null;
+  expires_at: string | null;
+  validation_status: "valid" | "invalid";
+  validation_errors: string[];
+  quality_flags: string[];
+  quality_recommendation: string;
+}
+
+export interface OperatorOfferList {
+  items: OperatorOffer[];
+  total: number;
+}
+
+export interface OfferValidationResult {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
 export interface SegmentOpportunityReport {
   opportunities: Array<{
     segment_key: string; segment_value: string; requests: number;
@@ -212,8 +256,14 @@ export async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> 
   if (!response.ok) {
     let message = `API вернул ${response.status}`;
     try {
-      const payload = (await response.json()) as { detail?: string };
-      if (payload.detail) message = payload.detail;
+      const payload = (await response.json()) as {
+        detail?: string | { message?: string; errors?: string[] };
+      };
+      if (typeof payload.detail === "string") message = payload.detail;
+      if (payload.detail && typeof payload.detail === "object") {
+        const parts = [payload.detail.message, ...(payload.detail.errors ?? [])].filter(Boolean);
+        if (parts.length) message = parts.join(" ");
+      }
     } catch {
       // Keep the HTTP fallback when the response is not JSON.
     }

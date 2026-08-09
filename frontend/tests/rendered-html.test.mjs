@@ -19,6 +19,11 @@ import {
   classifyBackendRequest,
   operatorUiAvailable,
 } from "../app/lib/access-policy.mjs";
+import {
+  buildOfferPayload,
+  initialOfferDraft,
+  validateOfferDraft,
+} from "../app/lib/offer-management.mjs";
 
 async function render(path = "/") {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -59,6 +64,7 @@ test("public and enabled local operator routes render their first view", async (
     ["/offers", /Предварительный профиль и совместимые предложения/],
     ["/operator", /Решения по риску/],
     ["/operator/score", /Оцените кредитную нагрузку до заявки/],
+    ["/operator/offers", /Каталог без ручного редактирования YAML/],
     ["/commercial", /Воронка, качество офферов и неудовлетворённый спрос/],
     ["/batches", /Реестр вошёл\. Решения вышли/],
     ["/history", /Каждое решение можно восстановить/],
@@ -101,6 +107,10 @@ test("public deployment blocks operator BFF paths and unknown proxy paths", () =
   assert.equal(classifyBackendRequest("v1/offers/42/click", "POST"), "public");
   assert.equal(classifyBackendRequest("v1/analytics/public-event", "POST"), "public");
   assert.equal(classifyBackendRequest("v1/analytics/commercial-summary", "GET"), "operator");
+  assert.equal(classifyBackendRequest("v1/operator/offers", "GET"), "operator");
+  assert.equal(classifyBackendRequest("v1/operator/offers", "POST"), "operator");
+  assert.equal(classifyBackendRequest("v1/operator/offers/42", "PATCH"), "operator");
+  assert.equal(classifyBackendRequest("v1/operator/offers/42/deactivate", "POST"), "operator");
   assert.equal(classifyBackendRequest("v1/partner/postback", "POST"), "deny");
   assert.equal(classifyBackendRequest("arbitrary/internal", "GET"), "deny");
   assert.equal(operatorUiAvailable({ APP_ENV: "public", OPERATOR_UI_ENABLED: "true" }), false);
@@ -113,6 +123,7 @@ test("every operator page applies the shared server-side UI guard", async () => 
   const pages = [
     "../app/operator/page.tsx",
     "../app/operator/score/page.tsx",
+    "../app/operator/offers/page.tsx",
     "../app/commercial/page.tsx",
     "../app/batches/page.tsx",
     "../app/history/page.tsx",
@@ -132,6 +143,45 @@ test("credit calculator handles zero and non-zero rates consistently", () => {
   assert.ok(Math.abs(calculatePrincipal(payment, 12, 24) - 1_000_000) < 0.01);
   assert.equal(calculateAnnuity(0, 12, 24), 0);
   assert.equal(calculatePrincipal(-1, 12, 24), 0);
+});
+
+test("operator offer create and edit draft validation rejects unsafe values", () => {
+  const valid = {
+    ...initialOfferDraft,
+    bankId: "demo-managed",
+    productName: "Managed Cash Offer",
+    advertiserName: "Demo advertiser",
+  };
+  assert.deepEqual(validateOfferDraft(valid), []);
+  const payload = buildOfferPayload(valid);
+  assert.equal(payload.bank_id, "demo-managed");
+  assert.equal(payload.affiliate_url_template_key, null);
+  assert.ok(!Object.hasOwn(payload, "affiliate_url_template"));
+
+  const invalidRange = validateOfferDraft({ ...valid, minAmount: "500000", maxAmount: "100000" });
+  assert.ok(invalidRange.some((item) => /диапазон суммы/i.test(item)));
+  const unsafeKey = validateOfferDraft({ ...valid, partnerId: "real", affiliateTemplateKey: "https://partner/?token=secret" });
+  assert.ok(unsafeKey.some((item) => /env-key/i.test(item)));
+});
+
+test("operator offer page renders table states and protected actions without secret fields", async () => {
+  const response = await render("/operator/offers");
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Управление офферами/);
+  assert.match(html, /Загружаем каталог/);
+  assert.match(html, /Предварительная проверка/);
+  assert.match(html, /Affiliate template env key/);
+  assert.doesNotMatch(html, /PARTNER_POSTBACK_SECRET|affiliate_url_template[^_]|private token/i);
+
+  const source = await readFile(
+    new URL("../app/components/OfferManagementWorkspace.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /\/deactivate/);
+  assert.match(source, /"PATCH"/);
+  assert.match(source, /window\.confirm/);
+  assert.doesNotMatch(source, /localStorage|sessionStorage/);
 });
 
 test("credit calculator computes repayment, overpayment, PTI and high-load band locally", () => {

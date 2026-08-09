@@ -60,6 +60,8 @@ def build_offer_quality_report(session: Session, *, days: int) -> OfferQualityRe
     for offer in offers:
         metric = metrics[offer.id]
         flags: list[str] = []
+        if offer.partner_id == "demo":
+            flags.append("demo_only")
         if not offer.ad_label_text.strip() or not offer.legal_disclaimer.strip():
             flags.append("missing_disclosure")
         if not offer.advertiser_name.strip():

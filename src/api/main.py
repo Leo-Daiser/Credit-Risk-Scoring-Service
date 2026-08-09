@@ -4,6 +4,9 @@ import time
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from src.api.commercial_routes import router as commercial_router
@@ -31,6 +34,23 @@ app.include_router(router)
 app.include_router(portal_router)
 app.include_router(commercial_router)
 app.include_router(operator_router)
+
+
+@app.exception_handler(RequestValidationError)
+async def safe_request_validation_error(
+    request: Request, exc: RequestValidationError
+) -> Response:
+    if request.url.path.startswith("/v1/operator/offers"):
+        safe_errors = [
+            {
+                "type": error.get("type", "value_error"),
+                "loc": error.get("loc", ()),
+                "msg": error.get("msg", "Invalid request."),
+            }
+            for error in exc.errors()
+        ]
+        return JSONResponse(status_code=422, content={"detail": safe_errors})
+    return await request_validation_exception_handler(request, exc)
 
 
 @app.middleware("http")

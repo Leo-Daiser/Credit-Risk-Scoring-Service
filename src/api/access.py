@@ -50,4 +50,24 @@ ENDPOINT_ACCESS_MATRIX = (
     EndpointAccess("GET", "/v1/analytics/event-debug", AccessClass.OPERATOR_ONLY, "Events"),
     EndpointAccess("GET", "/v1/offers/quality-report", AccessClass.OPERATOR_ONLY, "Offer quality"),
     EndpointAccess("GET", "/v1/offers", AccessClass.LOCAL_DEMO_ONLY, "Demo catalog debug"),
+    EndpointAccess("GET", "/v1/operator/offers", AccessClass.BFF_ONLY, "Manage offers"),
+    EndpointAccess(
+        "GET", "/v1/operator/offers/{offer_id}", AccessClass.BFF_ONLY, "Offer editor"
+    ),
+    EndpointAccess("POST", "/v1/operator/offers", AccessClass.BFF_ONLY, "Create offer"),
+    EndpointAccess(
+        "PATCH", "/v1/operator/offers/{offer_id}", AccessClass.BFF_ONLY, "Update offer"
+    ),
+    EndpointAccess(
+        "POST",
+        "/v1/operator/offers/{offer_id}/deactivate",
+        AccessClass.BFF_ONLY,
+        "Deactivate offer",
+    ),
+    EndpointAccess(
+        "POST",
+        "/v1/operator/offers/{offer_id}/validate",
+        AccessClass.BFF_ONLY,
+        "Validate offer",
+    ),
 )

@@ -1,5 +1,6 @@
 import hmac
 from hashlib import sha256
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -90,6 +91,38 @@ def operator_headers():
     return {"X-API-Key": "operator-test-key"}
 
 
+def operator_offer_payload(**overrides):
+    payload = {
+        "bank_id": "operator-demo-bank",
+        "product_name": "Operator Managed Offer",
+        "product_type": "cash",
+        "is_active": True,
+        "priority": 65,
+        "min_amount": 50_000,
+        "max_amount": 600_000,
+        "min_term_months": 6,
+        "max_term_months": 60,
+        "allowed_age_bands": ["22_30", "31_45", "46_60"],
+        "min_income_band": "50k_100k",
+        "allowed_regions": [],
+        "allowed_employment_types": ["employee", "self_employed"],
+        "allowed_credit_history_bands": ["good", "average", "no_history"],
+        "max_pti_band": "high",
+        "risk_band_policy": ["low", "medium", "unknown"],
+        "advertiser_name": "Operator Demo Advertiser",
+        "ad_label_text": "Advertising. Operator demo offer.",
+        "erid": None,
+        "legal_disclaimer": "Preliminary conditions. Final decision is made by the bank.",
+        "partner_id": "demo",
+        "affiliate_url_template_key": None,
+        "commission_type": "none",
+        "commission_amount": None,
+        "expires_at": None,
+    }
+    payload.update(overrides)
+    return payload
+
+
 def test_public_profile_and_matching_work_without_operator_key(growth_client):
     client, _ = growth_client
     profile = client.post("/v1/profile/score", json=growth_profile())
@@ -102,6 +135,140 @@ def test_public_profile_and_matching_work_without_operator_key(growth_client):
         json={"profile_id": matched.json()["profile_result"]["anonymous_profile_id"]},
     )
     assert click.status_code == 200
+
+
+def test_operator_offer_list_requires_key_and_returns_quality_without_secrets(
+    growth_client, monkeypatch
+):
+    client, _ = growth_client
+    monkeypatch.setenv(
+        "DEMO_OPERATOR_TEMPLATE",
+        "https://private.example/apply?click_id={click_id}&token=never-return",
+    )
+    created = client.post(
+        "/v1/operator/offers",
+        headers=operator_headers(),
+        json=operator_offer_payload(
+            affiliate_url_template_key="DEMO_OPERATOR_TEMPLATE"
+        ),
+    )
+    assert created.status_code == 201
+    assert client.get("/v1/operator/offers").status_code == 401
+    listed = client.get(
+        "/v1/operator/offers?active=true&search=operator-demo",
+        headers=operator_headers(),
+    )
+    assert listed.status_code == 200
+    assert listed.json()["total"] == 1
+    item = listed.json()["items"][0]
+    assert item["validation_status"] == "valid"
+    assert "demo_only" in item["quality_flags"] or "placeholder_affiliate_url" in item[
+        "quality_flags"
+    ]
+    assert "affiliate_url_template" not in item
+    assert "never-return" not in listed.text
+
+
+def test_operator_offer_create_patch_validate_and_deactivate(growth_client):
+    client, testing_session = growth_client
+    created = client.post(
+        "/v1/operator/offers",
+        headers=operator_headers(),
+        json=operator_offer_payload(),
+    )
+    assert created.status_code == 201
+    offer_id = created.json()["id"]
+    detail = client.get(
+        f"/v1/operator/offers/{offer_id}", headers=operator_headers()
+    )
+    assert detail.status_code == 200
+    assert detail.json()["product_name"] == "Operator Managed Offer"
+
+    invalid = client.post(
+        f"/v1/operator/offers/{offer_id}/validate",
+        headers=operator_headers(),
+        json={"max_amount": 10_000},
+    )
+    assert invalid.status_code == 200
+    assert invalid.json()["valid"] is False
+    assert invalid.json()["errors"] == ["invalid_offer"]
+
+    patched = client.patch(
+        f"/v1/operator/offers/{offer_id}",
+        headers=operator_headers(),
+        json={"product_name": "Edited Operator Offer", "priority": 70},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["product_name"] == "Edited Operator Offer"
+    assert patched.json()["priority"] == 70
+
+    deactivated = client.post(
+        f"/v1/operator/offers/{offer_id}/deactivate",
+        headers=operator_headers(),
+    )
+    assert deactivated.status_code == 200
+    assert deactivated.json()["is_active"] is False
+    with testing_session() as session:
+        assert session.get(BankOffer, offer_id).is_active is False
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"min_amount": 500_000, "max_amount": 100_000},
+        {"is_active": True, "ad_label_text": ""},
+        {
+            "advertiser_name": "https://partner.example/?token=raw-secret",
+        },
+        {
+            "partner_id": "future_partner",
+            "affiliate_url_template_key": None,
+        },
+    ],
+)
+def test_operator_offer_rejects_invalid_payload(growth_client, overrides):
+    client, _ = growth_client
+    response = client.post(
+        "/v1/operator/offers",
+        headers=operator_headers(),
+        json=operator_offer_payload(**overrides),
+    )
+    assert response.status_code == 422
+    assert "raw-secret" not in response.text
+
+
+def test_operator_offer_rejects_enabled_real_partner_without_secret(
+    growth_client, monkeypatch, tmp_path: Path
+):
+    client, _ = growth_client
+    config = tmp_path / "partners.yaml"
+    config.write_text(
+        "partners:\n  real_operator:\n    adapter: env_template\n    enabled: true\n"
+        "    secret_env: REAL_OPERATOR_SECRET\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(settings, "partner_config_path", str(config))
+    response = client.post(
+        "/v1/operator/offers",
+        headers=operator_headers(),
+        json=operator_offer_payload(
+            partner_id="real_operator",
+            affiliate_url_template_key="REAL_OPERATOR_AFFILIATE_TEMPLATE",
+        ),
+    )
+    assert response.status_code == 422
+    assert "partner_secret_environment_missing" in response.text
+
+
+def test_operator_offer_management_is_not_available_in_public_mode(growth_client):
+    client, _ = growth_client
+    previous = settings.app_env
+    settings.app_env = "public"
+    try:
+        response = client.get("/v1/operator/offers", headers=operator_headers())
+        assert response.status_code == 404
+    finally:
+        settings.app_env = previous
 
 
 def test_public_events_accept_only_safe_allowlisted_metadata(growth_client):
@@ -269,6 +436,11 @@ def test_quality_report_flags_demo_copy_and_keeps_inactive_visible(growth_client
     assert "placeholder_affiliate_url" in items[1]["quality_flags"]
     assert "expected_revenue_proxy" in items[1]
     assert items[2]["status"] == "inactive"
+    managed = client.get("/v1/operator/offers", headers=operator_headers())
+    assert managed.status_code == 200
+    managed_items = {item["id"]: item for item in managed.json()["items"]}
+    assert managed_items[1]["validation_status"] == "invalid"
+    assert "missing_disclosure" in managed_items[1]["quality_flags"]
     active_ids = {
         item["id"]
         for item in client.get("/v1/offers", headers=operator_headers()).json()

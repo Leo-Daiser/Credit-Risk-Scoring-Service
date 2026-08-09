@@ -26,6 +26,7 @@ it cannot be combined with partner callbacks. Invalid combinations fail startup.
 | `/credit-calculator`, `/debt-load-calculator`, `/loan-by-income` | public | static educational pages |
 | `/refinance-check`, `/credit-history-guide` | public | static educational pages |
 | `/operator`, `/operator/score` | local/demo-only | returns not found |
+| `/operator/offers` | local/demo-only | protected catalog management; returns not found |
 | `/commercial` | local/demo-only | returns not found |
 | `/batches` | local/demo-only | returns not found |
 | `/history` | local/demo-only | returns not found |
@@ -55,6 +56,10 @@ postbacks and arbitrary backend paths are never proxied by the browser BFF.
 | `GET /v1/analytics/segment-opportunities` | operator-only | operator API key |
 | `GET /v1/analytics/event-debug` | operator-only | operator API key |
 | `GET /v1/offers/quality-report` | operator-only | operator API key |
+| `GET/POST /v1/operator/offers` | BFF/operator-only | operator API key; list/create catalog items |
+| `GET/PATCH /v1/operator/offers/{offer_id}` | BFF/operator-only | operator API key; detail/update |
+| `POST /v1/operator/offers/{offer_id}/deactivate` | BFF/operator-only | operator API key; non-destructive deactivation |
+| `POST /v1/operator/offers/{offer_id}/validate` | BFF/operator-only | operator API key; no-write validation preview |
 | `GET /v1/offers` | local/demo-only | operator API key; not found in public mode |
 | `GET /v1/runtime/status` | local/demo-only | operator API key; not found in public mode |
 | `GET /health`, `GET /ready` | platform-only | expose only to load balancer/orchestrator network |
