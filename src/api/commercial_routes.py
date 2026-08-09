@@ -94,7 +94,12 @@ def public_analytics_event(
         pti_band=payload.pti_band,
         event_value=": ".join(
             value
-            for value in (payload.page, payload.scenario_type, payload.offer_position)
+            for value in (
+                payload.page,
+                payload.scenario_type,
+                payload.offer_position,
+                str(payload.assessment_step) if payload.assessment_step else None,
+            )
             if value
         ),
     )

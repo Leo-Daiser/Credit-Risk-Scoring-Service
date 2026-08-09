@@ -2,9 +2,11 @@
 
 ## Назначение
 
-Riskline предоставляет предварительный расчёт и подбор кредитных предложений.
-Публичный поток построен как: локальный расчёт → минимальный профиль → краткий
-результат → рекомендованное предложение → прозрачный отслеживаемый переход.
+Riskline предоставляет ML-derived оценку финансового профиля и подбор кредитных
+предложений. Основной публичный поток построен как: `/assessment` → четыре коротких
+шага → профиль и объяснения → сценарии улучшения → рекомендованное предложение →
+прозрачный отслеживаемый переход. Локальный калькулятор — отдельный вспомогательный
+маршрут, а не вход по умолчанию.
 Сервис не принимает кредитных решений и не
 предсказывает решение конкретного банка. Он использует введённые пользователем
 диапазоны, оценивает примерную нагрузку, исключает явно неподходящие предложения и
@@ -71,7 +73,8 @@ Public Profile Model и offer ranker решают разные задачи. П�
 - `src/offers/training_dataset.py` — одна строка на impression без row explosion;
 - `src/offers/train_offer_ranker.py` — group split по profile и data sufficiency gate;
 - `src/api/commercial_routes.py` — versioned HTTP contract;
-- `frontend/app/offers` — отдельный privacy-light flow, не смешанный с operator scoring.
+- `frontend/app/assessment` — основной privacy-light assessment flow;
+- `frontend/app/offers` — совместимый вход в тот же flow для старых ссылок.
 
 ## API
 
@@ -89,6 +92,12 @@ Public Profile Model и offer ranker решают разные задачи. П�
 `/v1/profile/score` сохраняет только безопасные funnel event types, но не профильный
 payload. `/v1/offers/match` сохраняет band-level профиль и связанные impression events. Partner endpoint
 использует отдельный `PARTNER_POSTBACK_SECRET`, а не browser API key.
+
+Публичная воронка дополнительно различает `assessment_started`,
+`assessment_step_completed`, `assessment_completed`, `profile_result_viewed`,
+`scenario_started`, `scenario_applied`, `offers_viewed`,
+`recommended_offer_viewed` и `partner_transition_viewed`. В event metadata допускаются
+только номер шага, bands и идентификаторы; точные финансовые значения не записываются.
 
 ## Ранжирование
 

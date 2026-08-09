@@ -16,6 +16,7 @@ from src.core.config import Settings
 from src.core.runtime import tracked_generated_artifacts
 from src.db.base import Base
 from src.services.demo_setup import setup_demo, verify_demo
+from src.services.local_ml import prepare_local_ml
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -157,6 +158,97 @@ def test_verify_demo_cli_passes_for_healthy_report(monkeypatch):
         },
     )
     cli.main(["verify-demo"])
+
+
+def test_prepare_local_ml_fails_clearly_without_source(tmp_path: Path):
+    config_path = tmp_path / "public.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "source": {
+                    "application_train_path": str(tmp_path / "missing.csv"),
+                    "normalized_output_path": str(tmp_path / "normalized.parquet"),
+                },
+                "training": {},
+                "outputs": {
+                    "bundle_path": str(tmp_path / "public.joblib"),
+                    "metrics_path": str(tmp_path / "metrics.json"),
+                    "feature_schema_path": str(tmp_path / "schema.json"),
+                },
+                "provenance": {
+                    "training_source": "test",
+                    "population_limitations": "test",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = Settings(
+        _env_file=None,
+        model_bundle_path=str(tmp_path / "full.joblib"),
+        public_profile_model_path=str(tmp_path / "public.joblib"),
+        offer_ranker_model_path=str(tmp_path / "ranker.joblib"),
+    )
+
+    report = prepare_local_ml(config=config, public_config_path=config_path)
+
+    assert report["ok"] is False
+    assert report["public_model"]["status"] == "MISSING"
+    assert "missing.csv" in report["errors"][0]
+
+
+def test_prepare_local_ml_trains_from_configured_real_source(monkeypatch, tmp_path: Path):
+    source = tmp_path / "application_train.csv"
+    source.write_text("real local source marker", encoding="utf-8")
+    bundle_path = tmp_path / "public.joblib"
+    config_path = tmp_path / "public.yaml"
+    config_path.write_text(
+        yaml.safe_dump(
+            {
+                "source": {
+                    "application_train_path": str(source),
+                    "normalized_output_path": str(tmp_path / "normalized.parquet"),
+                },
+                "training": {},
+                "outputs": {
+                    "bundle_path": str(bundle_path),
+                    "metrics_path": str(tmp_path / "metrics.json"),
+                    "feature_schema_path": str(tmp_path / "schema.json"),
+                },
+                "provenance": {
+                    "training_source": "legitimate test source",
+                    "population_limitations": "test",
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+
+    class Bundle:
+        metadata = {"model_version": "public-test-v1"}
+
+    monkeypatch.setattr(
+        "src.services.local_ml.load_public_profile_bundle", lambda path: Bundle()
+    )
+    config = Settings(
+        _env_file=None,
+        model_bundle_path=str(tmp_path / "full.joblib"),
+        public_profile_model_path=str(bundle_path),
+        offer_ranker_model_path=str(tmp_path / "ranker.joblib"),
+    )
+    report = prepare_local_ml(
+        config=config,
+        public_config_path=config_path,
+        build_dataset=lambda path: calls.append("build") or {"rows": 10},
+        train_model=lambda path: calls.append("train")
+        or {"bundle_path": str(bundle_path)},
+    )
+
+    assert calls == ["build", "train"]
+    assert report["ok"] is True
+    assert report["public_model"]["status"] == "TRAINED"
+    assert report["public_model"]["version"] == "public-test-v1"
 
 
 class PublicSmokeClient:

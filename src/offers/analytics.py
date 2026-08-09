@@ -28,6 +28,9 @@ from src.offers.revenue import build_revenue_estimates
 
 FUNNEL_EVENT_TYPES = {
     "landing_viewed",
+    "assessment_started",
+    "assessment_step_completed",
+    "assessment_completed",
     "calculator_used",
     "calculator_continue_clicked",
     "profile_started",
@@ -37,9 +40,12 @@ FUNNEL_EVENT_TYPES = {
     "profile_result_viewed",
     "improvement_viewed",
     "scenario_changed",
+    "scenario_started",
     "scenario_applied",
+    "offers_viewed",
     "recommended_offer_viewed",
     "offer_clicked",
+    "partner_transition_viewed",
     "offers_requested",
     "offers_shown",
     "result_viewed",
@@ -369,6 +375,15 @@ class CommercialAnalyticsService:
             recommended_offer_ctr=safe_rate(top_clicks, len(top_impressions)),
             top_card_ctr=safe_rate(top_clicks, len(top_impressions)),
             partner_redirect_failures=event_counts["partner_redirect_failed"],
+            assessment_start_rate=safe_rate(
+                event_counts["assessment_started"], event_counts["landing_viewed"]
+            ),
+            assessment_completion_rate=safe_rate(
+                event_counts["assessment_completed"], event_counts["assessment_started"]
+            ),
+            scenario_usage_rate=safe_rate(
+                event_counts["scenario_applied"], event_counts["profile_result_viewed"]
+            ),
             ctr_by_offer={str(item.offer_id): item.ctr for item in offer_metrics},
             ctr_by_risk_band=ctr_by_risk_band,
             ctr_by_pti_band=ctr_by_pti_band,

@@ -15,6 +15,7 @@ Supported commands:
     prepare-production-model
     build-public-profile-dataset
     train-public-profile-model
+    prepare-local-ml
     batch-score
     monitor-drift
     seed-demo-offers
@@ -50,6 +51,7 @@ from src.public_profile.training import (
 )
 from src.services.batch import run_batch_scoring
 from src.services.demo_setup import setup_demo, verify_demo
+from src.services.local_ml import prepare_local_ml
 from src.services.monitoring import run_drift_monitoring
 
 DATA_CONFIG_PATH = "configs/data.yaml"
@@ -70,6 +72,7 @@ AVAILABLE_COMMANDS = (
     "prepare-production-model",
     "build-public-profile-dataset",
     "train-public-profile-model",
+    "prepare-local-ml",
     "batch-score",
     "monitor-drift",
     "seed-demo-offers",
@@ -226,6 +229,29 @@ def cmd_train_public_profile_model() -> None:
     print(f"Bundle saved to: {summary['bundle_path']}")
 
 
+def cmd_prepare_local_ml() -> None:
+    """Make local/demo ML readiness explicit and reproducible."""
+    report = prepare_local_ml(public_config_path=PUBLIC_PROFILE_CONFIG_PATH)
+    print("Local ML preparation report")
+    print(
+        "Full Credit Risk Model: "
+        f"{report['full_model']['status']}"
+        + (f" ({report['full_model']['version']})" if report['full_model'].get('version') else "")
+    )
+    print(
+        "Riskline Public Profile Model: "
+        f"{report['public_model']['status']}"
+        + (f" ({report['public_model']['version']})" if report['public_model'].get('version') else "")
+    )
+    print(f"Offer Outcome Ranker: {report['offer_ranker']['status']}")
+    if report.get("source_dataset"):
+        print(f"Configured training source: {report['source_dataset']}")
+    for error in report["errors"]:
+        print(f"ERROR: {error}")
+    if not report["ok"]:
+        raise SystemExit("PUBLIC ML INACTIVE: local preparation did not produce a valid model.")
+
+
 def cmd_train_catboost() -> None:
     """Train and persist the CatBoost challenger."""
     summary = train_catboost_challenger(config_path=TRAIN_CONFIG_PATH)
@@ -340,6 +366,10 @@ def cmd_verify_demo() -> None:
     print(f"Model bundle ready: {runtime['model_bundle_ready']}")
     print(f"Full Credit Risk Model ready: {runtime['full_model_available']}")
     print(f"Public Profile Model ready: {runtime['public_model_available']}")
+    print(
+        "Public ML status: "
+        + ("ACTIVE" if runtime["public_model_available"] else "PUBLIC ML INACTIVE — RULES FALLBACK")
+    )
     print(f"Offer ranker ready: {runtime['offer_ranker_available']}")
     print(f"Fallback-only mode: {runtime['fallback_only_mode']}")
     for warning in runtime["warnings"]:
@@ -360,6 +390,7 @@ COMMANDS = {
     "prepare-production-model": cmd_prepare_production_model,
     "build-public-profile-dataset": cmd_build_public_profile_dataset,
     "train-public-profile-model": cmd_train_public_profile_model,
+    "prepare-local-ml": cmd_prepare_local_ml,
     "batch-score": cmd_batch_score,
     "monitor-drift": cmd_monitor_drift,
     "seed-demo-offers": cmd_seed_demo_offers,

@@ -52,12 +52,13 @@ test("server-renders the public landing without operator data", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Рассчитать платёж и подобрать кредитные предложения · Riskline<\/title>/i);
+  assert.match(html, /<title>Оценка финансового профиля и подбор предложений · Riskline<\/title>/i);
   assert.match(html, /Демо-режим/);
-  assert.match(html, /Рассчитать и подобрать/);
-  assert.match(html, /Рассчитайте платёж и сравните подходящие кредитные предложения/);
-  assert.match(html, /Как это работает/);
-  assert.match(html, /Сначала поймите платёж/);
+  assert.match(html, /Оценить профиль/);
+  assert.match(html, /какие кредитные предложения подходят вашему финансовому профилю/i);
+  assert.match(html, /Как работает Riskline/);
+  assert.match(html, /Пример интерфейса/);
+  assert.match(html, /Как можно улучшить сценарий/);
   assert.match(html, /СНИЛС и ИНН/);
   assert.match(html, /Без названия работодателя/);
   assert.match(html, /Сервис не принимает кредитных решений/);
@@ -70,8 +71,9 @@ test("server-renders the public landing without operator data", async () => {
 
 test("public and enabled local operator routes render their first view", async () => {
   const cases = [
+    ["/assessment", /Получите персональную оценку Riskline/],
     ["/score", /Проверьте, какой платёж подходит вашему бюджету/],
-    ["/offers", /Подберите предложения под ваш платёж и долговую нагрузку/],
+    ["/offers", /Получите персональную оценку Riskline/],
     ["/operator", /Аналитика партнёрских переходов/],
     ["/operator/score", /Оцените кредитную нагрузку до заявки/],
     ["/operator/offers", /Каталог партнёрских предложений/],
@@ -108,7 +110,7 @@ test("public calculator does not expose raw model or operator controls", async (
   assert.match(html, /Всего к возврату/);
   assert.match(html, /Переплата/);
   assert.match(html, /Долговая нагрузка/);
-  assert.match(html, /Показать предложения под этот платёж/);
+  assert.match(html, /Оценить профиль и подобрать предложения/);
   assert.match(html, /Остаток бюджета/);
   assert.match(html, /calculator-primary-fact/);
   assert.doesNotMatch(html, /Экспертный JSON|Feature payload|audit log/);
@@ -209,30 +211,28 @@ test("credit calculator computes repayment, overpayment, PTI and high-load band 
 });
 
 test("privacy-light offer matching exposes consent and advertising boundaries", async () => {
-  const response = await render("/offers");
+  const response = await render("/assessment");
   assert.equal(response.status, 200);
   const html = await response.text();
-  assert.match(html, /Паспорт, телефон, имя, документы, работодатель и данные БКИ не запрашиваются/);
-  assert.match(html, /Согласен на обработку введённых диапазонов/);
-  assert.match(html, /не принимает кредитных решений/);
-  assert.match(html, /Точные суммы используются только во время расчёта/);
-  assert.match(html, /Финальное решение принимает банк/);
-  assert.match(html, /Можно указать примерные значения/);
-  assert.match(html, /Точная сумма, ₽ — необязательно/);
-  assert.match(html, /Кредитная история/);
-  assert.match(html, /Что такое долговая нагрузка/);
-  assert.match(html, /Почему результат предварительный/);
-  assert.match(html, /Что вам нужно/);
-  assert.match(html, /Немного о вас/);
-  assert.match(html, /Текущая нагрузка/);
-  assert.match(html, /Указать сумму точнее/);
+  assert.match(html, /паспорт, телефон, документы и данные БКИ не нужны/i);
+  assert.match(html, /Шаг[\s\S]*1[\s\S]*из 4/);
+  assert.match(html, /Что вы хотите получить/);
+  assert.match(html, /Желаемая сумма/);
+  assert.match(html, /Можно указать примерно/);
   assert.doesNotMatch(html, /Имя пользователя|Номер телефона|Паспортные данные/);
   assert.doesNotMatch(html, /localStorage|sessionStorage/);
+
+  const source = await readFile(new URL("../app/components/OfferWorkspace.tsx", import.meta.url), "utf8");
+  assert.match(source, /Согласен на обработку указанных данных/);
+  assert.match(source, /Ваш доход и работа/);
+  assert.match(source, /Текущая финансовая нагрузка/);
+  assert.match(source, /Проверьте данные/);
+  assert.match(source, /Получить оценку/);
 });
 
 test("public pages contain no portfolio or raw technical showcase wording", async () => {
   const publicRoutes = [
-    "/", "/score", "/offers", "/credit-calculator", "/debt-load-calculator",
+    "/", "/assessment", "/score", "/offers", "/credit-calculator", "/debt-load-calculator",
     "/loan-by-income", "/refinance-check", "/credit-history-guide",
   ];
   const forbidden = /portfolio|interview|pet project|kaggle|home credit|\bPD\b|default probability|вероятност\S* дефолт|ROC-AUC|PR-AUC|Brier|threshold|feature coverage|EXT_SOURCE|CODE_GENDER|ValueError|PostgreSQL|\bworker\b|model bundle|immutable bundle/i;
@@ -279,14 +279,17 @@ test("SEO-ready public guides render metadata, useful copy and CTA", async () =>
 });
 
 test("public calculation and transient matching values are never persisted in browser storage", async () => {
-  const [calculator, offers, analytics] = await Promise.all([
+  const [calculator, offers, analytics, context] = await Promise.all([
     readFile(new URL("../app/components/CalculatorWorkspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/components/OfferWorkspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../app/lib/public-analytics.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/lib/assessment-context.ts", import.meta.url), "utf8"),
   ]);
-  assert.doesNotMatch(`${calculator}${offers}${analytics}`, /localStorage|sessionStorage/);
+  assert.doesNotMatch(`${calculator}${offers}${analytics}${context}`, /localStorage|sessionStorage/);
   assert.match(calculator, /calculateCreditScenario/);
   assert.match(calculator, /continueToMatching/);
+  assert.match(calculator, /setTransientAssessmentContext/);
+  assert.match(calculator, /router\.push\("\/assessment"\)/);
   assert.doesNotMatch(analytics, /monthly_income|requested_amount|existing_monthly_payments|raw_payload/i);
   assert.match(analytics, /scenario_type/);
 });
@@ -299,7 +302,7 @@ test("offer flow renders ML profile value, safe explanations and what-if control
   assert.match(source, /Riskline Index/);
   assert.match(source, /Сильные стороны/);
   assert.match(source, /Что ограничивает/);
-  assert.match(source, /Что можно улучшить/);
+  assert.match(source, /Как можно улучшить сценарий/);
   assert.match(source, /Интерактивный сценарий/);
   assert.match(source, /Расчёт по условиям предложения/);
   assert.doesNotMatch(source, /default_probability|SHAP|AMT_CREDIT|DAYS_EMPLOYED/);
@@ -374,5 +377,5 @@ test("starter preview and unused persistence dependencies are removed", async ()
   assert.doesNotMatch(page, /_sites-preview|codex-preview/);
   assert.deepEqual(JSON.parse(hosting), { d1: null, r2: null });
   assert.match(packageJson, /riskline-console/);
-  assert.match(page, /Рассчитать и подобрать/);
+  assert.match(page, /Оценить профиль/);
 });

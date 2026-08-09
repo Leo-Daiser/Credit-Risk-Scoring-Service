@@ -14,10 +14,11 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-type NavKey = "overview" | "score" | "offers" | "operator" | "offerManagement" | "commercial" | "batches" | "history" | "model";
+type NavKey = "overview" | "assessment" | "score" | "offers" | "operator" | "offerManagement" | "commercial" | "batches" | "history" | "model";
 
 const publicNavigation = [
   { key: "overview", href: "/", label: "Главная", icon: LayoutDashboard },
+  { key: "assessment", href: "/assessment", label: "Оценить профиль", icon: ShieldCheck },
   { key: "score", href: "/score", label: "Калькулятор", icon: ScanLine },
   { key: "offers", href: "/offers", label: "Подбор предложений", icon: BadgePercent },
 ] as const;
@@ -51,12 +52,13 @@ export function AppShell({ active, eyebrow, title, children, operator = false }:
               <span>riskline</span>
             </Link>
             <nav className="public-nav" aria-label="Навигация по сервису">
+              <Link className={active === "assessment" ? "is-active" : ""} href="/assessment">Оценить профиль</Link>
+              <Link className={active === "offers" ? "is-active" : ""} href="/assessment#offers">Предложения</Link>
               <Link className={active === "score" ? "is-active" : ""} href="/score">Калькулятор</Link>
-              <Link className={active === "offers" ? "is-active" : ""} href="/offers">Подбор предложений</Link>
               <Link href="/#how-it-works">Как это работает</Link>
             </nav>
-            <Link className="button button-dark public-header-cta" href="/score">
-              Рассчитать и подобрать
+            <Link className="button button-dark public-header-cta" href="/assessment">
+              Оценить профиль
             </Link>
           </div>
         </header>
@@ -69,7 +71,7 @@ export function AppShell({ active, eyebrow, title, children, operator = false }:
               <span className="brand-mark" aria-hidden="true"><i /><i /><i /></span>
               <span>riskline</span>
             </Link>
-            <p>Расчёт платежа и предварительный подбор предложений без лишних данных.</p>
+            <p>Персональная оценка финансового профиля и подбор предложений без лишних данных.</p>
           </div>
           <nav aria-label="Информация о сервисе">
             <Link href="/credit-calculator">О расчёте</Link>

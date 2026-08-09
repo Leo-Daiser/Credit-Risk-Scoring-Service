@@ -94,6 +94,9 @@ export function CommercialWorkspace() {
         <Metric label="Зафиксированная выручка" value={formatMoney(summary?.estimated_revenue ?? 0)} />
         <Metric label="Доход на переход" value={formatMoney(summary?.epc_proxy ?? 0)} />
         <Metric label="CTR рекомендации" value={formatPercent(summary?.recommended_offer_ctr ?? 0)} />
+        <Metric label="Старт оценки" value={formatPercent(summary?.assessment_start_rate ?? 0)} />
+        <Metric label="Завершение оценки" value={formatPercent(summary?.assessment_completion_rate ?? 0)} />
+        <Metric label="Использование сценариев" value={formatPercent(summary?.scenario_usage_rate ?? 0)} />
         <Metric label="Ошибки перехода" value={summary?.partner_redirect_failures ?? 0} />
       </section>
 

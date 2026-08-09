@@ -27,6 +27,9 @@ class CommercialSummaryMetrics(BaseModel):
     recommended_offer_ctr: float = 0.0
     top_card_ctr: float = 0.0
     partner_redirect_failures: int = 0
+    assessment_start_rate: float = 0.0
+    assessment_completion_rate: float = 0.0
+    scenario_usage_rate: float = 0.0
     ctr_by_offer: dict[str, float] = Field(default_factory=dict)
     ctr_by_risk_band: dict[str, float] = Field(default_factory=dict)
     ctr_by_pti_band: dict[str, float] = Field(default_factory=dict)

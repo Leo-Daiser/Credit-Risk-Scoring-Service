@@ -6,21 +6,19 @@ synthetic offers. It does not require real partner credentials or customer data.
 ## 1. Prepare a controlled demo
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
-python -m src.cli setup-demo --with-synthetic-events
-python -m src.cli verify-demo
+.\scripts\start-demo.ps1
 ```
 
 Open `http://localhost:3000`.
 
 ## 2. Public flow
 
-1. Confirm that the landing page explains the two-minute calculation and comparison flow.
-2. Open the calculator and change amount, term, rate, income, and existing payments.
-3. Confirm that payment, repayment, overpayment, remaining budget, and debt load update
-   without a network request.
-4. Continue to offer matching and complete the approximate profile; optionally
-   уточните возраст, доход и стаж.
+1. Confirm that the landing page leads to `Оценить профиль`, while the calculator is secondary.
+2. Open `/assessment` and complete all four steps with approximate values.
+3. Optionally open the calculator, change values and confirm that the CTA transfers them
+   to assessment without URL/browser-storage persistence.
+4. Confirm that payment, repayment, overpayment, remaining budget, and debt load remain
+   available as supporting calculations, not the main product output.
 5. Confirm that consent is empty by default and required before matching.
 6. Confirm that the result contains Riskline Index, strengths and limiting factors,
    without raw probability or provider feature names.

@@ -1,129 +1,173 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { ArrowRight, Calculator, CheckCircle2, ShieldCheck, WalletCards } from "lucide-react";
+import {
+  ArrowRight,
+  CheckCircle2,
+  CircleGauge,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  WalletCards,
+} from "lucide-react";
 import { AppShell } from "./components/AppShell";
 import { PublicEventTracker } from "./components/PublicEventTracker";
 
 export const metadata: Metadata = {
-  title: "Рассчитать платёж и подобрать кредитные предложения",
+  title: "Оценка финансового профиля и подбор предложений",
   description:
-    "Оцените платёж и долговую нагрузку, затем сравните подходящие предложения партнёров без паспорта, телефона и документов на первом шаге.",
+    "Получите оценку Riskline, объяснение факторов, сценарии улучшения и подходящие кредитные предложения без паспорта и телефона.",
 };
+
+const trustItems = [
+  "Без паспорта",
+  "Без телефона",
+  "Без загрузки документов",
+  "Около 2 минут",
+];
 
 export default function Home() {
   const demoMode = process.env.DEMO_MODE !== "false";
   return (
-    <AppShell active="overview" eyebrow="Кредитный подбор" title="Riskline">
+    <AppShell active="overview" eyebrow="Финансовая оценка" title="Riskline">
       <PublicEventTracker />
-      <div className="public-landing">
+      <div className="public-landing assessment-landing">
         {demoMode ? (
           <div className="connection-banner" role="status">
             <div>
               <strong>Демо-режим</strong>
-              <span>Показанные предложения являются тестовыми и недоступны для реальной заявки.</span>
+              <span>Предложения синтетические и недоступны для реальной заявки.</span>
             </div>
           </div>
         ) : null}
 
-        <section className="public-hero saas-hero">
+        <section className="public-hero assessment-hero">
           <div className="public-hero-copy">
-            <span className="section-kicker">Платёж · нагрузка · сравнение</span>
-            <h1>Рассчитайте платёж и сравните подходящие кредитные предложения</h1>
+            <span className="section-kicker">Профиль · факторы · сценарии · предложения</span>
+            <h1>Узнайте, какие кредитные предложения подходят вашему финансовому профилю</h1>
             <p>
-              Укажите примерные данные — Riskline рассчитает платёж, долговую нагрузку
-              и покажет предложения партнёров. Паспорт, телефон и документы на первом
-              шаге не нужны.
+              Ответьте на несколько вопросов — Riskline оценит финансовый профиль,
+              покажет, что влияет на результат, предложит способы улучшить сценарий
+              и подберёт подходящие предложения.
             </p>
             <div className="button-row">
-              <Link className="button button-dark" href="/score">
-                <Calculator size={18} aria-hidden="true" /> Рассчитать и подобрать
+              <Link className="button button-dark" href="/assessment">
+                Оценить профиль <ArrowRight size={18} aria-hidden="true" />
               </Link>
-              <Link className="button button-hero-secondary" href="/offers">
-                Сравнить предложения <ArrowRight size={17} aria-hidden="true" />
+              <Link className="button button-hero-secondary" href="/score">
+                Рассчитать кредит
               </Link>
             </div>
-            <div className="hero-trust-row" aria-label="Преимущества первого шага">
-              {["Без паспорта", "Без телефона", "Без документов"].map((item) => (
+            <div className="hero-trust-row" aria-label="Условия оценки">
+              {trustItems.map((item) => (
                 <span key={item}><CheckCircle2 size={15} aria-hidden="true" />{item}</span>
               ))}
             </div>
-            <small>Расчёт предварительный. Финальное решение принимает банк.</small>
+            <small>Оценка предварительная. Финальное решение принимает банк.</small>
           </div>
-          <div className="hero-calculation-preview" aria-label="Пример результата расчёта">
-            <div className="preview-topline"><span>Пример расчёта</span><ShieldCheck size={20} aria-hidden="true" /></div>
-            <p>Ориентировочный платёж</p>
-            <strong>22 900 ₽ <small>/ месяц</small></strong>
-            <div className="preview-facts">
-              <div><span>Сумма</span><b>450 000 ₽</b></div>
-              <div><span>Срок</span><b>24 месяца</b></div>
-              <div><span>Нагрузка</span><b>Комфортная</b></div>
-            </div>
-            <div className="preview-offer-line"><WalletCards size={19} aria-hidden="true" /><span>После расчёта сравните подходящие варианты</span></div>
-          </div>
+          <ExampleResult />
         </section>
 
         <section className="public-section" id="how-it-works" aria-labelledby="how-title">
           <div className="public-section-heading">
-            <span className="section-kicker">Как это работает</span>
-            <h3 id="how-title">От расчёта до сравнения — три шага</h3>
+            <span className="section-kicker">Как работает Riskline</span>
+            <h2 id="how-title">От короткого профиля к понятным вариантам</h2>
           </div>
-          <div className="public-card-grid three conversion-steps">
-            <article><b>01</b><h4>Рассчитайте платёж</h4><p>Сравните платёж, переплату и остаток бюджета.</p></article>
-            <article><b>02</b><h4>Укажите примерные параметры</h4><p>Выберите диапазоны без документов и контактных данных.</p></article>
-            <article><b>03</b><h4>Получите предложения</h4><p>Сервис покажет совместимые варианты и объяснит порядок.</p></article>
+          <div className="public-card-grid three assessment-steps-preview">
+            <article><b>01</b><h3>Расскажите о ситуации</h3><p>Укажите сумму, срок, доход, занятость и текущие платежи.</p></article>
+            <article><b>02</b><h3>Получите оценку Riskline</h3><p>Сервис сравнит профиль, долговую нагрузку и комфорт нового платежа.</p></article>
+            <article><b>03</b><h3>Проверьте варианты</h3><p>Посмотрите факторы, сценарии улучшения и расчёт для каждого предложения.</p></article>
           </div>
         </section>
 
-        <section className="product-value-section" aria-labelledby="value-title">
+        <section className="landing-result-story" aria-labelledby="learn-title">
           <div>
-            <span className="section-kicker">Сравнивайте спокойно</span>
-            <h3 id="value-title">Сначала поймите платёж — потом выбирайте предложение</h3>
-            <p>Riskline показывает не только список вариантов, но и объясняет, почему предложение подходит по сумме, сроку и выбранной цели.</p>
+            <span className="section-kicker">Что вы узнаете</span>
+            <h2 id="learn-title">Не только платёж, а целостную картину</h2>
+            <p>Riskline разделяет финансовый расчёт, оценку профиля и совместимость с продуктами — поэтому результат остаётся понятным.</p>
+          </div>
+          <div className="landing-value-list">
+            <article><CircleGauge size={23} /><strong>Профиль Riskline</strong><span>Внутренний ориентир сервиса без обещаний банковского решения.</span></article>
+            <article><Sparkles size={23} /><strong>Что влияет на результат</strong><span>Понятные сильные стороны и факторы, которые ограничивают сценарий.</span></article>
+            <article><WalletCards size={23} /><strong>Подходящие предложения</strong><span>Индивидуальный диапазон платежа по условиям каждого продукта.</span></article>
+          </div>
+        </section>
+
+        <section className="improvement-story" aria-labelledby="improve-title">
+          <div className="improvement-story-copy">
+            <span className="section-kicker">Как можно улучшить сценарий</span>
+            <h2 id="improve-title">Проверьте изменения до обращения к партнёру</h2>
+            <p>Сервис пересчитывает управляемые параметры и показывает направление изменений без советов искажать доход, занятость или обязательства.</p>
+            <Link className="inline-link" href="/assessment">Получить свои сценарии <ArrowRight size={16} /></Link>
+          </div>
+          <div className="landing-scenario-card">
+            <SlidersHorizontal size={24} aria-hidden="true" />
+            <div><span>Сумма</span><strong>800 000 ₽ → 650 000 ₽</strong></div>
+            <div><span>Ориентировочный платёж</span><strong>31 400 ₽ → 25 500 ₽</strong></div>
+            <div><span>Долговая нагрузка</span><strong>38% → 31%</strong></div>
+            <small>Пример интерфейса. Конкретный результат зависит от введённых данных.</small>
+          </div>
+        </section>
+
+        <section className="product-value-section" aria-labelledby="matching-title">
+          <div>
+            <span className="section-kicker">Персональный подбор</span>
+            <h2 id="matching-title">Почему предложения показаны именно в таком порядке</h2>
+            <p>Сначала проверяются обязательные ограничения продукта, затем комфорт платежа, профиль Riskline, цель и совместимость параметров.</p>
           </div>
           <ul>
-            <li><CheckCircle2 size={18} aria-hidden="true" /><span><strong>Понятный ориентир</strong>Платёж, переплата и остаток бюджета на одном экране.</span></li>
-            <li><CheckCircle2 size={18} aria-hidden="true" /><span><strong>Совместимые варианты</strong>Сначала проверяем ограничения, затем сравниваем подходящие предложения.</span></li>
-            <li><CheckCircle2 size={18} aria-hidden="true" /><span><strong>Прозрачный переход</strong>Перед сайтом партнёра вы увидите понятное уведомление.</span></li>
+            <li><CheckCircle2 size={18} /><span><strong>Плохая совместимость не маскируется</strong>Вознаграждение партнёра используется только как вторичный критерий.</span></li>
+            <li><CheckCircle2 size={18} /><span><strong>Каждый продукт рассчитан отдельно</strong>Диапазон платежа учитывает его сумму, срок и ставку.</span></li>
+            <li><CheckCircle2 size={18} /><span><strong>Переход прозрачен</strong>Перед сайтом партнёра сервис показывает отдельное уведомление.</span></li>
           </ul>
         </section>
 
         <section className="public-split trust-conversion-block">
           <article className="public-feature privacy-feature">
             <ShieldCheck size={28} aria-hidden="true" />
-            <span className="section-kicker">Спокойный первый шаг</span>
-            <h3>Без лишних данных</h3>
+            <span className="section-kicker">Privacy-light</span>
+            <h2>Без лишних данных</h2>
             <ul className="check-list">
               {["Без паспорта", "Без СНИЛС и ИНН", "Без документов", "Без названия работодателя", "Без данных БКИ", "Без телефона"].map((item) => (
-                <li key={item}><CheckCircle2 size={16} aria-hidden="true" />{item}</li>
+                <li key={item}><CheckCircle2 size={16} />{item}</li>
               ))}
             </ul>
           </article>
           <article className="public-feature comparison-feature">
-            <Calculator size={28} aria-hidden="true" />
-            <span className="section-kicker">Понятный результат</span>
-            <h3>Что покажет сервис</h3>
-            <ul className="check-list">
-              {["Ориентировочный платёж", "Долговую нагрузку", "Комфорт платежа", "Подходящие предложения", "Причины рекомендации"].map((item) => (
-                <li key={item}><CheckCircle2 size={16} aria-hidden="true" />{item}</li>
-              ))}
-            </ul>
+            <CircleGauge size={28} aria-hidden="true" />
+            <span className="section-kicker">Границы оценки</span>
+            <h2>Riskline помогает сравнить, но не решает за банк</h2>
+            <p>Сервис использует собственную модель и общие финансовые параметры. Он не является БКИ, официальным кредитным рейтингом и не предсказывает решение банка.</p>
           </article>
         </section>
 
-        <section className="public-disclaimer" aria-label="Условия сервиса">
-          <strong>Прозрачно о подборе</strong>
-          <p>
-            Сервис не принимает кредитных решений. Финальное решение принимает банк.
-            Некоторые предложения являются рекламными, и сервис может получить
-            вознаграждение за переход. Условия определяет партнёр.
-          </p>
+        <section className="public-final-cta assessment-final-cta">
+          <div><span className="section-kicker">Начните с оценки</span><h2>Получите персональный результат примерно за 2 минуты</h2><p>Можно указывать приблизительные значения. Контактные данные не нужны.</p></div>
+          <Link className="button button-dark" href="/assessment">Оценить профиль <ArrowRight size={18} /></Link>
         </section>
 
-        <section className="public-final-cta">
-          <div><span className="section-kicker">Начните с расчёта</span><h3>Узнайте ориентировочный платёж и перейдите к сравнению</h3><p>Это займёт около двух минут и не потребует контактных данных.</p></div>
-          <Link className="button button-dark" href="/score">Рассчитать и подобрать <ArrowRight size={18} aria-hidden="true" /></Link>
+        <section className="public-disclaimer" aria-label="Условия сервиса">
+          <strong>Предварительная оценка и рекламные предложения</strong>
+          <p>Riskline не принимает кредитных решений. Финальные критерии, условия и решение определяет банк. Некоторые предложения являются рекламными, и сервис может получить вознаграждение за переход.</p>
         </section>
       </div>
     </AppShell>
+  );
+}
+
+function ExampleResult() {
+  return (
+    <article className="landing-profile-preview" aria-label="Пример интерфейса результата">
+      <div className="preview-topline"><span>Пример интерфейса</span><ShieldCheck size={20} /></div>
+      <div className="landing-index-row"><strong>74</strong><span>/ 100<small>Riskline Index</small></span></div>
+      <div className="landing-index-track"><i style={{ width: "74%" }} /></div>
+      <h2>Устойчивый профиль</h2>
+      <div className="preview-facts">
+        <div><span>Нагрузка</span><b>31%</b></div>
+        <div><span>Предложения</span><b>4</b></div>
+      </div>
+      <div className="preview-insight"><CheckCircle2 size={17} /><span>Умеренная текущая нагрузка и хороший запас дохода</span></div>
+      <div className="preview-insight is-improvement"><Sparkles size={17} /><span>Уменьшение суммы может сделать сценарий устойчивее</span></div>
+      <small>Это статический пример, а не результат реального пользователя.</small>
+    </article>
   );
 }

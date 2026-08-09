@@ -43,6 +43,9 @@ scheduled purge ещё не реализован; оператор обязан 
 
 Публичный `/score` считает annuity, total repayment, overpayment и PTI полностью в
 браузере. Изменение чисел не вызывает backend request; значения не сохраняются.
+При переходе в `/assessment` сумма, срок, доход и текущие платежи передаются только
+через in-memory module context открытой вкладки. Контекст потребляется один раз и не
+пишется в URL, `localStorage`, `sessionStorage`, cookie или IndexedDB.
 Privacy-light matching отправляет bands и только явно указанные transient amount/payment,
 но persistence сохраняет лишь bands. Exact values не попадают в analytics events или
 structured logs. Без данных БКИ и полного feature contract confidence ограничен и
@@ -51,9 +54,11 @@ structured logs. Без данных БКИ и полного feature contract c
 ## Public analytics events
 
 Frontend отправляет только allowlisted события страницы и сценария с ephemeral
-anonymous session ID и banded metadata. Matching backend добавляет `profile_started`,
+anonymous session ID и banded metadata. Воронка содержит `assessment_started`,
+`assessment_step_completed`, `assessment_completed`, `profile_started`,
 `profile_completed`, `profile_scored`, `profile_result_viewed`, `improvement_viewed`,
-`recommended_offer_viewed`, `offer_clicked` и no-offer события из уже
+`scenario_started`, `scenario_applied`, `offers_viewed`,
+`recommended_offer_viewed`, `partner_transition_viewed`, `offer_clicked` и no-offer события из уже
 нормализованного band-only контекста. Event contract запрещает extra fields: точные
 суммы, доход, ставка, телефон, email и имя в него не принимаются.
 

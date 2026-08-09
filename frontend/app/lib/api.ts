@@ -229,6 +229,7 @@ export interface RankedOffer {
 export interface OfferMatchResult {
   profile_result: CreditProfileResult;
   offers: RankedOffer[];
+  total_eligible_offers: number;
   disclaimers: string[];
   ad_disclosure_required: boolean;
   no_eligible_offers: boolean;
@@ -246,6 +247,8 @@ export interface CommercialAnalytics {
     postback_conversion_rate: number; approval_rate: number; issued_rate: number;
     estimated_revenue: number; epc_proxy: number; recommended_offer_ctr: number;
     top_card_ctr: number; partner_redirect_failures: number;
+    assessment_start_rate: number; assessment_completion_rate: number;
+    scenario_usage_rate: number;
   };
   offer_metrics: Array<{
     offer_id: number; product_name: string; impressions: number; clicks: number;

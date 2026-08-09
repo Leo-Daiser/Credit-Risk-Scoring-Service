@@ -103,7 +103,7 @@ def run_smoke(
     frontend = frontend_url.rstrip("/")
     checks: list[str] = []
 
-    for path in ("/", "/credit-calculator", "/offers"):
+    for path in ("/", "/assessment", "/credit-calculator", "/offers"):
         _expect(client.request("GET", frontend + path), {200}, f"frontend {path}")
         checks.append(f"frontend:{path}")
     _expect(client.request("GET", base + "/health"), {200}, "backend health")

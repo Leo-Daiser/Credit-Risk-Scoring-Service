@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, CheckCircle2 } from "lucide-react";
 import { AppShell } from "./AppShell";
 
-export function SeoGuidePage({ kicker, title, lead, points, cta = "Открыть калькулятор", href = "/score" }: {
+export function SeoGuidePage({ kicker, title, lead, points, cta = "Получить персональную оценку Riskline", href = "/assessment" }: {
   kicker: string; title: string; lead: string; points: string[]; cta?: string; href?: string;
 }) {
   return (

@@ -1,15 +1,19 @@
 # Demo deployment
 
-Deployment profiles never need raw training CSV files. Full and public model bundles
-remain outside Git and may be mounted read-only. Matching can degrade to explicit
-rules fallback, but runtime never reports ML as active when the public artifact is absent.
+Model bundles remain outside Git and are mounted read-only. The normal demo journey is
+assessment-first and therefore fails closed when the Riskline Public Profile Model is
+missing. A rules fallback remains available for explicit development diagnostics, but
+runtime and UI never report it as active ML.
 
 ## Local Docker demo
 
 ```powershell
-docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
-docker compose -f docker-compose.yml -f docker-compose.demo.yml ps
+.\scripts\start-demo.ps1
 ```
+
+`start-demo.ps1` performs deterministic preparation, starts the stack, waits for
+readiness and prints the exact model/offer status. It never removes volumes or modifies
+source data.
 
 Compose mounts `${MODEL_ARTIFACTS_PATH:-./artifacts/models}` read-only at
 `/app/artifacts/models`. Expected optional files are:
@@ -18,11 +22,23 @@ Compose mounts `${MODEL_ARTIFACTS_PATH:-./artifacts/models}` read-only at
 - `public_profile_model_bundle.joblib` — public Riskline profile;
 - `offer_ranker.joblib` — optional future outcome ranker; rules remain default.
 
-To build the public artifact from locally available ignored source data:
+To validate the artifacts and build the public artifact only when it is missing:
 
 ```powershell
-python -m src.cli build-public-profile-dataset
-python -m src.cli train-public-profile-model
+python -m src.cli prepare-local-ml
+```
+
+The command uses `configs/public_profile_model.yaml`. It may train only from the real,
+ignored source configured there. If neither a trusted artifact nor that source exists,
+it exits with `PUBLIC ML INACTIVE` and an actionable path; it never fabricates rows or
+labels. `production_model_bundle.joblib` is validated but not retrained automatically.
+
+After preparation, the equivalent manual startup is:
+
+```powershell
+docker compose -f docker-compose.yml -f docker-compose.demo.yml up -d --build
+docker compose -f docker-compose.yml -f docker-compose.demo.yml ps
+docker compose -f docker-compose.yml -f docker-compose.demo.yml exec -T api python -m src.cli verify-demo
 ```
 
 `demo-setup` applies Alembic migrations and idempotently seeds only synthetic
@@ -92,7 +108,7 @@ For demo mode HMAC coverage:
 python scripts/smoke_public_demo.py --base-url http://localhost:8000 --frontend-url http://localhost:3000 --mode demo --postback-secret "<demo-secret>"
 ```
 
-The script uses a band-only profile, tests matching/click tracking, and confirms
+The script checks the assessment entry route, uses a band-only profile, tests matching/click tracking, and confirms
 that operator pages, operator BFF, docs, OpenAPI, metrics and runtime diagnostics
 are hidden in public mode. It never prints a supplied postback secret.
 

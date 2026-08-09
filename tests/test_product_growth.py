@@ -321,6 +321,50 @@ def test_public_events_accept_only_safe_allowlisted_metadata(growth_client):
         assert "150000" not in str(event_row.__dict__)
 
 
+def test_assessment_funnel_events_and_rates_are_privacy_safe(growth_client):
+    client, testing_session = growth_client
+    events = (
+        {"event_type": "landing_viewed", "page": "landing"},
+        {"event_type": "assessment_started", "page": "assessment"},
+        {
+            "event_type": "assessment_step_completed",
+            "page": "assessment",
+            "assessment_step": 2,
+        },
+        {"event_type": "assessment_completed", "page": "assessment"},
+        {"event_type": "profile_result_viewed", "page": "assessment"},
+        {"event_type": "scenario_started", "page": "assessment"},
+        {"event_type": "scenario_applied", "page": "assessment", "pti_band": "medium"},
+        {"event_type": "offers_viewed", "page": "assessment", "profile_band": "low"},
+        {"event_type": "partner_transition_viewed", "page": "assessment"},
+    )
+    for event_payload in events:
+        response = client.post(
+            "/v1/analytics/public-event",
+            json={**event_payload, "anonymous_session_id": "assessment-session"},
+        )
+        assert response.status_code == 200, response.text
+
+    summary = client.get(
+        "/v1/analytics/commercial-summary", headers=operator_headers()
+    ).json()["summary"]
+    assert summary["assessment_start_rate"] == 1
+    assert summary["assessment_completion_rate"] == 1
+    assert summary["scenario_usage_rate"] == 1
+    assert summary["public_event_counts"]["assessment_step_completed"] == 1
+
+    with testing_session() as session:
+        rows = session.scalars(
+            select(CommercialFunnelEvent).where(
+                CommercialFunnelEvent.anonymous_session_id.is_not(None)
+            )
+        ).all()
+        assert rows
+        serialized = str([row.__dict__ for row in rows])
+        assert "120000" not in serialized
+        assert "450000" not in serialized
+
+
 def test_empty_analytics_returns_zeros_and_is_operator_protected(growth_client):
     client, _ = growth_client
     assert client.get("/v1/analytics/commercial-summary").status_code == 401
@@ -352,6 +396,7 @@ def test_funnel_ctr_postback_revenue_and_public_privacy(growth_client):
     )
     assert match.status_code == 200
     body = match.json()
+    assert body["total_eligible_offers"] >= len(body["offers"]) > 0
     offer = body["offers"][0]
     assert offer["positive_reasons"]
     assert offer["disclosure"]

@@ -273,13 +273,14 @@ def match_offers(
         (offer, evaluate_offer_eligibility(result, offer)) for offer in active_offers
     ]
     revenue_estimates = build_revenue_estimates(session, active_offers)
-    ranked = rank_offers(
+    all_ranked = rank_offers(
         result,
         evaluated,
         context.model_dump() if context else None,
         revenue_estimates=revenue_estimates,
         experiment_variant=experiment_variant,
-    )[:limit]
+    )
+    ranked = all_ranked[:limit]
     for item in ranked:
         session.add(
             OfferImpression(
@@ -420,6 +421,7 @@ def match_offers(
     return OfferMatchResponse(
         profile_result=result,
         offers=public_offers,
+        total_eligible_offers=len(all_ranked),
         disclaimers=STANDARD_DISCLAIMERS,
         no_eligible_offers=not public_offers,
         user_explanation=(

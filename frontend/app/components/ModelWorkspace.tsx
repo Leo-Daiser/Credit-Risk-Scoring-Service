@@ -65,9 +65,9 @@ export function ModelWorkspace() {
       {error ? <div className="form-error" role="alert"><TriangleAlert size={18} /> {error}</div> : null}
 
       <section className="model-metrics runtime-model-grid">
-        <article><span>Публичный профиль</span><strong>{runtime?.public_model_available ? "Доступен" : "Fallback"}</strong><small>{runtime?.public_model_version ?? "правила без ML"}</small></article>
-        <article><span>Полная модель</span><strong>{runtime?.full_model_available ? "Доступна" : "Недоступна"}</strong><small>внутренний B2B-контур</small></article>
-        <article><span>Ранжирование офферов</span><strong>{runtime?.offer_ranker_available ? "ML доступен" : "Правила"}</strong><small>правила — безопасный default</small></article>
+        <article><span>Riskline Public Profile Model</span><strong>{runtime?.public_model_available ? "ACTIVE" : "PUBLIC ML INACTIVE"}</strong><small>{runtime?.public_model_version ?? "rules fallback"}</small></article>
+        <article><span>Full Credit Risk Model</span><strong>{runtime?.full_model_available ? "ACTIVE" : "MISSING"}</strong><small>внутренний B2B-контур</small></article>
+        <article><span>Offer Outcome Ranker</span><strong>{runtime?.offer_ranker_available ? "ML AVAILABLE" : "RULES MODE"}</strong><small>нет обучения на демо-событиях партнёров</small></article>
         <article><span>Fallback профилей</span><strong>{formatPercent(runtime?.public_model_fallback_rate ?? null, 0)}</strong><small>{runtime?.public_model_scoring_volume ?? 0} из {runtime?.public_profile_scores ?? 0} с публичной моделью</small></article>
       </section>
 

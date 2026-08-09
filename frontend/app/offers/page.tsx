@@ -9,8 +9,8 @@ export const metadata: Metadata = {
 
 export default function OffersPage() {
   return (
-    <AppShell active="offers" eyebrow="Сравнение условий" title="Подбор предложений">
-      <OfferWorkspace />
+    <AppShell active="offers" eyebrow="Оценка и предложения" title="Подбор предложений">
+      <OfferWorkspace showModelStatus={process.env.APP_ENV !== "public"} />
     </AppShell>
   );
 }

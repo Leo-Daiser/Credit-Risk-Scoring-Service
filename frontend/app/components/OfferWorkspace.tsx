@@ -3,30 +3,39 @@
 import {
   AlertTriangle,
   ArrowRight,
-  BadgePercent,
   Building2,
   BookOpenCheck,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  CircleGauge,
   LoaderCircle,
+  Pencil,
   ShieldCheck,
   SlidersHorizontal,
   Sparkles,
   Star,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { CreditProfileInput, ImprovementScenario, OfferMatchResult, RankedOffer } from "../lib/api";
+import { consumeTransientAssessmentContext } from "../lib/assessment-context";
 import { apiFetch, formatPercent } from "../lib/api";
 import { createAnonymousSessionId, recordPublicEvent } from "../lib/public-analytics";
 import { NumericInput } from "./NumericInput";
 
 const initialProfile: CreditProfileInput = {
   age_band: "31_45",
-  income_band: "50k_100k",
+  age: 34,
+  income_band: "100k_150k",
+  monthly_income: 120_000,
   employment_type: "employee",
-  requested_amount_band: "100k_300k",
+  employment_years: 5,
+  requested_amount_band: "300k_700k",
+  requested_amount: 450_000,
   term_months: 24,
   existing_monthly_payments_band: "zero",
+  existing_monthly_payments: 0,
   credit_history_band: "average",
   loan_purpose: "cash",
   consent_to_process: false,
@@ -83,22 +92,41 @@ function amountForBand(value: CreditProfileInput["requested_amount_band"]): numb
   return { lt_100k: 75_000, "100k_300k": 200_000, "300k_700k": 500_000, "700k_1_5m": 1_000_000, gt_1_5m: 2_000_000 }[value];
 }
 
-export function OfferWorkspace() {
+export function OfferWorkspace({ showModelStatus = false }: { showModelStatus?: boolean }) {
   const [sessionId] = useState(createAnonymousSessionId);
-  const [profile, setProfile] = useState(initialProfile);
-  const [termDraft, setTermDraft] = useState("24");
-  const [amountDraft, setAmountDraft] = useState("");
-  const [paymentsDraft, setPaymentsDraft] = useState("");
-  const [ageDraft, setAgeDraft] = useState("");
-  const [incomeDraft, setIncomeDraft] = useState("");
-  const [employmentDraft, setEmploymentDraft] = useState("");
+  const [initialContext] = useState(consumeTransientAssessmentContext);
+  const [profile, setProfile] = useState<CreditProfileInput>(() => initialContext ? {
+    ...initialProfile,
+    requested_amount: initialContext.amount,
+    requested_amount_band: amountBandFor(initialContext.amount),
+    term_months: initialContext.term,
+    monthly_income: initialContext.monthlyIncome,
+    income_band: incomeBandFor(initialContext.monthlyIncome),
+    existing_monthly_payments: initialContext.existingPayments,
+    existing_monthly_payments_band: paymentsBandFor(initialContext.existingPayments),
+  } : initialProfile);
+  const [termDraft, setTermDraft] = useState(() => String(initialContext?.term ?? 24));
+  const [amountDraft, setAmountDraft] = useState(() => String(initialContext?.amount ?? 450_000));
+  const [paymentsDraft, setPaymentsDraft] = useState(() => String(initialContext?.existingPayments ?? 0));
+  const [ageDraft, setAgeDraft] = useState("34");
+  const [incomeDraft, setIncomeDraft] = useState(() => String(initialContext?.monthlyIncome ?? 120_000));
+  const [employmentDraft, setEmploymentDraft] = useState("5");
+  const [step, setStep] = useState(1);
   const [result, setResult] = useState<OfferMatchResult | null>(null);
+  const [previousResult, setPreviousResult] = useState<OfferMatchResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [clicking, setClicking] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [transition, setTransition] = useState<{ url: string; partner: string; offer: string } | null>(null);
   const [showRecovery, setShowRecovery] = useState(false);
   const [recoveryDismissed, setRecoveryDismissed] = useState(false);
+  const assessmentStarted = useRef(false);
+
+  useEffect(() => {
+    if (assessmentStarted.current) return;
+    assessmentStarted.current = true;
+    void recordPublicEvent("assessment_started", "assessment", sessionId).catch(() => undefined);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!result?.offers.length || recoveryDismissed) return;
@@ -109,8 +137,58 @@ export function OfferWorkspace() {
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, [result, recoveryDismissed]);
 
+  useEffect(() => {
+    if (!result) return;
+    window.scrollTo({ top: 0 });
+    const metadata = {
+      profile_band: result.profile_result.profile_band,
+      pti_band: result.profile_result.pti_band,
+    };
+    const events: Array<Promise<void>> = [
+      recordPublicEvent("profile_result_viewed", "result", sessionId, metadata),
+      recordPublicEvent("offers_viewed", "result", sessionId, metadata),
+    ];
+    if (result.improvement_scenarios.length) {
+      events.push(recordPublicEvent("improvement_viewed", "result", sessionId, metadata));
+    }
+    if (result.offers.length) {
+      events.push(recordPublicEvent("recommended_offer_viewed", "result", sessionId, {
+        ...metadata,
+        offer_position: "recommended",
+      }));
+    }
+    void Promise.allSettled(events);
+  }, [result, sessionId]);
+
   const update = <K extends keyof CreditProfileInput>(key: K, value: CreditProfileInput[K]) => {
     setProfile((current) => ({ ...current, [key]: value }));
+  };
+
+  const stepError = (targetStep: number): string | null => {
+    const amount = Number(amountDraft);
+    const term = Number(termDraft);
+    const age = Number(ageDraft);
+    const income = Number(incomeDraft);
+    const employmentYears = Number(employmentDraft);
+    const payments = Number(paymentsDraft);
+    if (targetStep === 1 && (!Number.isFinite(amount) || amount <= 0 || amount > 10_000_000)) return "Укажите примерную сумму от 1 до 10 000 000 ₽.";
+    if (targetStep === 1 && (!Number.isInteger(term) || term < 3 || term > 120)) return "Укажите срок от 3 до 120 месяцев.";
+    if (targetStep === 2 && (!Number.isInteger(age) || age < 18 || age > 75)) return "Укажите возраст от 18 до 75 лет.";
+    if (targetStep === 2 && (!Number.isFinite(income) || income <= 0 || income > 10_000_000)) return "Укажите примерный доход до 10 000 000 ₽.";
+    if (targetStep === 2 && (!Number.isFinite(employmentYears) || employmentYears < 0 || employmentYears > 60)) return "Укажите стаж от 0 до 60 лет.";
+    if (targetStep === 3 && (!Number.isFinite(payments) || payments < 0 || payments > 2_000_000)) return "Текущие платежи должны быть от 0 до 2 000 000 ₽.";
+    return null;
+  };
+
+  const nextStep = () => {
+    const message = stepError(step);
+    if (message) {
+      setError(message);
+      return;
+    }
+    void recordPublicEvent("assessment_step_completed", "assessment", sessionId, { assessment_step: step as 1 | 2 | 3 | 4 }).catch(() => undefined);
+    setError(null);
+    setStep((current) => Math.min(current + 1, 4));
   };
 
   const submit = async () => {
@@ -166,11 +244,13 @@ export function OfferWorkspace() {
         ...(monthlyIncome === undefined ? {} : { monthly_income: monthlyIncome, income_band: incomeBandFor(monthlyIncome) }),
         ...(employmentYears === undefined ? {} : { employment_years: employmentYears }),
       };
-      const response = await requestMatch(submittedProfile, "public_matching");
+      void recordPublicEvent("assessment_completed", "assessment", sessionId).catch(() => undefined);
+      const response = await requestMatch(submittedProfile, "public_assessment");
       setProfile(submittedProfile);
       setResult(response);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Подбор не выполнен. Попробуйте ещё раз.");
+      setPreviousResult(null);
+    } catch {
+      setError("Не удалось выполнить оценку. Попробуйте ещё раз.");
     } finally {
       setLoading(false);
     }
@@ -203,15 +283,17 @@ export function OfferWorkspace() {
         profile_band: result?.profile_result.profile_band,
         pti_band: result?.profile_result.pti_band,
       }).catch(() => undefined);
+      const baseline = result;
       const response = await requestMatch(nextProfile, "public_scenario");
+      setPreviousResult(baseline);
       setProfile(nextProfile);
       setAmountDraft(String(Math.round(amount)));
       setTermDraft(String(term));
       setPaymentsDraft(String(Math.round(payments)));
       setResult(response);
       document.getElementById("riskline-profile")?.scrollIntoView({ behavior: "smooth", block: "start" });
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Сценарий не рассчитан. Попробуйте ещё раз.");
+    } catch {
+      setError("Не удалось проверить сценарий. Попробуйте ещё раз.");
     } finally {
       setLoading(false);
     }
@@ -239,125 +321,122 @@ export function OfferWorkspace() {
         partner: offer.advertiser_name,
         offer: offer.product_name,
       });
+      void recordPublicEvent("partner_transition_viewed", "result", sessionId, {
+        offer_position: offer.rank === 1 ? "recommended" : "alternative",
+      }).catch(() => undefined);
       setClicking(null);
-    } catch (requestError) {
-      setError(requestError instanceof Error ? requestError.message : "Переход не выполнен. Попробуйте ещё раз.");
+    } catch {
+      setError("Не удалось подготовить переход. Попробуйте ещё раз.");
       setClicking(null);
     }
   };
 
   return (
     <div className="offers-page">
-      <section className="offers-intro">
-        <div>
-          <span className="section-kicker">Предварительный подбор</span>
-          <h1>Подберите предложения под ваш платёж и долговую нагрузку.</h1>
-          <p>Можно указать примерные значения. Чем больше неизвестных полей, тем ниже уверенность результата. Паспорт, телефон, имя, документы, работодатель и данные БКИ не запрашиваются. Финальное решение принимает банк.</p>
-        </div>
-        <div className="privacy-chip"><ShieldCheck size={20} aria-hidden="true" /> Точные суммы используются только во время расчёта</div>
-      </section>
+      {!result ? (
+        <>
+          <section className="assessment-intro">
+            <span className="section-kicker">Оценка финансового профиля</span>
+            <h1>Получите персональную оценку Riskline</h1>
+            <p>Четыре коротких шага. Можно указывать примерные значения — паспорт, телефон, документы и данные БКИ не нужны.</p>
+            <div className="privacy-chip"><ShieldCheck size={20} /> Введённые точные значения не сохраняются в браузере</div>
+          </section>
 
-      <section className={`offers-layout ${result ? "has-results" : ""}`}>
-        <article className="panel offer-profile-form">
-          <div className="panel-heading"><div><span className="section-kicker">Три коротких шага</span><h3>Расскажите о нужном варианте</h3></div></div>
-          <div className="offer-form-steps">
-            <fieldset className="offer-form-step">
-              <legend><span>1</span><strong>Что вам нужно?</strong></legend>
-              <div className="offer-fields">
-                <SelectField id="offer-amount-band" label="Диапазон суммы" help="По нему проверяются лимиты предложения." value={profile.requested_amount_band} onChange={(value) => { update("requested_amount_band", value as CreditProfileInput["requested_amount_band"]); setAmountDraft(""); }} options={[["lt_100k", "До 100 тыс."], ["100k_300k", "100–300 тыс."], ["300k_700k", "300–700 тыс."], ["700k_1_5m", "700 тыс.–1,5 млн"], ["gt_1_5m", "Более 1,5 млн"]]} />
-                <NumberField id="offer-term-months" label="Срок, месяцев" help="Нужен для сравнения доступных сроков." value={termDraft} onChange={setTermDraft} min={3} max={120} step={1} />
-                <SelectField id="offer-purpose" label="Цель" help="Помогает показать более подходящий тип продукта." value={profile.loan_purpose} onChange={(value) => update("loan_purpose", value as CreditProfileInput["loan_purpose"])} options={[["cash", "Наличные"], ["refinance", "Рефинансирование"], ["car", "Автомобиль"], ["repair", "Ремонт"], ["education", "Образование"], ["medical", "Лечение"], ["other", "Другое"]]} />
-              </div>
-              <details className="precision-fields"><summary>Указать сумму точнее</summary><NumberField id="offer-exact-amount" label="Точная сумма, ₽ — необязательно" help="Используется только для текущего расчёта и не сохраняется." value={amountDraft} onChange={setAmountDraft} min={1} /></details>
-            </fieldset>
-            <fieldset className="offer-form-step">
-              <legend><span>2</span><strong>Немного о вас</strong></legend>
-              <div className="offer-fields">
-                <SelectField id="offer-age" label="Возраст" help="Для базовых возрастных ограничений." value={profile.age_band} onChange={(value) => update("age_band", value as CreditProfileInput["age_band"])} options={[["18_21", "18–21"], ["22_30", "22–30"], ["31_45", "31–45"], ["46_60", "46–60"], ["60_plus", "Старше 60"]]} />
-                <SelectField id="offer-income" label="Доход в месяц" help="Достаточно примерного диапазона." value={profile.income_band} onChange={(value) => update("income_band", value as CreditProfileInput["income_band"])} options={[["lt_50k", "До 50 тыс."], ["50k_100k", "50–100 тыс."], ["100k_150k", "100–150 тыс."], ["150k_250k", "150–250 тыс."], ["gt_250k", "Более 250 тыс."], ["unknown", "Не знаю / не указывать"]]} />
-                <SelectField id="offer-employment" label="Занятость" help="Используется как категория совместимости." value={profile.employment_type} onChange={(value) => update("employment_type", value as CreditProfileInput["employment_type"])} options={[["employee", "По найму"], ["self_employed", "Самозанятый"], ["individual_entrepreneur", "ИП"], ["pensioner", "Пенсионер"], ["unofficial", "Неофициально"], ["unemployed", "Без работы"], ["unknown", "Не знаю / не указывать"]]} />
-              </div>
-              <details className="precision-fields profile-details">
-                <summary>Уточнить финансовый профиль</summary>
-                <div className="offer-fields">
-                  <NumberField id="offer-exact-age" label="Возраст, лет — необязательно" help="Уточняет профиль; значение не сохраняется в браузере." value={ageDraft} onChange={setAgeDraft} min={18} max={75} step={1} />
-                  <NumberField id="offer-exact-income" label="Доход в месяц, ₽ — необязательно" help="Можно указать примерное значение." value={incomeDraft} onChange={setIncomeDraft} min={1} />
-                  <NumberField id="offer-employment-years" label="Стаж, лет — необязательно" help="Используется только в текущей оценке." value={employmentDraft} onChange={setEmploymentDraft} min={0} max={60} step={0.5} />
-                  <SelectField id="offer-housing" label="Жильё — необязательно" help="Контекст для предварительного профиля." value={profile.housing_type ?? "unknown"} onChange={(value) => update("housing_type", value as NonNullable<CreditProfileInput["housing_type"]>)} options={[["unknown", "Не указывать"], ["owned", "Собственное"], ["rent", "Аренда"], ["family", "У родственников"], ["municipal", "Муниципальное"], ["employer", "От работодателя"], ["other", "Другое"]]} />
+          <section className="assessment-wizard" aria-labelledby="assessment-step-title">
+            <div className="assessment-progress">
+              <div><span>Шаг {step} из 4</span><strong>{["Что вы хотите получить", "Доход и работа", "Текущая нагрузка", "Проверка данных"][step - 1]}</strong></div>
+              <div className="assessment-progress-track" aria-hidden="true"><i style={{ width: `${step * 25}%` }} /></div>
+            </div>
+
+            {loading ? <AssessmentLoading /> : (
+              <div className="assessment-step-body">
+                {step === 1 ? (
+                  <fieldset className="assessment-fieldset">
+                    <legend id="assessment-step-title">Что вы хотите получить?</legend>
+                    <p>Эти параметры нужны для расчёта платежа и проверки лимитов предложений.</p>
+                    <div className="assessment-fields">
+                      <NumberField id="assessment-amount" label="Желаемая сумма, ₽" help="Можно указать примерно." value={amountDraft} onChange={setAmountDraft} min={1} />
+                      <NumberField id="assessment-term" label="Срок, месяцев" help="От 3 до 120 месяцев." value={termDraft} onChange={setTermDraft} min={3} max={120} step={1} />
+                      <SelectField id="assessment-purpose" label="Цель кредита" help="Помогает подобрать тип продукта." value={profile.loan_purpose} onChange={(value) => update("loan_purpose", value as CreditProfileInput["loan_purpose"])} options={[["cash", "Наличные"], ["refinance", "Рефинансирование"], ["car", "Автомобиль"], ["repair", "Ремонт"], ["education", "Образование"], ["medical", "Лечение"], ["other", "Другое"]]} />
+                    </div>
+                  </fieldset>
+                ) : null}
+                {step === 2 ? (
+                  <fieldset className="assessment-fieldset">
+                    <legend id="assessment-step-title">Ваш доход и работа</legend>
+                    <p>Доход и стаж помогают оценить устойчивость платежа. Указывать работодателя не нужно.</p>
+                    <div className="assessment-fields">
+                      <NumberField id="assessment-age" label="Возраст, лет" help="Нужен для базовых ограничений продуктов." value={ageDraft} onChange={setAgeDraft} min={18} max={75} step={1} />
+                      <NumberField id="assessment-income" label="Доход в месяц, ₽" help="Можно указать примерно." value={incomeDraft} onChange={setIncomeDraft} min={1} />
+                      <SelectField id="assessment-employment" label="Занятость" help="Используется в оценке профиля и совместимости." value={profile.employment_type} onChange={(value) => update("employment_type", value as CreditProfileInput["employment_type"])} options={[["employee", "Работаю по найму"], ["self_employed", "Самозанятый"], ["individual_entrepreneur", "ИП"], ["pensioner", "Пенсионер"], ["unofficial", "Неофициальная занятость"], ["unemployed", "Сейчас не работаю"], ["unknown", "Не хочу указывать"]]} />
+                      <NumberField id="assessment-employment-years" label="Стаж, лет" help="Общий непрерывный ориентир; можно округлить." value={employmentDraft} onChange={setEmploymentDraft} min={0} max={60} step={0.5} />
+                    </div>
+                  </fieldset>
+                ) : null}
+                {step === 3 ? (
+                  <fieldset className="assessment-fieldset">
+                    <legend id="assessment-step-title">Текущая финансовая нагрузка</legend>
+                    <p>Укажите честную примерную сумму текущих кредитных платежей. Это не банковская анкета.</p>
+                    <div className="assessment-fields">
+                      <NumberField id="assessment-payments" label="Текущие платежи в месяц, ₽" help="Введите 0, если платежей нет." value={paymentsDraft} onChange={setPaymentsDraft} min={0} />
+                      <SelectField id="assessment-history" label="Кредитная история" help="Самооценка; Riskline не запрашивает данные БКИ." value={profile.credit_history_band} onChange={(value) => update("credit_history_band", value as CreditProfileInput["credit_history_band"])} options={[["good", "Без известных проблем"], ["average", "Были отдельные задержки"], ["minor_overdues", "Небольшие просрочки"], ["serious_overdues", "Серьёзные просрочки"], ["no_history", "Кредитной истории нет"], ["unknown", "Не знаю / не хочу указывать"]]} />
+                    </div>
+                    <details className="precision-fields"><summary>Уточнить профиль</summary><SelectField id="assessment-housing" label="Жильё — необязательно" help="Дополнительный контекст модели; можно пропустить." value={profile.housing_type ?? "unknown"} onChange={(value) => update("housing_type", value as NonNullable<CreditProfileInput["housing_type"]>)} options={[["unknown", "Не указывать"], ["owned", "Собственное"], ["rent", "Аренда"], ["family", "У родственников"], ["municipal", "Муниципальное"], ["employer", "От работодателя"], ["other", "Другое"]]} /></details>
+                  </fieldset>
+                ) : null}
+                {step === 4 ? (
+                  <fieldset className="assessment-fieldset assessment-review">
+                    <legend id="assessment-step-title">Проверьте данные</legend>
+                    <p>Riskline рассчитает долговую нагрузку, выполнит оценку профиля и проверит совместимость предложений.</p>
+                    <dl className="assessment-review-grid">
+                      <div><dt>Сумма и срок</dt><dd>{money.format(Number(amountDraft) || 0)} ₽ · {termDraft} мес.</dd></div>
+                      <div><dt>Возраст и доход</dt><dd>{ageDraft} лет · {money.format(Number(incomeDraft) || 0)} ₽/мес.</dd></div>
+                      <div><dt>Занятость и стаж</dt><dd>{employmentLabel(profile.employment_type)} · {employmentDraft} лет</dd></div>
+                      <div><dt>Текущие платежи</dt><dd>{money.format(Number(paymentsDraft) || 0)} ₽/мес.</dd></div>
+                    </dl>
+                    <label className="consent-row" htmlFor="assessment-consent"><input id="assessment-consent" type="checkbox" checked={profile.consent_to_process} onChange={(event) => update("consent_to_process", event.target.checked)} /><span>Согласен на обработку указанных данных для предварительной оценки и подбора. Это не кредитное решение.</span></label>
+                    <label className="consent-row secondary-consent" htmlFor="assessment-ad-consent"><input id="assessment-ad-consent" type="checkbox" checked={profile.consent_to_ad_personalization} onChange={(event) => update("consent_to_ad_personalization", event.target.checked)} /><span>Разрешаю персонализацию рекламных предложений.</span></label>
+                  </fieldset>
+                ) : null}
+
+                {error ? <div className="form-error" role="alert" id="assessment-error"><AlertTriangle size={18} />{error}</div> : null}
+                <div className="assessment-actions">
+                  {step > 1 ? <button className="button button-ghost" type="button" onClick={() => { setError(null); setStep(step - 1); }}><ChevronLeft size={17} /> Назад</button> : <span />}
+                  {step < 4 ? <button className="button button-dark" type="button" onClick={nextStep}>Продолжить <ChevronRight size={17} /></button> : <button className="button button-dark" type="button" onClick={submit}><CircleGauge size={18} /> Получить оценку</button>}
                 </div>
-              </details>
-            </fieldset>
-            <fieldset className="offer-form-step">
-              <legend><span>3</span><strong>Текущая нагрузка</strong></legend>
-              <div className="offer-fields">
-                <SelectField id="offer-payments-band" label="Текущие платежи" help="Для приблизительной оценки нагрузки." value={profile.existing_monthly_payments_band} onChange={(value) => { update("existing_monthly_payments_band", value as CreditProfileInput["existing_monthly_payments_band"]); setPaymentsDraft(""); }} options={[["zero", "Нет"], ["lt_10k", "До 10 тыс."], ["10k_30k", "10–30 тыс."], ["30k_60k", "30–60 тыс."], ["gt_60k", "Более 60 тыс."], ["unknown", "Не знаю / не указывать"]]} />
-                <SelectField id="offer-history" label="Кредитная история" help="Самооценка; данные БКИ не запрашиваются." value={profile.credit_history_band} onChange={(value) => update("credit_history_band", value as CreditProfileInput["credit_history_band"])} options={[["good", "Хорошая"], ["average", "Средняя"], ["minor_overdues", "Небольшие просрочки"], ["serious_overdues", "Серьёзные просрочки"], ["no_history", "Нет истории"], ["unknown", "Не знаю / не указывать"]]} />
               </div>
-              <details className="precision-fields"><summary>Указать текущий платёж точнее</summary><NumberField id="offer-exact-payments" label="Точный платёж, ₽ — необязательно" help="Используется только для текущего расчёта и не сохраняется." value={paymentsDraft} onChange={setPaymentsDraft} min={0} /></details>
-            </fieldset>
+            )}
+          </section>
+          <WhatYouGet />
+        </>
+      ) : (
+        <main className="assessment-report" aria-live="polite">
+          <div className="assessment-report-toolbar">
+            <div><span className="section-kicker">Персональный результат</span><h1>Ваша оценка Riskline</h1></div>
+            <button className="button button-ghost" type="button" onClick={() => { setResult(null); setPreviousResult(null); setStep(4); window.scrollTo({ top: 0, behavior: "smooth" }); }}><Pencil size={16} /> Изменить данные</button>
           </div>
-          <label className="consent-row" htmlFor="offer-consent">
-            <input id="offer-consent" type="checkbox" checked={profile.consent_to_process} onChange={(event) => update("consent_to_process", event.target.checked)} aria-describedby="offer-consent-help" />
-            <span id="offer-consent-help">Согласен на обработку введённых диапазонов для предварительного профиля и подбора. Это не кредитное решение.</span>
-          </label>
-          <label className="consent-row secondary-consent" htmlFor="offer-ad-consent">
-            <input id="offer-ad-consent" type="checkbox" checked={profile.consent_to_ad_personalization} onChange={(event) => update("consent_to_ad_personalization", event.target.checked)} />
-            <span>Разрешаю персонализацию рекламных предложений.</span>
-          </label>
-          {error ? <div className="form-error" role="alert" id="offer-form-error"><AlertTriangle size={18} aria-hidden="true" /> {error}</div> : null}
-          <button className="button button-dark button-full" type="button" onClick={submit} disabled={loading} aria-describedby="offer-form-error">
-            {loading ? <LoaderCircle className="spin" size={18} aria-hidden="true" /> : <BadgePercent size={18} aria-hidden="true" />}
-            {loading ? "Подбираем предложения…" : "Показать предложения"}
-          </button>
-          <p className="model-disclaimer">Сервис не принимает кредитных решений. Финальное решение принимает банк; предложения могут быть рекламными.</p>
-        </article>
-
-        <aside className="offer-results" aria-live="polite">
-          {loading && !result ? <div className="offer-empty initial"><LoaderCircle className="spin" size={27} aria-hidden="true" /><strong>Подбираем совместимые предложения</strong><span>Проверяем диапазоны и считаем предварительную нагрузку.</span></div> : null}
-          {!loading && result ? (
-            <>
-              {showRecovery ? (
-                <div className="exit-recovery" role="status">
-                  <div><strong>Сравните предложения перед выходом</strong><span>Расчёт останется на странице, пока вкладка открыта.</span></div>
-                  <button type="button" aria-label="Закрыть подсказку" onClick={() => { setShowRecovery(false); setRecoveryDismissed(true); }}><X size={16} /></button>
-                </div>
-              ) : null}
-              <ProfileSummary result={result} />
-              <ProfileFactors result={result} />
-              <ImprovementPanel scenarios={result.improvement_scenarios} onApply={applyScenario} loading={loading} />
-              <ScenarioSimulator profile={profile} result={result} onApply={applyScenario} loading={loading} sessionId={sessionId} />
-              {result.offers.length ? (
-                <>
-                  <OfferCard
-                    offer={result.offers[0]}
-                    recommended
-                    clicking={clicking === result.offers[0].offer_id}
-                    onOpen={() => openOffer(result.offers[0])}
-                  />
-                  <ComparisonBlock offer={result.offers[0]} />
-                  {profile.existing_monthly_payments_band !== "zero" ? (
-                    <div className="refinance-trigger"><strong>Есть текущие платежи?</strong><span>Проверьте, может ли рефинансирование снизить ежемесячную нагрузку.</span></div>
-                  ) : null}
-                  {result.offers.length > 1 ? <h3 className="other-offers-title">Другие подходящие предложения</h3> : null}
-                  {result.offers.slice(1).map((offer) => (
-                    <OfferCard
-                      key={offer.offer_id}
-                      offer={offer}
-                      clicking={clicking === offer.offer_id}
-                      onOpen={() => openOffer(offer)}
-                    />
-                  ))}
-                  <button className="sticky-result-cta" type="button" onClick={() => document.getElementById("recommended-offer")?.scrollIntoView({ behavior: "smooth", block: "center" })}>
-                    <Star size={17} /> Посмотреть лучшее предложение
-                  </button>
-                </>
-              ) : <NoOffers result={result} />}
-              <div className="ad-boundary">Сервис не принимает кредитных решений. Финальное решение принимает банк. Предложения могут быть рекламными; сервис может получить вознаграждение за переход.</div>
-            </>
-          ) : null}
-          {!loading && !result ? <WhatYouGet /> : null}
-        </aside>
-      </section>
+          {showModelStatus && !result.profile_result.model_available ? <div className="dev-model-warning" role="status"><AlertTriangle size={18} /><div><strong>Публичная ML-модель не загружена</strong><span>Локальный demo использует прозрачный rules fallback. Запустите prepare-local-ml.</span></div></div> : null}
+          {showRecovery ? <div className="exit-recovery" role="status"><div><strong>Сравните предложения перед выходом</strong><span>Результат останется на странице, пока вкладка открыта.</span></div><button type="button" aria-label="Закрыть подсказку" onClick={() => { setShowRecovery(false); setRecoveryDismissed(true); }}><X size={16} /></button></div> : null}
+          <ProfileSummary result={result} profile={profile} />
+          <ProfileFactors result={result} />
+          <ImprovementPanel result={result} scenarios={result.improvement_scenarios} onApply={applyScenario} loading={loading} />
+          <ScenarioSimulator profile={profile} result={result} previousResult={previousResult} onApply={applyScenario} loading={loading} sessionId={sessionId} />
+          <CreditHistoryAdvice band={profile.credit_history_band} />
+          {profile.existing_monthly_payments_band !== "zero" ? <div className="refinance-trigger"><strong>Есть текущие кредиты?</strong><span>Проверьте, может ли рефинансирование снизить ежемесячную нагрузку. Сравнение не является обещанием экономии.</span></div> : null}
+          <section className="assessment-offers" id="offers" aria-labelledby="offers-title">
+            <div className="public-section-heading"><span className="section-kicker">Персональный подбор</span><h2 id="offers-title">Подходящие предложения</h2><p>Каждый платёж рассчитан отдельно по диапазону условий конкретного продукта.</p></div>
+            {result.offers.length ? <>
+              <OfferCard offer={result.offers[0]} recommended clicking={clicking === result.offers[0].offer_id} onOpen={() => openOffer(result.offers[0])} />
+              <ComparisonBlock offer={result.offers[0]} />
+              {result.offers.length > 1 ? <h3 className="other-offers-title">Другие подходящие предложения</h3> : null}
+              <div className="alternative-offers-grid">{result.offers.slice(1).map((offer) => <OfferCard key={offer.offer_id} offer={offer} clicking={clicking === offer.offer_id} onOpen={() => openOffer(offer)} />)}</div>
+              <button className="sticky-result-cta" type="button" onClick={() => document.getElementById("recommended-offer")?.scrollIntoView({ behavior: "smooth", block: "center" })}><Star size={17} /> Посмотреть лучшее предложение</button>
+            </> : <NoOffers result={result} />}
+          </section>
+          {error ? <div className="form-error" role="alert"><AlertTriangle size={18} />{error}</div> : null}
+          <div className="ad-boundary">Riskline не принимает кредитных решений. Финальное решение принимает банк. Предложения могут быть рекламными; сервис может получить вознаграждение за переход.</div>
+        </main>
+      )}
 
       {transition ? (
         <div className="partner-transition" role="dialog" aria-modal="true" aria-labelledby="partner-transition-title">
@@ -392,8 +471,18 @@ function NumberField({ id, label, help, value, onChange, ...props }: { id: strin
   return <label className="field-label" htmlFor={id}>{label}<NumericInput id={id} value={value} onValueChange={onChange} aria-describedby={helpId} {...props} /><small id={helpId}>{help}</small></label>;
 }
 
-function ProfileSummary({ result }: { result: OfferMatchResult }) {
+function ProfileSummary({ result, profile: sourceProfile }: { result: OfferMatchResult; profile: CreditProfileInput }) {
   const profile = result.profile_result;
+  const income = sourceProfile.monthly_income ?? 0;
+  const existing = sourceProfile.existing_monthly_payments ?? 0;
+  const remainingBudget = Math.max(income - existing - (profile.estimated_monthly_payment ?? 0), 0);
+  const profileLabel = {
+    strong: "Устойчивый профиль",
+    stable: "Умеренный профиль",
+    constrained: "Ограниченный профиль",
+    high_attention: "Профиль требует внимания",
+    insufficient_data: "Недостаточно данных",
+  }[profile.profile_band] ?? "Предварительный профиль";
   const warnings = [
     ...(profile.confidence_level === "low" || profile.confidence_level === "basic" ? ["Уверенность ограничена коротким профилем или неизвестными полями."] : []),
     ...(profile.pti_band === "high" || profile.pti_band === "very_high" ? ["Расчётная долговая нагрузка повышена."] : []),
@@ -401,21 +490,21 @@ function ProfileSummary({ result }: { result: OfferMatchResult }) {
     "Данные БКИ и документы банка не используются.",
   ];
   return (
-    <article className="profile-summary-card riskline-profile-card" id="riskline-profile">
+    <article className="profile-summary-card riskline-profile-card assessment-profile-hero" id="riskline-profile">
       <div className="riskline-profile-heading">
-        <div><span className="section-kicker light">Ваш профиль Riskline</span><h3>Предварительная оценка по указанным данным</h3></div>
-        <div className={`riskline-index ${profile.model_available ? "is-active" : "is-fallback"}`}>
-          <strong>{profile.riskline_index ?? "—"}</strong><span>из 100</span>
+        <div><span className="section-kicker light">Ваш профиль Riskline</span><h2>{profileLabel}</h2><p>Оценка объединяет финансовый расчёт, долговую нагрузку и модельный сигнал по указанным данным.</p></div>
+        <div className={`riskline-index ${profile.model_available ? "is-active" : "is-fallback"}`} aria-label={`Riskline Index ${profile.riskline_index ?? "не рассчитан"} из 100`}>
+          <strong>{profile.riskline_index ?? "—"}</strong><span>/ 100</span>
         </div>
       </div>
-      <p className="riskline-index-note">{profile.model_available ? `Персонализированная оценка: ${profile.risk_signal}.` : "Персонализированная оценка временно недоступна; применены правила совместимости."} Riskline Index — внутренний ориентир сервиса, не рейтинг БКИ и не вероятность решения банка.</p>
+      <div className="riskline-index-scale" aria-hidden="true"><i style={{ width: `${profile.riskline_index ?? 0}%` }} /><span /><span /><span /></div>
+      <p className="riskline-index-note">{profile.model_available ? `Профиль по оценке Riskline: ${profile.risk_signal}.` : "Персонализированная оценка не выполнена; показан расчёт и совместимость по правилам."} Riskline Index — внутренний ориентир сервиса. Это не рейтинг БКИ и не предсказание решения банка.</p>
       <div className="profile-summary-grid">
         <div><span>Долговая нагрузка</span><strong>{profile.pti_value === null ? "—" : formatPercent(profile.pti_value, 0)}</strong><small>{bandLabels[profile.pti_band] ?? profile.pti_band}</small></div>
         <div><span>Платёж</span><strong>{profile.estimated_monthly_payment === null ? "—" : `${money.format(Math.round(profile.estimated_monthly_payment))} ₽`}</strong><small>ориентировочно</small></div>
-        <div><span>Комфорт платежа</span><strong>{bandLabels[profile.affordability_band] ?? profile.affordability_band}</strong><small>по указанным данным</small></div>
-        <div><span>Уверенность</span><strong>{confidenceLabels[profile.confidence_level] ?? profile.confidence_level}</strong><small>покрытие {formatPercent(profile.data_coverage, 0)}</small></div>
+        <div><span>Остаток бюджета</span><strong>{income ? `${money.format(Math.round(remainingBudget))} ₽` : "—"}</strong><small>после указанных платежей</small></div>
+        <div><span>Совместимые предложения</span><strong>{result.total_eligible_offers}</strong><small>в текущем демо-каталоге</small></div>
       </div>
-      <p className="eligible-count">Совместимых предложений: <strong>{result.offers.length}</strong></p>
       {warnings.map((warning) => <p className="profile-warning" key={warning}><AlertTriangle size={14} aria-hidden="true" />{warning}</p>)}
       <p className="profile-final-note">Финальное решение принимает банк.</p>
     </article>
@@ -436,15 +525,21 @@ function ProfileFactors({ result }: { result: OfferMatchResult }) {
   );
 }
 
-function ImprovementPanel({ scenarios, onApply, loading }: { scenarios: ImprovementScenario[]; onApply: (amount: number, term: number, payments: number, factor: ImprovementScenario["factor"]) => Promise<void>; loading: boolean }) {
+function ImprovementPanel({ result, scenarios, onApply, loading }: { result: OfferMatchResult; scenarios: ImprovementScenario[]; onApply: (amount: number, term: number, payments: number, factor: ImprovementScenario["factor"]) => Promise<void>; loading: boolean }) {
   if (!scenarios.length) return null;
   return (
     <section className="improvement-panel" aria-labelledby="improvement-title">
-      <div className="public-section-heading"><span className="section-kicker">Практические сценарии</span><h3 id="improvement-title">Что можно улучшить</h3><p>Мы меняем только параметры, которыми можно управлять. Доход, занятость и другие сведения нельзя искажать ради результата.</p></div>
+      <div className="public-section-heading"><span className="section-kicker">Практические сценарии</span><h2 id="improvement-title">Как можно улучшить сценарий</h2><p>Мы пересчитываем только параметры, которыми можно управлять. Доход, занятость и другие сведения нельзя искажать ради результата.</p></div>
       <div className="improvement-grid">
         {scenarios.map((scenario) => <article key={scenario.scenario_id}>
           <Sparkles size={18} aria-hidden="true" /><h4>{scenario.title}</h4>
           <div className="scenario-before-after"><span>Сейчас <strong>{scenario.current_state}</strong></span><ArrowRight size={15} /><span>Сценарий <strong>{scenario.suggested_state}</strong></span></div>
+          <dl className="scenario-metric-delta">
+            <div><dt>Riskline Index</dt><dd>{result.profile_result.riskline_index ?? "—"} → {scenario.riskline_index ?? "—"}</dd></div>
+            <div><dt>Платёж</dt><dd>{money.format(Math.round(result.profile_result.estimated_monthly_payment ?? 0))} → {money.format(Math.round(scenario.estimated_monthly_payment))} ₽</dd></div>
+            <div><dt>Нагрузка</dt><dd>{result.profile_result.pti_value === null ? "—" : formatPercent(result.profile_result.pti_value, 0)} → {scenario.pti_value === null ? "—" : formatPercent(scenario.pti_value, 0)}</dd></div>
+            <div><dt>Предложения</dt><dd>{result.total_eligible_offers} → {scenario.eligible_offer_count}</dd></div>
+          </dl>
           <ul>{scenario.effects.map((effect) => <li key={effect}>{effect}</li>)}</ul>
           <p><strong>Компромисс:</strong> {scenario.trade_off}</p>
           <button className="button button-ghost button-full" type="button" disabled={loading} onClick={() => onApply(scenario.amount, scenario.term_months, scenario.existing_monthly_payments, scenario.factor)}>Применить сценарий</button>
@@ -454,7 +549,7 @@ function ImprovementPanel({ scenarios, onApply, loading }: { scenarios: Improvem
   );
 }
 
-function ScenarioSimulator({ profile, result, onApply, loading, sessionId }: { profile: CreditProfileInput; result: OfferMatchResult; onApply: (amount: number, term: number, payments: number, factor: ImprovementScenario["factor"]) => Promise<void>; loading: boolean; sessionId: string }) {
+function ScenarioSimulator({ profile, result, previousResult, onApply, loading, sessionId }: { profile: CreditProfileInput; result: OfferMatchResult; previousResult: OfferMatchResult | null; onApply: (amount: number, term: number, payments: number, factor: ImprovementScenario["factor"]) => Promise<void>; loading: boolean; sessionId: string }) {
   const initialAmount = profile.requested_amount ?? amountForBand(profile.requested_amount_band);
   const [amount, setAmount] = useState(String(Math.round(initialAmount)));
   const [term, setTerm] = useState(String(profile.term_months));
@@ -464,12 +559,13 @@ function ScenarioSimulator({ profile, result, onApply, loading, sessionId }: { p
     const nextTerm = Number(term);
     const nextPayments = Number(payments);
     if (!Number.isFinite(nextAmount) || nextAmount <= 0 || !Number.isInteger(nextTerm) || nextTerm < 3 || nextTerm > 120 || !Number.isFinite(nextPayments) || nextPayments < 0) return;
-    void recordPublicEvent("scenario_changed", "scenario", sessionId, { scenario_type: "amount", profile_band: result.profile_result.profile_band, pti_band: result.profile_result.pti_band }).catch(() => undefined);
+    void recordPublicEvent("scenario_started", "scenario", sessionId, { scenario_type: "amount", profile_band: result.profile_result.profile_band, pti_band: result.profile_result.pti_band }).catch(() => undefined);
     void onApply(nextAmount, nextTerm, nextPayments, "amount");
   };
   return (
     <section className="scenario-simulator" aria-labelledby="simulator-title">
       <div><span className="section-kicker">Интерактивный сценарий</span><h3 id="simulator-title"><SlidersHorizontal size={20} /> Проверьте другие параметры</h3><p>Изменения не сохраняются в браузере. Пересчёт показывает направление профиля, а не обещание решения банка.</p></div>
+      {previousResult ? <div className="simulator-comparison" aria-label="Сравнение сценариев"><ScenarioSnapshot label="Было" result={previousResult} /><ArrowRight size={20} /><ScenarioSnapshot label="Новый сценарий" result={result} /></div> : null}
       <div className="scenario-controls">
         <NumberField id="scenario-amount" label="Сумма, ₽" help="Измените сумму для сравнения." value={amount} onChange={setAmount} min={1} />
         <NumberField id="scenario-term" label="Срок, месяцев" help="От 3 до 120 месяцев." value={term} onChange={setTerm} min={3} max={120} step={1} />
@@ -478,6 +574,10 @@ function ScenarioSimulator({ profile, result, onApply, loading, sessionId }: { p
       <button className="button button-dark" type="button" onClick={apply} disabled={loading}>{loading ? "Пересчитываем…" : "Применить сценарий"}</button>
     </section>
   );
+}
+
+function ScenarioSnapshot({ label, result }: { label: string; result: OfferMatchResult }) {
+  return <article><span>{label}</span><strong>Index {result.profile_result.riskline_index ?? "—"}</strong><small>Платёж {money.format(Math.round(result.profile_result.estimated_monthly_payment ?? 0))} ₽ · нагрузка {result.profile_result.pti_value === null ? "—" : formatPercent(result.profile_result.pti_value, 0)} · предложений {result.total_eligible_offers}</small></article>;
 }
 
 function OfferCard({ offer, clicking, onOpen, recommended = false }: { offer: RankedOffer; clicking: boolean; onOpen: () => void; recommended?: boolean }) {
@@ -524,16 +624,40 @@ function WhatYouGet() {
     <div className="what-you-get">
       <CheckCircle2 size={28} aria-hidden="true" />
       <span className="section-kicker">Что вы получите</span>
-      <h3>Понятный результат без лишних данных</h3>
+      <h3>Персональная оценка без банковской анкеты</h3>
       <ul>
-        <li>Ориентировочный платёж</li>
-        <li>Долговую нагрузку</li>
-        <li>Подходящие предложения</li>
-        <li>Объяснение, почему они показаны</li>
+        <li>Riskline Index и профиль</li>
+        <li>Что помогает и ограничивает результат</li>
+        <li>Сценарии, которые можно проверить</li>
+        <li>Подходящие предложения с отдельным расчётом</li>
       </ul>
       <small>Финальное решение принимает банк.</small>
     </div>
   );
+}
+
+function AssessmentLoading() {
+  return <div className="assessment-loading" role="status"><LoaderCircle className="spin" size={32} /><h2>Анализируем профиль</h2><ul><li>Считаем долговую нагрузку</li><li>Сравниваем факторы профиля</li><li>Проверяем совместимые предложения</li></ul></div>;
+}
+
+function CreditHistoryAdvice({ band }: { band: CreditProfileInput["credit_history_band"] }) {
+  if (!["minor_overdues", "serious_overdues", "no_history"].includes(band)) return null;
+  const copy = band === "no_history"
+    ? "Отсутствие истории не означает автоматический отказ. Своевременное выполнение будущих обязательств постепенно формирует историю."
+    : "Перед новой заявкой полезно проверить кредитную историю на ошибки и продолжать своевременно выполнять текущие обязательства.";
+  return <article className="credit-history-advice"><BookOpenCheck size={21} /><div><strong>О кредитной истории</strong><p>{copy} Riskline не получает данные БКИ и не знает внутренних правил банка.</p></div></article>;
+}
+
+function employmentLabel(value: CreditProfileInput["employment_type"]): string {
+  return {
+    employee: "По найму",
+    self_employed: "Самозанятый",
+    individual_entrepreneur: "ИП",
+    pensioner: "Пенсионер",
+    unofficial: "Неофициальная занятость",
+    unemployed: "Не работаю",
+    unknown: "Не указано",
+  }[value];
 }
 
 function ComparisonBlock({ offer }: { offer: RankedOffer }) {

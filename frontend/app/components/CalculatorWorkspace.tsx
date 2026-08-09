@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, ArrowRight, Calculator, ShieldCheck } from "lucide-react";
 import { calculateCreditScenario } from "../lib/credit-calculator.mjs";
+import { setTransientAssessmentContext } from "../lib/assessment-context";
 import { parseNumericInput } from "../lib/numeric-input.mjs";
 import { createAnonymousSessionId, recordPublicEvent } from "../lib/public-analytics";
 import { NumericInput } from "./NumericInput";
@@ -60,7 +61,13 @@ export function CalculatorWorkspace() {
       recordPublicEvent("calculator_used", "credit_calculator", sessionId),
       recordPublicEvent("calculator_continue_clicked", "credit_calculator", sessionId),
     ]);
-    router.push("/offers");
+    setTransientAssessmentContext({
+      amount: parsed.amount!,
+      term: parsed.term!,
+      monthlyIncome: parsed.income!,
+      existingPayments: parsed.debt!,
+    });
+    router.push("/assessment");
   };
 
   return (
@@ -95,7 +102,7 @@ export function CalculatorWorkspace() {
                 <small>ориентировочно по указанным параметрам</small>
               </div>
               <button className="button button-dark button-full" type="button" onClick={continueToMatching}>
-                Показать предложения под этот платёж <ArrowRight size={17} aria-hidden="true" />
+                Оценить профиль и подобрать предложения <ArrowRight size={17} aria-hidden="true" />
               </button>
               <dl className="calculator-facts">
                 <div><dt>Всего к возврату</dt><dd>{money.format(result.totalRepayment)}</dd></div>

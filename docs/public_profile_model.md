@@ -30,9 +30,13 @@ Training и inference используют одну схему: возраст, 
 ## Обучение и provenance
 
 ```powershell
-python -m src.cli build-public-profile-dataset
-python -m src.cli train-public-profile-model
+python -m src.cli prepare-local-ml
 ```
+
+`prepare-local-ml` first validates an existing trusted artifact. Training occurs only
+when the artifact is absent and the legitimate ignored source configured in
+`configs/public_profile_model.yaml` exists. Missing source data produces an explicit
+failure; no synthetic training labels or silent rules substitute are created.
 
 Конфигурация: `configs/public_profile_model.yaml`. Pipeline сравнивает Logistic
 Regression baseline и CatBoost candidate, калибрует выбранную модель и проверяет
@@ -75,6 +79,10 @@ ranker и fallback-only mode.
 Если public artifact отсутствует, matching продолжает работать по правилам, но
 `model_available=false`, `ml_personalized=false`, индекс отсутствует, а runtime
 фиксирует fallback. UI не называет такой результат ML-персонализированным.
+
+`Offer Outcome Ranker` — отдельный будущий контур для сигналов click/application/
+issued. Он не является Public Profile Model, не обучается на синтетической demo-
+воронке и по умолчанию остаётся в режиме `rules`.
 
 ## Ограничения и gate замены
 

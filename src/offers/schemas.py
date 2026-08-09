@@ -333,6 +333,9 @@ class RankedOfferPublic(BaseModel):
 
 PublicEventType = Literal[
     "landing_viewed",
+    "assessment_started",
+    "assessment_step_completed",
+    "assessment_completed",
     "calculator_used",
     "calculator_continue_clicked",
     "profile_started",
@@ -341,9 +344,12 @@ PublicEventType = Literal[
     "profile_result_viewed",
     "improvement_viewed",
     "scenario_changed",
+    "scenario_started",
     "scenario_applied",
+    "offers_viewed",
     "recommended_offer_viewed",
     "offer_clicked",
+    "partner_transition_viewed",
 ]
 
 
@@ -354,11 +360,14 @@ class PublicAnalyticsEventRequest(BaseModel):
 
     event_type: PublicEventType
     anonymous_session_id: str | None = Field(default=None, min_length=8, max_length=128)
-    page: Literal["landing", "credit_calculator", "offers", "result", "scenario"]
+    page: Literal[
+        "landing", "assessment", "credit_calculator", "offers", "result", "scenario"
+    ]
     profile_band: str | None = Field(default=None, max_length=32)
     pti_band: str | None = Field(default=None, max_length=32)
     scenario_type: Literal["amount", "term", "payments", "refinance"] | None = None
     offer_position: Literal["recommended", "alternative"] | None = None
+    assessment_step: Literal[1, 2, 3, 4] | None = None
 
 
 class PublicAnalyticsEventResponse(BaseModel):
@@ -386,6 +395,7 @@ class OfferMatchRequest(BaseModel):
 class OfferMatchResponse(BaseModel):
     profile_result: CreditProfileResult
     offers: list[RankedOfferPublic]
+    total_eligible_offers: int = Field(ge=0)
     disclaimers: list[str]
     ad_disclosure_required: bool = True
     no_eligible_offers: bool = False
