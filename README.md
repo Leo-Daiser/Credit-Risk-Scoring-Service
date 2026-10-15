@@ -1,14 +1,31 @@
 # Riskline
 
-## English overview
+## ML engineering overview (English)
 
-**Riskline** is a personal fintech and machine-learning engineering project. It combines a financial-profile workflow, a separate ML scoring model, rule-based matching for illustrative offers, and a local Docker demo.
+**Riskline is a local credit-risk modeling and financial-profile demo.** It demonstrates how to connect a model-training workflow to validated inference and a user-facing service. It is a personal project, not a live lending or bank-approval platform.
 
-**Stack:** Python, scikit-learn, CatBoost, FastAPI, PostgreSQL, SQLAlchemy, Docker, pytest, JavaScript/TypeScript frontend.
+### What I implemented
 
-**ML work:** compares Logistic Regression and CatBoost, includes model calibration and validation gates, and exposes an inference workflow with explicit model-readiness checks and fallback behavior.
+| ML engineering concern | Implementation |
+| --- | --- |
+| Training and evaluation | Separate Logistic Regression and CatBoost candidates, calibration, model metadata and acceptance gates |
+| Data contract | Normalized training/inference schema; the public model uses an adapter for the Home Credit Default Risk dataset |
+| Serving | FastAPI scoring, model-artifact readiness checks and an explicit non-ML fallback mode |
+| Reliability | PostgreSQL, migrations, Docker-based local demo, backend/frontend tests and CI checks |
+| Product interface | Financial-profile flow, explanatory factors and rule-based matching of illustrative offers |
 
-**Important scope:** not a bank, not an actual loan approval or underwriting service, and not proof of a live production deployment. The public demo uses illustrative or synthetic offers. Source data, model artifacts and partner credentials are not included in the repository.
+**Key engineering decisions:** model artifacts and raw data are excluded from Git; the application must not silently present rule-based fallback as an ML prediction. The public model is trained on a non-Russian dataset and is **not** an approval-probability model for Russian borrowers.
+
+### Where to review
+
+- [Public ML model: training, calibration, input contract, limitations](docs/public_profile_model.md)
+- [Local demo setup and verification](docs/deployment_demo.md)
+- [CI: backend, frontend, browser checks](.github/workflows/ci.yml)
+- [Source code](src/) · [Tests](tests/) · [Frontend](frontend/)
+
+**Local demo:** follow [deployment instructions](docs/deployment_demo.md). Model-backed execution requires a trusted local model artifact or the separately obtained source dataset. Example offers are synthetic; there is no claim of commercial banking integration.
+
+**Different project:** [Credit Risk Research Lab](https://github.com/Leo-Daiser/credit-risk-lab) is a separate experiment framework using synthetic data. Its test counts and stress-test settings are not Riskline results.
 
 ## Подробная документация (русский)
 
