@@ -1,5 +1,17 @@
 # Riskline
 
+## English overview
+
+**Riskline** is a personal fintech and machine-learning engineering project. It combines a financial-profile workflow, a separate ML scoring model, rule-based matching for illustrative offers, and a local Docker demo.
+
+**Stack:** Python, scikit-learn, CatBoost, FastAPI, PostgreSQL, SQLAlchemy, Docker, pytest, JavaScript/TypeScript frontend.
+
+**ML work:** compares Logistic Regression and CatBoost, includes model calibration and validation gates, and exposes an inference workflow with explicit model-readiness checks and fallback behavior.
+
+**Important scope:** not a bank, not an actual loan approval or underwriting service, and not proof of a live production deployment. The public demo uses illustrative or synthetic offers. Source data, model artifacts and partner credentials are not included in the repository.
+
+## Подробная документация (русский)
+
 Riskline — consumer fintech-сервис, который объединяет финансовый расчёт,
 ML-профиль, понятные факторы, сценарии улучшения и персонализированный подбор
 кредитных предложений. Публичный поток использует примерные данные и не требует
